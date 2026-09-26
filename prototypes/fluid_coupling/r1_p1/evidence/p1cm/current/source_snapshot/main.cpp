@@ -445,4 +445,16 @@ static int run(){
 }
 }
 #include "momentum_validation.hpp"
+#ifdef JUDAS_P1PF
+#include "p1pf_validation.hpp"
+#include "p1pf_adapters.hpp"
+int main(){
+    try { int result=pfvalidation::runProjectionValidation();return result?result:r1p1::runP1PFAdapters(); }
+    catch(const std::exception& error){
+        std::ofstream failed("evidence/p1pf/current/FAILURE.txt");
+        failed<<error.what()<<'\n';std::cerr<<"P1-PF FAILED: "<<error.what()<<'\n';return 1;
+    }
+}
+#else
 int main(){int result=r1p1::run();return result?result:r1p1::runMomentumValidation();}
+#endif

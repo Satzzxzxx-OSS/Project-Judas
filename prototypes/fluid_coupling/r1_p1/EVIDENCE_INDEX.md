@@ -95,3 +95,40 @@ swimming, P1-D/E, 3D or production integration. Full P1 remains incomplete.
 Checkpoint preparation changed only packaging/documentation and the evidence
 recorder's repository-state audit. Numerical source, fixture/oracle source,
 CMake configuration and the build/run script were not changed for checkpointing.
+
+
+## P1-PF frozen-geometry checkpoint
+
+The separate optional component is documented by `P1PF_METHOD.md` and
+`P1PF_RESULTS.md`; reproduce it with `bash prototypes/fluid_coupling/r1_p1/run_p1pf.sh`
+from the repository root. It requires LP64 LAPACK for the mature SVD implementation.
+`dependencies/OpenBLAS-COPYRIGHT` preserves the installed dependency notices.
+
+- `frozen_projection.hpp`: reusable resolved-grid assembly and simultaneous
+  pressure/body-velocity projection.
+- `p1pf_validation.hpp`: 42 component cases, five negative controls and nine
+  malformed-input checks; independent mechanical oracles.
+- `p1pf_adapters.hpp`: six adapters consuming actual compiled transport output.
+- `fixtures/p1pf_random_inputs.csv`, `prepare_p1pf_reference.py`: reproducible
+  seeded input arrays and independent reference preparation; no Python answers
+  are substituted for C++ results.
+- `run_p1pf.sh`, `record_p1pf.py`: execution and verification commands.
+- `evidence/p1pf/current/`: matching tested source snapshots, SHA-256 fingerprints,
+  full matrix/row/DOF/body diagnostics, physical comparisons, negative controls,
+  adapter records and the preserved 55-run transport regression.
+- `evidence/p1pf/baseline/`: committed transport sources/results and the successful
+  pre-edit rerun, including earlier failure history without relabeling it.
+- `evidence/p1pf/handoff/` and its input ZIP: unchanged supplied research evidence.
+- `evidence/p1pf/reference_rerun/`: supporting Python runs, input provenance and
+  explicitly documented cross-platform numerical differences.
+
+Recorded HEAD/status/no-Git-action statements are facts about the pre-checkpoint
+validation run, not assertions about the later checkpoint commit. The tested
+source/evidence hashes were checked again during checkpoint preparation; no
+numerical code or test output was modified. Only README/STATUS/index wording was
+updated to identify the checkpoint. Historical snapshots remain unchanged.
+
+The optional target uses `.build-p1pf/`; the reference-only dependency environment
+uses `.reference-p1pf/`. Both, their caches and machine-specific build logs remain
+ignored. Production Judas, moving geometry, general cut cells, P1-D/E and full R1
+are outside this checkpoint.

@@ -25,7 +25,7 @@ The command configures/builds the existing prototype, executes its single compil
 - New `run_p1cm.sh`, `record_p1cm.py`: reproducible execution and evidence verification.
 - New `P1CM_METHOD.md`, `P1CM_RESULTS.md`; updated README/STATUS and scope notices in the three preserved P1-C documents.
 - Added evidence under `evidence/p1cm/`, including the unchanged supplied package, reference rerun, preserved baseline, logs, CSVs and snapshots. The build remains `.build-jsgt/`.
-- `vof.hpp`, original oracle headers and CMake configuration are unchanged.
+- `vof.hpp` and original oracle headers are unchanged. A later P1-PF component may add an optional CMake target; the transport gate retains its original compiler settings and equations.
 
 ## Numerical gate results
 
@@ -47,36 +47,36 @@ The reference-family random generator is seeded xorshift64*, not NumPy. Its pure
 
 | Case | Fine/MAC | Density ratio | Steps | Local mass max norm | Global mass max norm | Global momentum max norm | Common-vector error | Runtime s | Result |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| reference_uniform_constant | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.0401697 | PASS |
-| reference_uniform_smooth | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.038168 | PASS |
-| reference_uniform_seeded_random | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 8.327e-17 | 0.000e+00 | 0.0380342 | PASS |
-| reference_uniform_constant | 24/12 | 1000 | 12 | 4.830e-16 | 1.471e-15 | 1.022e-15 | 2.887e-15 | 0.0382468 | PASS |
-| reference_uniform_smooth | 24/12 | 1000 | 12 | 4.830e-16 | 1.471e-15 | 1.022e-15 | 0.000e+00 | 0.0381669 | PASS |
-| reference_uniform_seeded_random | 24/12 | 1000 | 12 | 4.830e-16 | 1.471e-15 | 2.686e-16 | 0.000e+00 | 0.038901 | PASS |
-| reference_uniform_constant | 24/12 | 1e+06 | 12 | 4.547e-16 | 7.591e-16 | 6.025e-16 | 3.676e-12 | 0.0385376 | PASS |
-| reference_uniform_smooth | 24/12 | 1e+06 | 12 | 4.547e-16 | 7.591e-16 | 8.549e-16 | 0.000e+00 | 0.0389818 | PASS |
-| reference_uniform_seeded_random | 24/12 | 1e+06 | 12 | 4.547e-16 | 7.591e-16 | 3.467e-16 | 0.000e+00 | 0.0388415 | PASS |
-| reference_streamfunction_constant | 24/12 | 1 | 12 | 1.249e-16 | 1.464e-18 | 2.656e-18 | 1.110e-16 | 0.0485218 | PASS |
-| reference_streamfunction_smooth | 24/12 | 1 | 12 | 1.249e-16 | 1.464e-18 | 9.866e-18 | 0.000e+00 | 0.0493494 | PASS |
-| reference_streamfunction_seeded_random | 24/12 | 1 | 12 | 1.249e-16 | 1.464e-18 | 6.939e-17 | 0.000e+00 | 0.048418 | PASS |
-| reference_streamfunction_constant | 24/12 | 1000 | 12 | 4.429e-16 | 2.207e-15 | 5.039e-16 | 3.109e-15 | 0.0466367 | PASS |
-| reference_streamfunction_smooth | 24/12 | 1000 | 12 | 4.429e-16 | 2.207e-15 | 1.549e-16 | 0.000e+00 | 0.0472504 | PASS |
-| reference_streamfunction_seeded_random | 24/12 | 1000 | 12 | 4.429e-16 | 2.207e-15 | 3.358e-16 | 0.000e+00 | 0.0454993 | PASS |
-| reference_streamfunction_constant | 24/12 | 1e+06 | 12 | 6.173e-16 | 1.265e-15 | 5.200e-16 | 7.542e-12 | 0.0514541 | PASS |
-| reference_streamfunction_smooth | 24/12 | 1e+06 | 12 | 6.173e-16 | 1.265e-15 | 2.396e-16 | 0.000e+00 | 0.0463713 | PASS |
-| reference_streamfunction_seeded_random | 24/12 | 1e+06 | 12 | 6.173e-16 | 1.265e-15 | 4.160e-16 | 0.000e+00 | 0.0531312 | PASS |
-| genuine_common_comotion | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 5.551e-17 | 0.0159391 | PASS |
-| genuine_common_comotion | 24/12 | 1000 | 12 | 4.217e-16 | 1.251e-15 | 9.305e-16 | 5.829e-15 | 0.0160966 | PASS |
-| genuine_common_comotion | 24/12 | 1e+06 | 12 | 6.805e-16 | 1.455e-15 | 1.092e-15 | 5.882e-12 | 0.0162457 | PASS |
-| smooth_momentum_refinement | 24/12 | 1 | 18 | 0.000e+00 | 0.000e+00 | 6.510e-16 | 0.000e+00 | 0.0251107 | PASS |
-| smooth_momentum_refinement | 48/24 | 1 | 35 | 0.000e+00 | 0.000e+00 | 1.404e-15 | 0.000e+00 | 0.12235 | PASS |
-| smooth_momentum_refinement | 96/48 | 1 | 70 | 0.000e+00 | 0.000e+00 | 3.774e-15 | 0.000e+00 | 0.713327 | PASS |
-| open_boundary_slab | 48/24 | 1 | 18 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.0532633 | PASS |
-| open_boundary_slab | 48/24 | 1000 | 18 | 1.826e-16 | 5.165e-14 | 1.054e-15 | 3.608e-15 | 0.0520482 | PASS |
-| open_boundary_slab | 48/24 | 1e+06 | 18 | 1.799e-16 | 1.981e-14 | 7.662e-15 | 4.102e-12 | 0.0476307 | PASS |
-| covariance_base | 24/12 | 1000 | 12 | 4.339e-16 | 1.308e-15 | 8.665e-16 | 0.000e+00 | 0.0176042 | PASS |
-| covariance_axis_exchange | 24/12 | 1000 | 12 | 4.512e-16 | 1.308e-15 | 1.950e-15 | 0.000e+00 | 0.0185806 | PASS |
-| covariance_x_reflection | 24/12 | 1000 | 12 | 4.344e-16 | 1.090e-15 | 8.665e-16 | 0.000e+00 | 0.0203492 | PASS |
+| reference_uniform_constant | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.0387795 | PASS |
+| reference_uniform_smooth | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.0393578 | PASS |
+| reference_uniform_seeded_random | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 8.327e-17 | 0.000e+00 | 0.0400433 | PASS |
+| reference_uniform_constant | 24/12 | 1000 | 12 | 4.830e-16 | 1.471e-15 | 1.022e-15 | 2.887e-15 | 0.0394008 | PASS |
+| reference_uniform_smooth | 24/12 | 1000 | 12 | 4.830e-16 | 1.471e-15 | 1.022e-15 | 0.000e+00 | 0.0400973 | PASS |
+| reference_uniform_seeded_random | 24/12 | 1000 | 12 | 4.830e-16 | 1.471e-15 | 2.686e-16 | 0.000e+00 | 0.0401995 | PASS |
+| reference_uniform_constant | 24/12 | 1e+06 | 12 | 4.547e-16 | 7.591e-16 | 6.025e-16 | 3.676e-12 | 0.0392483 | PASS |
+| reference_uniform_smooth | 24/12 | 1e+06 | 12 | 4.547e-16 | 7.591e-16 | 8.549e-16 | 0.000e+00 | 0.0400442 | PASS |
+| reference_uniform_seeded_random | 24/12 | 1e+06 | 12 | 4.547e-16 | 7.591e-16 | 3.467e-16 | 0.000e+00 | 0.0403832 | PASS |
+| reference_streamfunction_constant | 24/12 | 1 | 12 | 1.249e-16 | 1.464e-18 | 2.656e-18 | 1.110e-16 | 0.0454442 | PASS |
+| reference_streamfunction_smooth | 24/12 | 1 | 12 | 1.249e-16 | 1.464e-18 | 9.866e-18 | 0.000e+00 | 0.0457696 | PASS |
+| reference_streamfunction_seeded_random | 24/12 | 1 | 12 | 1.249e-16 | 1.464e-18 | 6.939e-17 | 0.000e+00 | 0.0454717 | PASS |
+| reference_streamfunction_constant | 24/12 | 1000 | 12 | 4.429e-16 | 2.207e-15 | 5.039e-16 | 3.109e-15 | 0.0468816 | PASS |
+| reference_streamfunction_smooth | 24/12 | 1000 | 12 | 4.429e-16 | 2.207e-15 | 1.549e-16 | 0.000e+00 | 0.0458956 | PASS |
+| reference_streamfunction_seeded_random | 24/12 | 1000 | 12 | 4.429e-16 | 2.207e-15 | 3.358e-16 | 0.000e+00 | 0.0465645 | PASS |
+| reference_streamfunction_constant | 24/12 | 1e+06 | 12 | 6.173e-16 | 1.265e-15 | 5.200e-16 | 7.542e-12 | 0.0463436 | PASS |
+| reference_streamfunction_smooth | 24/12 | 1e+06 | 12 | 6.173e-16 | 1.265e-15 | 2.396e-16 | 0.000e+00 | 0.0475538 | PASS |
+| reference_streamfunction_seeded_random | 24/12 | 1e+06 | 12 | 6.173e-16 | 1.265e-15 | 4.160e-16 | 0.000e+00 | 0.0517949 | PASS |
+| genuine_common_comotion | 24/12 | 1 | 12 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 5.551e-17 | 0.0173076 | PASS |
+| genuine_common_comotion | 24/12 | 1000 | 12 | 4.217e-16 | 1.251e-15 | 9.305e-16 | 5.829e-15 | 0.0170733 | PASS |
+| genuine_common_comotion | 24/12 | 1e+06 | 12 | 6.805e-16 | 1.455e-15 | 1.092e-15 | 5.882e-12 | 0.0172257 | PASS |
+| smooth_momentum_refinement | 24/12 | 1 | 18 | 0.000e+00 | 0.000e+00 | 6.510e-16 | 0.000e+00 | 0.0269189 | PASS |
+| smooth_momentum_refinement | 48/24 | 1 | 35 | 0.000e+00 | 0.000e+00 | 1.404e-15 | 0.000e+00 | 0.133841 | PASS |
+| smooth_momentum_refinement | 96/48 | 1 | 70 | 0.000e+00 | 0.000e+00 | 3.774e-15 | 0.000e+00 | 0.693008 | PASS |
+| open_boundary_slab | 48/24 | 1 | 18 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.000e+00 | 0.048405 | PASS |
+| open_boundary_slab | 48/24 | 1000 | 18 | 1.826e-16 | 5.165e-14 | 1.054e-15 | 3.608e-15 | 0.0483341 | PASS |
+| open_boundary_slab | 48/24 | 1e+06 | 18 | 1.799e-16 | 1.981e-14 | 7.662e-15 | 4.102e-12 | 0.0488742 | PASS |
+| covariance_base | 24/12 | 1000 | 12 | 4.339e-16 | 1.308e-15 | 8.665e-16 | 0.000e+00 | 0.0179552 | PASS |
+| covariance_axis_exchange | 24/12 | 1000 | 12 | 4.512e-16 | 1.308e-15 | 1.950e-15 | 0.000e+00 | 0.0182682 | PASS |
+| covariance_x_reflection | 24/12 | 1000 | 12 | 4.344e-16 | 1.090e-15 | 8.665e-16 | 0.000e+00 | 0.0189675 | PASS |
 
 ## Momentum refinement
 
@@ -163,33 +163,33 @@ No material full-step energy growth appeared in the closed cases; the small posi
 
 | Case | Fine grid | Steps | Fraction L1 | Runtime s | Result |
 |---|---:|---:|---:|---:|---|
-| constant_gas | 24 | 3 | 0 | 0.00103286 | PASS |
-| constant_liquid | 24 | 3 | 0 | 0.00113556 | PASS |
-| aligned_translation | 24 | 6 | 0.0017653461 | 0.00706219 | PASS |
-| aligned_translation | 48 | 10 | 0.00100694556 | 0.0342749 | PASS |
-| aligned_translation | 96 | 20 | 0.000432001789 | 0.215031 | PASS |
-| oblique_translation | 24 | 2 | 0.00146884632 | 0.00388667 | PASS |
-| oblique_translation | 48 | 4 | 0.000631972491 | 0.018823 | PASS |
-| oblique_translation | 96 | 8 | 0.000261605391 | 0.113663 | PASS |
-| slotted_translation | 24 | 4 | 0.00314232603 | 0.00909535 | PASS |
-| slotted_translation | 48 | 6 | 0.00121675153 | 0.0355055 | PASS |
-| slotted_translation | 96 | 12 | 0.000705195831 | 0.212666 | PASS |
-| reversal | 24 | 4 | 0.00214503526 | 0.00333157 | PASS |
-| reversal | 48 | 12 | 0.00109650193 | 0.0277968 | PASS |
-| reversal | 96 | 24 | 0.000455113057 | 0.188232 | PASS |
-| slotted_rotation | 32 | 720 | 0.00595200972 | 3.05794 | PASS |
-| strain_constant_gas | 32 | 16 | 0 | 0.00736289 | PASS |
-| strain_constant_liquid | 32 | 16 | 0 | 0.00878221 | PASS |
-| nonuniform_strain | 24 | 8 | 0.00221421076 | 0.0132061 | PASS |
-| nonuniform_strain | 48 | 16 | 0.000829700135 | 0.0632574 | PASS |
-| nonuniform_strain | 96 | 32 | 0.000392066749 | 0.352145 | PASS |
-| nonlinear_incompressible | 24 | 24 | 0.00213730443 | 0.0491764 | PASS |
-| nonlinear_incompressible | 48 | 48 | 0.00109936517 | 0.21045 | PASS |
-| nonlinear_incompressible | 96 | 96 | 0.000539882527 | 1.17305 | PASS |
-| boundary_exit_translation | 48 | 48 | 0.000387844532 | 0.0980208 | PASS |
-| boundary_exit_slab | 48 | 48 | 6.82324567e-17 | 0.144856 | PASS |
+| constant_gas | 24 | 3 | 0 | 0.00107185 | PASS |
+| constant_liquid | 24 | 3 | 0 | 0.00114014 | PASS |
+| aligned_translation | 24 | 6 | 0.0017653461 | 0.00839747 | PASS |
+| aligned_translation | 48 | 10 | 0.00100694556 | 0.0378814 | PASS |
+| aligned_translation | 96 | 20 | 0.000432001789 | 0.232635 | PASS |
+| oblique_translation | 24 | 2 | 0.00146884632 | 0.00474449 | PASS |
+| oblique_translation | 48 | 4 | 0.000631972491 | 0.0206593 | PASS |
+| oblique_translation | 96 | 8 | 0.000261605391 | 0.114296 | PASS |
+| slotted_translation | 24 | 4 | 0.00314232603 | 0.0095557 | PASS |
+| slotted_translation | 48 | 6 | 0.00121675153 | 0.0363612 | PASS |
+| slotted_translation | 96 | 12 | 0.000705195831 | 0.21473 | PASS |
+| reversal | 24 | 4 | 0.00214503526 | 0.00337356 | PASS |
+| reversal | 48 | 12 | 0.00109650193 | 0.0288477 | PASS |
+| reversal | 96 | 24 | 0.000455113057 | 0.195339 | PASS |
+| slotted_rotation | 32 | 720 | 0.00595200972 | 3.08011 | PASS |
+| strain_constant_gas | 32 | 16 | 0 | 0.00741829 | PASS |
+| strain_constant_liquid | 32 | 16 | 0 | 0.00940657 | PASS |
+| nonuniform_strain | 24 | 8 | 0.00221421076 | 0.0128701 | PASS |
+| nonuniform_strain | 48 | 16 | 0.000829700135 | 0.061887 | PASS |
+| nonuniform_strain | 96 | 32 | 0.000392066749 | 0.36775 | PASS |
+| nonlinear_incompressible | 24 | 24 | 0.00213730443 | 0.0457111 | PASS |
+| nonlinear_incompressible | 48 | 48 | 0.00109936517 | 0.215091 | PASS |
+| nonlinear_incompressible | 96 | 96 | 0.000539882527 | 1.16744 | PASS |
+| boundary_exit_translation | 48 | 48 | 0.000387844532 | 0.0983449 | PASS |
+| boundary_exit_slab | 48 | 48 | 6.82324567e-17 | 0.150871 | PASS |
 
-Total final compiled-fixture runtime: **7.953008 s**, including fraction reconstruction, analytical expectations and heavy CSV diagnostics. The 30 new momentum runs account for 1.903224 s. These are not production performance claims.
+Total final compiled-fixture runtime: **8.011390 s**, including fraction reconstruction, analytical expectations and heavy CSV diagnostics. The 30 new momentum runs account for 1.885453 s. These are not production performance claims.
 
 ## Supporting Python evidence
 
@@ -199,20 +199,45 @@ The supplied manifest and nested original-archive manifest passed all 13 hashes.
 
 | File | SHA-256 |
 |---|---|
-| main.cpp | `0948d0730cc633960cc1467f545b68e476406cd2f413aa5ba01206d3372d0e3a` |
+| main.cpp | `92ec4713c41d6380488b43312c28f25c4edf9ffbe8138b6a1d3fb1728765b140` |
 | mass_momentum.hpp | `f8998879468c050cff82217c161a97cd7e89a98dde3da782dc1de16539e87332` |
 | momentum_validation.hpp | `5177a03fe25acd96a8416e308fe54b2931b0bb20428527b9fcd1a240b114d9d3` |
 | vof.hpp | `4d584ecb1bc97121acc215b20c3f88be83493b65c3b83637f6c38bcb46ba4fa6` |
 | transport_oracles.hpp | `f91097764f16587d4317c942ea73a8da6ae593ec0335ab1c67182101ca190714` |
 | nonlinear_transport_oracle.hpp | `140f553aa19eaa6e6f015a2c3e9a2a0f3930827e8a92eb3111f00f5bda07f74a` |
-| CMakeLists.txt | `9f2d6421b596fc91bc77f74a80e82b7640b4a56fc7ce08ecb5dc0af23c3d5e9c` |
+| CMakeLists.txt | `c9760930efee6d686c0154bdbb733c7614e7e7829b7287b0439ea3e0cebade4f` |
 | run_p1cm.sh | `82003c96ba24acb90ede244f206e25939acd198ca8fe0d0de7bdca597159d3c0` |
-| record_p1cm.py | `cf067b9cbca1ab54da502f999f11596d9410ef2312e2c5b24bea4bdf98d307ce` |
+| record_p1cm.py | `3fe81e24d75227d6790fed25c6f78261ca4ac1f8803fae343c6c582eff7ce60a` |
 
-Repository HEAD at execution: `48385a78afb2930744f2b87ad6aa55452f18ae18`. Tracked and staged changes were checked to be confined to the isolated prototype. Git status captured by this run, before the checkpoint commit:
+Repository HEAD at execution: `0d73f47206cc34674bb9fbbce2cb438f38ce9f22`. Tracked and staged changes were checked to be confined to the isolated prototype. Git status captured by this run, before the checkpoint commit:
 
 ```text
-?? prototypes/
+ M prototypes/fluid_coupling/r1_p1/.gitignore
+ M prototypes/fluid_coupling/r1_p1/CMakeLists.txt
+ M prototypes/fluid_coupling/r1_p1/P1CM_RESULTS.md
+ M prototypes/fluid_coupling/r1_p1/README.md
+ M prototypes/fluid_coupling/r1_p1/STATUS.md
+ M prototypes/fluid_coupling/r1_p1/evidence/p1cm/current/RUN_METADATA.json
+ M prototypes/fluid_coupling/r1_p1/evidence/p1cm/current/jsgt_summary.csv
+ M prototypes/fluid_coupling/r1_p1/evidence/p1cm/current/momentum_summary.csv
+ M prototypes/fluid_coupling/r1_p1/evidence/p1cm/current/run_output.txt
+ M prototypes/fluid_coupling/r1_p1/evidence/p1cm/current/source_snapshot/CMakeLists.txt
+ M prototypes/fluid_coupling/r1_p1/evidence/p1cm/current/source_snapshot/main.cpp
+ M prototypes/fluid_coupling/r1_p1/evidence/p1cm/current/source_snapshot/record_p1cm.py
+ M prototypes/fluid_coupling/r1_p1/main.cpp
+ M prototypes/fluid_coupling/r1_p1/record_p1cm.py
+ M prototypes/fluid_coupling/r1_p1/results/jsgt_summary.csv
+?? prototypes/fluid_coupling/r1_p1/P1PF_METHOD.md
+?? prototypes/fluid_coupling/r1_p1/P1PF_RESULTS.md
+?? prototypes/fluid_coupling/r1_p1/dependencies/
+?? prototypes/fluid_coupling/r1_p1/evidence/p1pf/
+?? prototypes/fluid_coupling/r1_p1/fixtures/
+?? prototypes/fluid_coupling/r1_p1/frozen_projection.hpp
+?? prototypes/fluid_coupling/r1_p1/p1pf_adapters.hpp
+?? prototypes/fluid_coupling/r1_p1/p1pf_validation.hpp
+?? prototypes/fluid_coupling/r1_p1/prepare_p1pf_reference.py
+?? prototypes/fluid_coupling/r1_p1/record_p1pf.py
+?? prototypes/fluid_coupling/r1_p1/run_p1pf.sh
 ```
 
 Current raw evidence and matching source snapshots are in `evidence/p1cm/current/`. `RUN_METADATA.json` fingerprints both sources and executed evidence. The preserved baseline and earlier complete-run logs remain separate. The build/evidence runner does not commit, tag or push. Its metadata records the execution state; the Git checkpoint is a separate operator-authorized action. Machine-specific `build_output.txt` is excluded from version control and the evidence manifest.
