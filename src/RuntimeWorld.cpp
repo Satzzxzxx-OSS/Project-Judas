@@ -23,11 +23,6 @@ constexpr float kFaithfulMagnitude = 9.81f;
 constexpr float kSettledLinearSpeed = 0.05f;
 constexpr float kSettledAngularSpeed = 0.05f;
 
-bool IsWorldDown(const glm::quat& rotation) {
-    const glm::vec3 down = rotation * glm::vec3(0.0f, -1.0f, 0.0f);
-    return std::abs(down.x) < 1.0e-6f && std::abs(down.z) < 1.0e-6f && down.y < 0.0f;
-}
-
 EntityPhysicalState StateFromDefinition(const SceneObject& o) {
     EntityPhysicalState state;
     state.position = o.transform.position;
@@ -324,10 +319,15 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
             std::unique_ptr<GravityField> field;
             if (g.kind == SceneGravityKind::Radial) {
                 field = std::make_unique<RadicalGravity>(position, g.magnitude);
-            } else if (IsWorldDown(rotation) && g.magnitude == kFaithfulMagnitude) {
-                field = std::make_unique<FaithfulGravity>();
             } else {
-                field = std::make_unique<UniformGravity>(rotation * glm::vec3(0.0f, -g.magnitude, 0.0f));
+                const glm::vec3 acceleration = rotation * glm::vec3(0.0f, -g.magnitude, 0.0f);
+                // Constructor selection must preserve the complete authored
+                // vector. An angular tolerance would erase small rotations.
+                if (acceleration == glm::vec3(0.0f, -kFaithfulMagnitude, 0.0f)) {
+                    field = std::make_unique<FaithfulGravity>();
+                } else {
+                    field = std::make_unique<UniformGravity>(acceleration);
+                }
             }
             std::unique_ptr<GravityVolume> volume;
             if (g.regionShape == SceneRegionShape::Sphere) {

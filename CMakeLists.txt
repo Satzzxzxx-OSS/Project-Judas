@@ -699,3 +699,8 @@ add_executable(judas_async_application_tests
 )
 target_link_libraries(judas_async_application_tests PRIVATE judas_engine)
 target_compile_options(judas_async_application_tests PRIVATE -Wall -Wextra)
+
+# FTFT3: serialized authored gravity through RuntimeWorld and StepPlayedWorld.
+add_executable(judas_uniform_gravity_scene_tests tests/UniformGravitySceneTests.cpp)
+target_link_libraries(judas_uniform_gravity_scene_tests PRIVATE judas_engine)
+target_compile_options(judas_uniform_gravity_scene_tests PRIVATE -Wall -Wextra)

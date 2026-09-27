@@ -7132,7 +7132,7 @@ and any of these optional components:
 |-----------|------------------------------|
 | `render` | box / sphere / mesh (asset path + optional texture) / compound / terrain, colour, alpha, secondary colour/alpha for compound walls |
 | `body` | static or dynamic rigid body: box, sphere, compound boxes or terrain surface (by identifier); mass, friction, restitution, initial velocity, pickable flag |
-| `gravity` | a bounded gravity context at the object: radial (`RadicalGravity`) or uniform along the object's local −Y (`FaithfulGravity` when that is world −Y at 9.81 m/s², else the new `UniformGravity`), sphere or box region |
+| `gravity` | a bounded gravity context at the object: radial (`RadicalGravity`) or uniform along the normalized object rotation's local −Y; `FaithfulGravity` only when the computed float acceleration is exactly `(0, -9.81f, 0)`, otherwise `UniformGravity`; sphere or box region |
 | `light` | a standalone point or spot dynamic light (spot faces local −Z) |
 | `door` | the M16 hinged door (panel from the render box; hinge at the transform) |
 | `light-switch` | the M16 lever plus its lamp (offset in the object's frame) |
@@ -7148,6 +7148,17 @@ Order matters and is authored: gravity regions are registered with
 regions overlap (the plank precedes the planets exactly as the old
 composition root registered it). The hierarchy panel's Move up/down edits
 that order.
+
+For `gravity uniform g`, serialized `rotation w x y z` components and `g`
+are binary32 inputs. `RuntimeWorld::Build` normalizes the quaternion and
+rotates `(0, -g, 0)` once. Constructor selection preserves that entire
+computed acceleration: it has no angular tolerance that snaps small
+rotations to world down. FTFT3 removed such a tolerance after reproducing
+its loss of transverse acceleration at exactly `9.81f`. The independent
+[scene-construction evidence](evidence/ftft3/README.md) covers adjacent float
+magnitudes, small/arbitrary rotations, round-trips and ordinary free-body
+fixed steps. Its near/far cases use the existing fixed double origin;
+they do not establish live rebasing.
 
 This is not an ECS. The component set is the closed list of capabilities
 the engine has today; adding a new engine capability means adding a struct
