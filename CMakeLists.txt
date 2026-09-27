@@ -688,3 +688,14 @@ target_compile_options(judas_scene_fingerprint_tests PRIVATE -Wall -Wextra)
 add_executable(judas_world_state_tests tests/WorldStateTests.cpp)
 target_link_libraries(judas_world_state_tests PRIVATE judas_engine)
 target_compile_options(judas_world_state_tests PRIVATE -Wall -Wextra)
+
+# FTFT2: runs the SAME Application.cpp normal loop with deterministic observers.
+add_executable(judas_async_application_tests
+    tests/AsyncApplicationTests.cpp
+    src/Application.cpp
+    src/RuntimeOptions.cpp
+    src/RuntimeDiagnostics.cpp
+    src/TestHarness.cpp
+)
+target_link_libraries(judas_async_application_tests PRIVATE judas_engine)
+target_compile_options(judas_async_application_tests PRIVATE -Wall -Wextra)

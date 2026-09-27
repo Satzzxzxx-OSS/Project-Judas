@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -62,6 +63,9 @@ std::shared_ptr<FileReadRequest> ReadFileAsync(JobSystem& system, const std::str
 // The synchronous counterpart used by the same job (and by blocking
 // mode): reads the whole file, checking `cancel` between chunks when
 // given. Returns false with a message on failure; sets `outCancelled`
-// when it stopped for cancellation.
+// when it stopped for cancellation. Optional diagnostics run after a real,
+// nonempty read chunk and receive cumulative bytes. They must not throw or
+// change engine state; the ordinary read and cancellation checks are retained.
 bool ReadWholeFile(const std::string& path, std::vector<std::uint8_t>& outBytes, std::string& outError,
-                   const JobContext* cancel = nullptr, bool* outCancelled = nullptr);
+                   const JobContext* cancel = nullptr, bool* outCancelled = nullptr,
+                   const std::function<void(std::size_t)>& afterChunk = {});

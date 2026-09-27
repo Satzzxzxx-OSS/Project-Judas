@@ -8149,15 +8149,27 @@ Unloaded --Request/Get--> Queued --worker starts--> Loading --decode done--> Cpu
 - **Demand:** `AddRef/ReleaseRef` count consumers. A built RuntimeWorld
   references its assets for its lifetime (released in `Destroy`); the
   editor references the open scene's assets (`RefreshAssetDemand`, following
-  every edit). The last `ReleaseRef` of a Queued/Loading entry cancels the
-  job (running reads stop at their next chunk) and the entry reads
-  Cancelled; the next request loads again.
+  every edit). The last `ReleaseRef` of a Queued/Loading/CpuReady entry
+  cancels/discards that task (running reads stop at their next chunk;
+  decoded data awaiting upload is discarded) and the entry reads Cancelled; the next request loads again.
 - **Blocking mode** (`SetBlockingMode`, or `JUDAS_RESOURCE_MODE=blocking`
   for the runtime and editor; always on for the scripted harness so its
   screenshots are deterministic) keeps the M30 synchronous contract: the
   whole load on the caller, no job.
 - **Terrain meshes** (engine-constructed, `TerrainLibrary`) are still built
   synchronously by identifier; they are not assets.
+
+FTFT2 validation uses `judas_async_application_tests`, compiled with the same
+`Application.cpp` as the runtime. Optional observers control scheduling at real
+read/decode boundaries, inject SDL events and inspect the normal frame loop;
+they do not replace IO, decoding, pumping, rendering or simulation. Actual GPU
+buffer/pixel readback checks content, while operation traces check worker/GL
+thread ownership and teardown order. `Pump(0)` is used to establish a CPU-ready
+window; normal frames retain the default two-upload budget. Project replacement
+still synchronously drains old tasks before rescanning. This proves safe
+handoff, not non-blocking project closure or interruption inside a decoder.
+See [FTFT2 evidence](evidence/ftft2/README.md); the scripted application harness
+still forces blocking loads and does not prove integrated async behavior.
 
 ### Memory accounting and eviction
 

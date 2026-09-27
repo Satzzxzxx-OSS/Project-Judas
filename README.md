@@ -263,6 +263,20 @@ each asset as loading / ready / FAILED.
 ./build/judas_resource_stress [report.json]   # the M31 stress demonstration (needs a display; Xvfb is fine)
 ```
 
+FTFT2 adds deterministic real-GL integration coverage through the ordinary
+`Application::Run` loop, including cancellation, project handoff, residency and
+shutdown. The older scripted harness remains a **blocking reference**, and the
+M31 stress tool is supporting load/performance evidence.
+
+```bash
+python3 scripts/ftft2_validation.py  # builds; async integration, editor/runtime, production suites
+```
+
+Needs CMake/C++17, SDL2/GLM development packages, Python 3, and a working OpenGL
+3.3 context. The runner uses SDL offscreen/Mesa software GL; the late-after-new
+completion case requires at least two hardware-derived workers. See
+[FTFT2 evidence](docs/evidence/ftft2/README.md) for exact scope and limitations.
+
 ## Scenes
 
 A scene is a plain text file. The header names the format and version;

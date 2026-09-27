@@ -1,5 +1,6 @@
 #pragma once
 
+#include <utility>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -10,6 +11,7 @@
 #include "MeshData.h"
 #include "DebugDraw.h"
 #include "TextureData.h"
+#include "ResourceTrace.h"
 #include <glad/gl.h>
 
 // Opaque handles into Renderer's own GPU resource tables — the same
@@ -52,6 +54,8 @@ class Renderer {
 public:
     bool Init();
     void Shutdown();
+    // Optional observation of actual GPU operations; installed before Init.
+    void SetResourceTrace(ResourceTrace trace) { m_resourceTrace = std::move(trace); }
 
     // Clears the color and depth buffers and sets the viewport to the given
     // window size.
@@ -111,6 +115,11 @@ public:
     // split as CreateMesh.
     TextureHandle CreateTexture(const TextureData& data);
     void DestroyTexture(TextureHandle handle);
+
+    // Read the actual GPU payload, not a retained CPU copy. Diagnostic use on
+    // the context-owning thread only; bindings and pixel-pack state are restored.
+    bool ReadMeshForDiagnostics(MeshHandle handle, MeshData& outData) const;
+    bool ReadTextureForDiagnostics(TextureHandle handle, TextureData& outData) const;
 
     // Draws any mesh created via CreateMesh with an arbitrary
     // position/rotation/scale, modulated by `tintColor` and by `texture`'s
@@ -276,8 +285,12 @@ private:
     };
     struct GpuTexture {
         GLuint textureId = 0;
+        std::size_t uploadedBytes = 0;  // base-level RGBA payload, excluding generated mipmaps
         bool alive = false;
     };
+
+    void TraceResourceOperation(ResourceTracePoint point, unsigned int handle = 0, std::size_t bytes = 0) const;
+    ResourceTrace m_resourceTrace;
 
     GpuMesh* GetMesh(MeshHandle handle);
     GLuint ResolveTexture(TextureHandle handle) const;

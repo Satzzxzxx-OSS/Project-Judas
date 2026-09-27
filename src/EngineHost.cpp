@@ -20,7 +20,10 @@ EngineHost::~EngineHost() {
     Shutdown();
 }
 
-bool EngineHost::Init(const char* title, int width, int height, bool visible, std::string& outError) {
+bool EngineHost::Init(const char* title, int width, int height, bool visible, std::string& outError,
+                      ResourceTrace trace) {
+    m_resourceTrace = std::move(trace);
+    m_renderer.SetResourceTrace(m_resourceTrace);
     if (!m_window.Init(title, width, height, visible)) {
         outError = "Window initialization failed.";
         return false;
@@ -41,6 +44,7 @@ bool EngineHost::Init(const char* title, int width, int height, bool visible, st
     }
     m_jobs = std::make_unique<JobSystem>();  // worker count derived from the hardware
     m_resources = std::make_unique<ResourceManager>(&m_renderer, &m_assetDatabase, m_jobs.get());
+    m_resources->SetTrace(m_resourceTrace);
     return true;
 }
 
@@ -58,11 +62,24 @@ void EngineHost::Shutdown() {
     // context exists) -> workers -> renderer -> window.
     if (m_resources) m_resources->Shutdown();
     m_resources.reset();
-    if (m_jobs) m_jobs->Shutdown();
+    if (m_jobs) {
+        m_jobs->Shutdown();
+        if (m_resourceTrace) {
+            ResourceTraceEvent event{ResourceTracePoint::WorkersJoined, {}, {}};
+            event.contextCurrent = SDL_GL_GetCurrentContext() != nullptr;
+            m_resourceTrace(event);
+        }
+    }
     m_jobs.reset();
     if (m_rendererInitialized) {
         m_renderer.Shutdown();
         m_rendererInitialized = false;
     }
+    const bool hadContext = m_window.NativeGLContext() != nullptr;
     m_window.Shutdown();
+    if (hadContext && m_resourceTrace) {
+        ResourceTraceEvent event{ResourceTracePoint::ContextDestroyed, {}, {}};
+        event.contextCurrent = SDL_GL_GetCurrentContext() != nullptr;
+        m_resourceTrace(event);
+    }
 }

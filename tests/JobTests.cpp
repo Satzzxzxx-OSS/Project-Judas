@@ -6,6 +6,7 @@
 // on worker threads through the same code the runtime uses.
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -103,12 +104,35 @@ void SectionJobs() {
         std::atomic<int> longRunning{0};
         auto jobs = std::make_unique<JobSystem>(2);
         std::mutex gate;
-        gate.lock();
-        jobs->Submit([&](JobContext&) { std::lock_guard<std::mutex> hold(gate); ++longRunning; });
-        jobs->Submit([&](JobContext&) { std::lock_guard<std::mutex> hold(gate); ++longRunning; });
-        for (int i = 0; i < 50; ++i) jobs->Submit([&](JobContext&) { ++ran; }, JobPriority::Low);
-        for (int i = 0; i < 200 && jobs->Stats().running < 2; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        std::thread releaser([&] { std::this_thread::sleep_for(std::chrono::milliseconds(30)); gate.unlock(); });
+        std::condition_variable gateChanged;
+        bool gateOpen = false;
+        unsigned int started = 0;
+        const auto blocked = [&](JobContext&) {
+            std::unique_lock<std::mutex> hold(gate);
+            ++started;
+            gateChanged.notify_all();
+            gateChanged.wait(hold, [&] { return gateOpen; });
+            ++longRunning;
+        };
+        jobs->Submit(blocked);
+        jobs->Submit(blocked);
+        JobHandle lastQueued;
+        for (int i = 0; i < 50; ++i) lastQueued = jobs->Submit([&](JobContext&) { ++ran; }, JobPriority::Low);
+        {
+            std::unique_lock<std::mutex> hold(gate);
+            gateChanged.wait(hold, [&] { return started == 2; });
+        }
+        std::thread releaser([&] {
+            // Observe actual queue cancellation, not an assumed delay. The
+            // releasing thread owns this lock; unlocking another thread's
+            // std::mutex, as the old test did, is undefined behaviour.
+            jobs->Wait(lastQueued);
+            {
+                std::lock_guard<std::mutex> hold(gate);
+                gateOpen = true;
+            }
+            gateChanged.notify_all();
+        });
         const auto start = std::chrono::steady_clock::now();
         jobs->Shutdown();
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -402,6 +426,37 @@ void SectionResources() {
         Check(resources.StateOf(kBeaconTexture) == ResourceState::Ready, "and does");
     }
     {
+        // CPU-ready demand cancellation. Actual file/decoder work runs on
+        // the job system; this headless check supports the real-GL FTFT2
+        // application case and is not itself upload-path evidence.
+        ResourceManager resources(nullptr, &db, &jobs);
+        resources.SetHeadlessResidency(true);
+        resources.AddRef(kBeaconMesh);
+        resources.AddRef(kBeaconMesh);
+        resources.RequestMesh(kBeaconMesh);
+        jobs.WaitAll();
+        resources.Pump(0);
+        Check(resources.StateOf(kBeaconMesh) == ResourceState::CpuReady && resources.Stats().uploads == 0,
+              "completed CPU preparation waits for an upload slot");
+        resources.ReleaseRef(kBeaconMesh);
+        Check(resources.RefCount(kBeaconMesh) == 1 && resources.StateOf(kBeaconMesh) == ResourceState::CpuReady,
+              "one consumer releasing CPU-ready data preserves the other consumer's demand");
+        resources.ReleaseRef(kBeaconMesh);
+        Check(resources.RefCount(kBeaconMesh) == 0 && resources.StateOf(kBeaconMesh) == ResourceState::Cancelled,
+              "the final consumer releasing CPU-ready data cancels the pending upload");
+        resources.Pump();
+        Check(resources.StateOf(kBeaconMesh) == ResourceState::Cancelled && resources.Stats().uploads == 0 &&
+                  resources.Stats().bytesResident == 0 && resources.Stats().staleDiscarded == 1,
+              "a later Pump discards released CPU-ready data without installing it");
+        resources.AddRef(kBeaconMesh);
+        resources.RequestMesh(kBeaconMesh);
+        resources.WaitForAll();
+        Check(resources.StateOf(kBeaconMesh) == ResourceState::Ready && resources.Stats().uploads == 1 &&
+                  resources.DecodeThreadOf(kBeaconMesh) != std::this_thread::get_id(),
+              "new demand reloads a cancelled CPU-ready resource through the worker decoder");
+        resources.ReleaseRef(kBeaconMesh);
+    }
+    {
         // Budget and eviction.
         ResourceManager resources(nullptr, &db, &jobs);
         resources.SetHeadlessResidency(true);
@@ -439,8 +494,9 @@ void SectionResources() {
         resources.SetHeadlessResidency(true);
         resources.SetBlockingMode(true);
         std::string error;
+        const auto submittedBefore = jobs.Stats().submitted;
         resources.GetMesh(kBeaconMesh, error);
-        Check(resources.StateOf(kBeaconMesh) == ResourceState::Ready && jobs.Stats().submitted == jobs.Stats().submitted,
+        Check(resources.StateOf(kBeaconMesh) == ResourceState::Ready && jobs.Stats().submitted == submittedBefore,
               "blocking mode loads on the caller without a job");
         Check(resources.DecodeThreadOf(kBeaconMesh) == std::this_thread::get_id(), "and the decode ran on the caller");
     }

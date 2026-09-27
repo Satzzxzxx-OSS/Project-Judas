@@ -36,7 +36,8 @@ public:
     EngineHost(const EngineHost&) = delete;
     EngineHost& operator=(const EngineHost&) = delete;
 
-    bool Init(const char* title, int width, int height, bool visible, std::string& outError);
+    bool Init(const char* title, int width, int height, bool visible, std::string& outError,
+              ResourceTrace trace = {});
     void Shutdown();
 
     // Points the asset database at a project's assets directory (rescans)
@@ -61,4 +62,5 @@ private:
     std::unique_ptr<JobSystem> m_jobs;
     std::unique_ptr<ResourceManager> m_resources;
     bool m_rendererInitialized = false;
+    ResourceTrace m_resourceTrace;
 };

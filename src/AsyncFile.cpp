@@ -8,7 +8,8 @@ constexpr std::size_t kChunkBytes = 1u << 20;  // 1 MiB between cancellation che
 }
 
 bool ReadWholeFile(const std::string& path, std::vector<std::uint8_t>& outBytes, std::string& outError,
-                   const JobContext* cancel, bool* outCancelled) {
+                   const JobContext* cancel, bool* outCancelled,
+                   const std::function<void(std::size_t)>& afterChunk) {
     if (outCancelled) *outCancelled = false;
     std::error_code ec;
     if (!std::filesystem::is_regular_file(path, ec)) {
@@ -31,7 +32,10 @@ bool ReadWholeFile(const std::string& path, std::vector<std::uint8_t>& outBytes,
             return false;
         }
         const std::size_t got = std::fread(chunk.data(), 1, chunk.size(), file);
-        if (got > 0) outBytes.insert(outBytes.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(got));
+        if (got > 0) {
+            outBytes.insert(outBytes.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(got));
+            if (afterChunk) afterChunk(outBytes.size());
+        }
         if (got < chunk.size()) {
             const bool failed = std::ferror(file) != 0;
             std::fclose(file);

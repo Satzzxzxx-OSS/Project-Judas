@@ -61,31 +61,46 @@ bool ResourceManager::Resolve(const AssetId& id, AssetType expected, Entry& entr
     return true;
 }
 
+void ResourceManager::TraceTask(const LoadTask& task, ResourceTracePoint point, std::size_t bytes) {
+    if (task.trace) task.trace(ResourceTraceEvent{point, task.id, task.path, task.generation, bytes});
+}
+
 // The CPU stage: file read + decode. Runs on a worker (async) or on the
 // caller (blocking). Touches only the task — never the manager.
 void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
     task.stage.store(1, std::memory_order_release);
-    task.decodeThread = std::this_thread::get_id();
     std::vector<std::uint8_t> bytes;
     std::string error;
     bool cancelled = false;
-    if (!ReadWholeFile(task.path, bytes, error, context, &cancelled)) {
+    TraceTask(task, ResourceTracePoint::FileReadBegin);
+    const bool read = ReadWholeFile(task.path, bytes, error, context, &cancelled,
+        task.trace ? std::function<void(std::size_t)>([&task](std::size_t count) {
+            TraceTask(task, ResourceTracePoint::FileReadChunk, count);
+        }) : std::function<void(std::size_t)>{});
+    TraceTask(task, ResourceTracePoint::FileReadEnd, bytes.size());
+    if (!read) {
         task.cancelled = cancelled;
         task.error = cancelled ? std::string() : error;
         task.stage.store(2, std::memory_order_release);
+        TraceTask(task, ResourceTracePoint::LoadComplete, bytes.size());
         return;
     }
     if (context && context->CancelRequested()) {
         task.cancelled = true;
         task.stage.store(2, std::memory_order_release);
+        TraceTask(task, ResourceTracePoint::LoadComplete, bytes.size());
         return;
     }
+    task.decodeThread = std::this_thread::get_id();
+    TraceTask(task, ResourceTracePoint::DecodeBegin, bytes.size());
     if (task.type == AssetType::Mesh) {
         task.succeeded = ParseObjMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
     } else {
         task.succeeded = DecodeTextureFromMemory(bytes.data(), bytes.size(), task.path, task.texture, task.error);
     }
+    TraceTask(task, ResourceTracePoint::DecodeEnd, bytes.size());
     task.stage.store(2, std::memory_order_release);
+    TraceTask(task, ResourceTracePoint::LoadComplete, bytes.size());
 }
 
 ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expected, JobPriority priority) {
@@ -116,6 +131,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     task->path = path;
     task->generation = entry.generation;
     task->requested = std::chrono::steady_clock::now();
+    task->trace = m_trace;
     entry.task = task;
 
     if (m_blocking || !m_jobs) {
@@ -148,6 +164,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
 void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>& task) {
     if (entry.task != task || task->generation != entry.generation) {
         ++m_stats.staleDiscarded;
+        TraceTask(*task, ResourceTracePoint::StaleDiscarded);
         return;
     }
     entry.task.reset();
@@ -257,11 +274,16 @@ void ResourceManager::ReleaseRef(const AssetId& id) {
     Entry& entry = it->second;
     --entry.refs;
     if (entry.refs > 0) return;
-    // Nobody needs it: a load not yet under way is cancelled; a running
-    // one is asked to stop early. Either way the completion is discarded
-    // (generation bump) and the entry reads Cancelled.
-    if (entry.task && (entry.state == ResourceState::Queued || entry.state == ResourceState::Loading)) {
-        if (m_jobs) m_jobs->Cancel(entry.task->job);
+    // Nobody needs it: cancel queued/running work and discard prepared
+    // CPU data that is still waiting for an upload slot. CpuReady has no
+    // GPU resource yet; uploading it after demand ended wastes residency.
+    // The generation bump rejects completion through the same stale path.
+    if (entry.task && (entry.state == ResourceState::Queued || entry.state == ResourceState::Loading ||
+                       entry.state == ResourceState::CpuReady)) {
+        if (m_jobs) {
+            m_jobs->Cancel(entry.task->job);
+            TraceTask(*entry.task, ResourceTracePoint::CancelRequested);
+        }
         ++entry.generation;
         entry.task.reset();
         entry.state = ResourceState::Cancelled;
@@ -298,7 +320,10 @@ void ResourceManager::Pump(std::size_t maxUploads) {
         if (!finished) { ++i; continue; }
         if (entry && entry->task == task && task->succeeded && !task->cancelled && uploads >= maxUploads) {
             // Upload budget for this frame spent; the data waits.
-            if (entry->state != ResourceState::CpuReady) entry->state = ResourceState::CpuReady;
+            if (entry->state != ResourceState::CpuReady) {
+                entry->state = ResourceState::CpuReady;
+                TraceTask(*task, ResourceTracePoint::CpuReady);
+            }
             ++i;
             continue;
         }
@@ -307,6 +332,7 @@ void ResourceManager::Pump(std::size_t maxUploads) {
             CompleteTask(*entry, task);
         } else {
             ++m_stats.staleDiscarded;  // released/invalidated meanwhile
+            TraceTask(*task, ResourceTracePoint::StaleDiscarded);
         }
         if (m_jobs) m_jobs->Forget(task->job);
         m_inFlight.erase(m_inFlight.begin() + static_cast<std::ptrdiff_t>(i));
@@ -383,7 +409,10 @@ void ResourceManager::Release(const AssetId& id) {
     const auto it = m_entries.find(id);
     if (it == m_entries.end()) return;
     Entry& entry = it->second;
-    if (entry.task && m_jobs) m_jobs->Cancel(entry.task->job);
+    if (entry.task && m_jobs) {
+        m_jobs->Cancel(entry.task->job);
+        TraceTask(*entry.task, ResourceTracePoint::CancelRequested);
+    }
     DestroyGpu(entry);
     ++entry.generation;  // any completion for the old generation is stale
     entry.task.reset();
@@ -396,7 +425,10 @@ void ResourceManager::Release(const AssetId& id) {
 
 void ResourceManager::ReleaseAll() {
     for (auto& [id, entry] : m_entries) {
-        if (entry.task && m_jobs) m_jobs->Cancel(entry.task->job);
+        if (entry.task && m_jobs) {
+            m_jobs->Cancel(entry.task->job);
+            TraceTask(*entry.task, ResourceTracePoint::CancelRequested);
+        }
         DestroyGpu(entry);
         ++entry.generation;
         entry.task.reset();
@@ -409,12 +441,13 @@ void ResourceManager::ReleaseAll() {
         }
     }
     m_terrainMeshes.clear();
-    // In-flight tasks finish on their own (their jobs were asked to cancel)
-    // and are discarded as stale by Pump; drop the records once done.
+    // Project handoff/shutdown drains synchronously: workers finish their
+    // current cooperative unit, then these old results are discarded here.
     if (m_jobs) {
         for (const std::shared_ptr<LoadTask>& task : m_inFlight) m_jobs->Wait(task->job);
         for (const std::shared_ptr<LoadTask>& task : m_inFlight) m_jobs->Forget(task->job);
     }
+    for (const std::shared_ptr<LoadTask>& task : m_inFlight) TraceTask(*task, ResourceTracePoint::StaleDiscarded);
     m_inFlight.clear();
     m_stats.loadedMeshes = m_stats.loadedTextures = m_stats.loadedTerrainMeshes = m_stats.failed = 0;
     m_stats.bytesResident = 0;
@@ -422,9 +455,11 @@ void ResourceManager::ReleaseAll() {
 
 void ResourceManager::Shutdown() {
     if (m_shutDown) return;
+    if (m_trace) m_trace(ResourceTraceEvent{ResourceTracePoint::ManagerShutdownBegin, {}, {}});
     ReleaseAll();
     m_entries.clear();
     m_shutDown = true;
+    if (m_trace) m_trace(ResourceTraceEvent{ResourceTracePoint::ManagerShutdownEnd, {}, {}});
 }
 
 void ResourceManager::RefreshCounts() const {

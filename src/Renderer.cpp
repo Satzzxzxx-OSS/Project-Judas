@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <vector>
 
+#include <SDL2/SDL.h>
+
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -722,20 +724,24 @@ bool Renderer::Init() {
     return true;
 }
 
+void Renderer::TraceResourceOperation(ResourceTracePoint point, unsigned int handle, std::size_t bytes) const {
+    if (!m_resourceTrace) return;
+    ResourceTraceEvent event{point, {}, {}};
+    event.handle = handle;
+    event.bytes = bytes;
+    event.contextCurrent = SDL_GL_GetCurrentContext() != nullptr;
+    m_resourceTrace(event);
+}
+
 void Renderer::Shutdown() {
-    for (GpuMesh& mesh : m_meshes) {
-        if (!mesh.alive) continue;
-        if (mesh.ebo) glDeleteBuffers(1, &mesh.ebo);
-        glDeleteBuffers(1, &mesh.vbo);
-        glDeleteVertexArrays(1, &mesh.vao);
-        mesh.alive = false;
+    TraceResourceOperation(ResourceTracePoint::RendererShutdownBegin);
+    for (std::size_t i = 0; i < m_meshes.size(); ++i) {
+        DestroyMesh(MeshHandle{static_cast<unsigned int>(i)});
     }
     m_meshes.clear();
 
-    for (GpuTexture& texture : m_textures) {
-        if (!texture.alive) continue;
-        glDeleteTextures(1, &texture.textureId);
-        texture.alive = false;
+    for (std::size_t i = 0; i < m_textures.size(); ++i) {
+        DestroyTexture(TextureHandle{static_cast<unsigned int>(i)});
     }
     m_textures.clear();
 
@@ -775,6 +781,7 @@ void Renderer::Shutdown() {
     if (m_debugVao) { glDeleteVertexArrays(1, &m_debugVao); m_debugVao = 0; }
     if (m_debugShaderProgram) { glDeleteProgram(m_debugShaderProgram); m_debugShaderProgram = 0; }
     m_fontLoaded = false;
+    TraceResourceOperation(ResourceTracePoint::RendererShutdownEnd);
 }
 
 void Renderer::DrawDebugLines(const std::vector<DebugLine>& lines, bool depthTest) {
@@ -914,6 +921,8 @@ MeshHandle Renderer::CreateMesh(const MeshData& data) {
     MeshHandle handle;
     handle.id = static_cast<unsigned int>(m_meshes.size());
     m_meshes.push_back(mesh);
+    TraceResourceOperation(ResourceTracePoint::MeshCreated, handle.id,
+                           data.vertices.size() * sizeof(MeshVertex) + data.indices.size() * sizeof(std::uint32_t));
     return handle;
 }
 
@@ -941,12 +950,16 @@ void Renderer::DestroyMesh(MeshHandle handle) {
     if (mesh->ebo) glDeleteBuffers(1, &mesh->ebo);
     glDeleteBuffers(1, &mesh->vbo);
     glDeleteVertexArrays(1, &mesh->vao);
+    const std::size_t bytes = static_cast<std::size_t>(mesh->vertexCount) * sizeof(MeshVertex) +
+                              static_cast<std::size_t>(mesh->indexCount) * sizeof(std::uint32_t);
     *mesh = GpuMesh{};
+    TraceResourceOperation(ResourceTracePoint::MeshDestroyed, handle.id, bytes);
 }
 
 TextureHandle Renderer::CreateTexture(const TextureData& data) {
     GpuTexture texture;
     texture.alive = true;
+    texture.uploadedBytes = data.pixels.size();
 
     glGenTextures(1, &texture.textureId);
     glBindTexture(GL_TEXTURE_2D, texture.textureId);
@@ -968,6 +981,7 @@ TextureHandle Renderer::CreateTexture(const TextureData& data) {
     TextureHandle handle;
     handle.id = static_cast<unsigned int>(m_textures.size());
     m_textures.push_back(texture);
+    TraceResourceOperation(ResourceTracePoint::TextureCreated, handle.id, texture.uploadedBytes);
     return handle;
 }
 
@@ -976,7 +990,78 @@ void Renderer::DestroyTexture(TextureHandle handle) {
         return;
     }
     glDeleteTextures(1, &m_textures[handle.id].textureId);
+    const std::size_t bytes = m_textures[handle.id].uploadedBytes;
     m_textures[handle.id] = GpuTexture{};
+    TraceResourceOperation(ResourceTracePoint::TextureDestroyed, handle.id, bytes);
+}
+
+bool Renderer::ReadMeshForDiagnostics(MeshHandle handle, MeshData& outData) const {
+    if (!SDL_GL_GetCurrentContext() || !handle.IsValid() || handle.id >= m_meshes.size()) return false;
+    const GpuMesh& mesh = m_meshes[handle.id];
+    if (!mesh.alive || !glIsBuffer(mesh.vbo) || (mesh.ebo && !glIsBuffer(mesh.ebo))) return false;
+    GLint previousBuffer = 0;
+    glGetIntegerv(GL_COPY_READ_BUFFER, &previousBuffer);
+    MeshData data;
+    glBindBuffer(GL_COPY_READ_BUFFER, mesh.vbo);
+    GLint64 vertexBytes = 0;
+    glGetBufferParameteri64v(GL_COPY_READ_BUFFER, GL_BUFFER_SIZE, &vertexBytes);
+    if (vertexBytes < 0 || vertexBytes % sizeof(MeshVertex) != 0) {
+        glBindBuffer(GL_COPY_READ_BUFFER, static_cast<GLuint>(previousBuffer));
+        return false;
+    }
+    data.vertices.resize(static_cast<std::size_t>(vertexBytes) / sizeof(MeshVertex));
+    if (vertexBytes) glGetBufferSubData(GL_COPY_READ_BUFFER, 0, static_cast<GLsizeiptr>(vertexBytes), data.vertices.data());
+    if (mesh.ebo) {
+        glBindBuffer(GL_COPY_READ_BUFFER, mesh.ebo);
+        GLint64 indexBytes = 0;
+        glGetBufferParameteri64v(GL_COPY_READ_BUFFER, GL_BUFFER_SIZE, &indexBytes);
+        if (indexBytes < 0 || indexBytes % sizeof(std::uint32_t) != 0) {
+            glBindBuffer(GL_COPY_READ_BUFFER, static_cast<GLuint>(previousBuffer));
+            return false;
+        }
+        data.indices.resize(static_cast<std::size_t>(indexBytes) / sizeof(std::uint32_t));
+        if (indexBytes) glGetBufferSubData(GL_COPY_READ_BUFFER, 0, static_cast<GLsizeiptr>(indexBytes), data.indices.data());
+    }
+    glBindBuffer(GL_COPY_READ_BUFFER, static_cast<GLuint>(previousBuffer));
+    outData = std::move(data);
+    return true;
+}
+
+bool Renderer::ReadTextureForDiagnostics(TextureHandle handle, TextureData& outData) const {
+    if (!SDL_GL_GetCurrentContext() || !handle.IsValid() || handle.id >= m_textures.size()) return false;
+    const GpuTexture& texture = m_textures[handle.id];
+    if (!texture.alive || !glIsTexture(texture.textureId)) return false;
+    GLint previousTexture = 0, previousPackBuffer = 0;
+    GLint alignment = 0, rowLength = 0, skipRows = 0, skipPixels = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previousPackBuffer);
+    glGetIntegerv(GL_PACK_ALIGNMENT, &alignment);
+    glGetIntegerv(GL_PACK_ROW_LENGTH, &rowLength);
+    glGetIntegerv(GL_PACK_SKIP_ROWS, &skipRows);
+    glGetIntegerv(GL_PACK_SKIP_PIXELS, &skipPixels);
+    glBindTexture(GL_TEXTURE_2D, texture.textureId);
+    TextureData data;
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &data.width);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &data.height);
+    if (data.width <= 0 || data.height <= 0) {
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+        return false;
+    }
+    data.pixels.resize(static_cast<std::size_t>(data.width) * static_cast<std::size_t>(data.height) * TextureData::kChannels);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+    glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.pixels.data());
+    glPixelStorei(GL_PACK_ALIGNMENT, alignment);
+    glPixelStorei(GL_PACK_ROW_LENGTH, rowLength);
+    glPixelStorei(GL_PACK_SKIP_ROWS, skipRows);
+    glPixelStorei(GL_PACK_SKIP_PIXELS, skipPixels);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(previousPackBuffer));
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+    outData = std::move(data);
+    return true;
 }
 
 GLuint Renderer::ResolveTexture(TextureHandle handle) const {

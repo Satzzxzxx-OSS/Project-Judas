@@ -13,6 +13,7 @@
 #include "JobSystem.h"
 #include "MeshData.h"
 #include "Renderer.h"
+#include "ResourceTrace.h"
 #include "TextureData.h"
 
 class RadialTerrain;
@@ -34,7 +35,7 @@ class RadialTerrain;
 //                      Renderer (the ONLY place a GPU object is created)
 //   Failed             unknown id, missing file, undecodable data, no renderer;
 //                      remembered with its message, never retried by itself
-//   Cancelled          demand went away before the work became unavoidable
+//   Cancelled          demand went away before GPU installation
 //                      (treated as Unloaded on the next request)
 //
 // Coalescing: repeated requests for one id join the same in-flight load;
@@ -45,8 +46,8 @@ class RadialTerrain;
 //
 // Demand: AddRef/ReleaseRef count the consumers that need an id (a built
 // RuntimeWorld, the editor's open scene). A referenced resource is never
-// evicted; when the last reference goes while a load is queued/loading the
-// job is cancelled. Budget: SetBudgetBytes; when Ready bytes exceed it,
+// evicted; when the last reference goes while queued/loading or CpuReady,
+// the job is cancelled and any prepared data is discarded. Budget: SetBudgetBytes; when Ready bytes exceed it,
 // Pump evicts unreferenced Ready resources least-recently-used first (a
 // hit through Get*/TryGet* is a use). An evicted resource is Unloaded and
 // simply loads again on the next request; the AssetDatabase is untouched.
@@ -95,6 +96,9 @@ public:
     const AssetDatabase* Assets() const { return m_assets; }
     void SetBlockingMode(bool blocking) { m_blocking = blocking; }
     bool BlockingMode() const { return m_blocking; }
+    // Diagnostics only; install before requests. Workers capture the observer
+    // with their task and never access this manager through it.
+    void SetTrace(const ResourceTrace& trace) { m_trace = trace; }
     // Test seam: with no Renderer, a successful decode becomes Ready with an
     // INVALID handle and real byte accounting, so residency, budget and
     // eviction can be exercised headlessly. No GPU object ever exists in
@@ -138,7 +142,8 @@ public:
     std::string ErrorOf(const AssetId& id) const;
     // Estimated bytes of a Ready entry (0 otherwise).
     std::uint64_t BytesOf(const AssetId& id) const;
-    // Which thread decoded this entry (for evidence/tests).
+    // Which thread entered its decoder (installed with completion; unset
+    // for a read failure or cancellation before decoding).
     std::thread::id DecodeThreadOf(const AssetId& id) const;
     std::thread::id OwnerThread() const { return m_ownerThread; }
 
@@ -186,6 +191,7 @@ private:
         MeshData mesh;
         TextureData texture;
         std::thread::id decodeThread;
+        ResourceTrace trace;
         JobHandle job;
         std::chrono::steady_clock::time_point requested;
     };
@@ -207,6 +213,7 @@ private:
     Entry& Begin(const AssetId& id, AssetType expected, JobPriority priority);
     bool Resolve(const AssetId& id, AssetType expected, Entry& entry, std::string& outPath);
     static void RunLoadTask(LoadTask& task, const JobContext* context);
+    static void TraceTask(const LoadTask& task, ResourceTracePoint point, std::size_t bytes = 0);
     void CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>& task);
     void FinishSynchronously(Entry& entry, const AssetId& id, AssetType expected);
     void DestroyGpu(Entry& entry);
@@ -226,4 +233,5 @@ private:
     std::uint64_t m_budgetBytes = 256ull * 1024ull * 1024ull;
     unsigned long long m_useClock = 0;
     bool m_shutDown = false;
+    ResourceTrace m_trace;
 };

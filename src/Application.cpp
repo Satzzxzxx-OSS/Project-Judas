@@ -25,11 +25,16 @@ constexpr int kWindowWidth = 1024;
 constexpr int kWindowHeight = 768;
 }  // namespace
 
-int Application::Run(int argc, char** argv) {
+int Application::Run(int argc, char** argv, ApplicationControl* control) {
     RuntimeOptions options;
     std::string error;
     if (!ParseRuntimeOptions(argc, argv, options, error)) {
         std::fprintf(stderr, "%s\n", error.c_str());
+        return 1;
+    }
+
+    if (control && options.IsTestRun()) {
+        std::fprintf(stderr, "ApplicationControl requires the normal async loop, not JUDAS_TEST_SCRIPT.\n");
         return 1;
     }
 
@@ -45,7 +50,8 @@ int Application::Run(int argc, char** argv) {
         options.worldOriginOverride ? *options.worldOriginOverride : scene.Settings().worldOrigin);
 
     EngineHost host;
-    if (!host.Init("Project Judas", kWindowWidth, kWindowHeight, !options.IsTestRun(), error)) {
+    if (!host.Init("Project Judas", kWindowWidth, kWindowHeight, !options.IsTestRun() && !(control && control->hidden), error,
+                   control ? control->resourceTrace : ResourceTrace{})) {
         std::fprintf(stderr, "%s\n", error.c_str());
         return 1;
     }
@@ -69,6 +75,8 @@ int Application::Run(int argc, char** argv) {
     if (options.IsTestRun() || (resourceMode && std::string(resourceMode) == "blocking")) {
         host.Resources().SetBlockingMode(true);
     }
+
+    if (control && control->hostReady) control->hostReady(host);
 
     RuntimeWorld world;
     if (!world.Build(scene, &host.Resources(), error)) {
@@ -112,6 +120,8 @@ int Application::Run(int argc, char** argv) {
         return RunTestHarness(window, renderer, play.Session(), drawScene, options.testScriptPath);
     }
 
+    if (control && control->worldReady) control->worldReady(host, world, play);
+
     RuntimeDiagnostics diagnostics(options.fluidDiagnostics, options.atmosphereDiagnostics,
                                    options.fireDiagnostics, options.liveTelemetry);
     play.SetFixedStepMeasurementFlags(options.atmosphereDiagnostics, options.fireDiagnostics,
@@ -124,13 +134,15 @@ int Application::Run(int argc, char** argv) {
     const Uint64 frequency = SDL_GetPerformanceFrequency();
     Uint64 previousCounter = SDL_GetPerformanceCounter();
     while (!window.ShouldClose() && !play.QuitRequested()) {
+        if (control && control->beforeFrame) control->beforeFrame(host, world, play);
         window.PollEvents();
         // Milestone 31: finished background loads are installed here, on
         // the GL thread, before the frame that will draw them.
         host.PumpResources();
         const Uint64 currentCounter = SDL_GetPerformanceCounter();
-        const float frameDeltaTime = static_cast<float>(currentCounter - previousCounter) / static_cast<float>(frequency);
+        float frameDeltaTime = static_cast<float>(currentCounter - previousCounter) / static_cast<float>(frequency);
         previousCounter = currentCounter;
+        if (control && control->frameSeconds) frameDeltaTime = control->frameSeconds(frameDeltaTime);
 
         play.Frame(window, renderer, frameDeltaTime);
         if (play.ConsumeResetOccurred()) screenshotWritten = false;
@@ -148,7 +160,9 @@ int Application::Run(int argc, char** argv) {
                          options.terrainScreenshotPath.c_str());
             screenshotWritten = true;
         }
+        if (control && control->afterFrame) control->afterFrame(host, world, play);
         window.SwapBuffers();
     }
+    if (control && control->beforeShutdown) control->beforeShutdown(host, world, play);
     return 0;
 }
