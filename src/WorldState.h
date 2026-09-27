@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "EntityLifecycle.h"
+#include "SceneFingerprint.h"
 
 class RuntimeWorld;
 
@@ -29,7 +30,7 @@ class RuntimeWorld;
 // pointers. Fidelity is re-decided by policy on load; a delta describes
 // what the world IS, not how it is currently being simulated.
 //
-// The file format (`.judasstate`, version 1) follows the scene format's
+// The file format (`.judasstate`, version 2) follows the scene format's
 // conventions (line-oriented, quoted strings, shortest exact floats,
 // deterministic order by entity id) and its strictness: any malformed
 // line, unknown id, colliding created id or invalid created definition
@@ -49,15 +50,24 @@ struct WorldStateInteractableChange {
     bool on = false;     // open / lamp on
 };
 
+constexpr int kWorldStateFormatVersion = 2;
+
+// Versioned compatibility record. The name below is display-only.
+struct WorldStateCompatibility {
+    int formatVersion = kWorldStateFormatVersion;
+    int fingerprintVersion = kSceneFingerprintVersion;
+    std::string algorithm = "sha256";
+    std::string baselineFingerprint;
+};
+
 struct WorldState {
+    WorldStateCompatibility compatibility;
     std::string baselineName;
     EntityId nextRuntimeId = kRuntimeEntityIdBase;
     std::vector<WorldStateEntityChange> entities;
     std::vector<WorldStateInteractableChange> interactables;
     bool Empty() const { return entities.empty() && interactables.empty(); }
 };
-
-constexpr int kWorldStateFormatVersion = 1;
 
 // Captures every difference between the running world and its baseline.
 WorldState CaptureWorldState(const RuntimeWorld& world);

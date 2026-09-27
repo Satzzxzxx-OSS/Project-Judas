@@ -96,6 +96,7 @@ add_library(judas_engine STATIC
     src/AerodynamicDrag.cpp
     src/Scene.cpp
     src/SceneSerialization.cpp
+    src/SceneFingerprint.cpp
     src/Project.cpp
     src/AssetDatabase.cpp
     src/JobSystem.cpp
@@ -679,3 +680,11 @@ target_compile_options(judas_combustion_tests PRIVATE -Wall -Wextra)
 # redistribution-friendly license — see assets/fonts/DejaVuSans-LICENSE.txt
 # for the full text) — see docs/ARCHITECTURE.md, "Milestone 13, Text
 # rendering," for why it was chosen.
+
+# FTFT1: canonical authored-baseline identity and atomic delta validation.
+add_executable(judas_scene_fingerprint_tests tests/SceneFingerprintTests.cpp)
+target_link_libraries(judas_scene_fingerprint_tests PRIVATE judas_engine)
+target_compile_options(judas_scene_fingerprint_tests PRIVATE -Wall -Wextra)
+add_executable(judas_world_state_tests tests/WorldStateTests.cpp)
+target_link_libraries(judas_world_state_tests PRIVATE judas_engine)
+target_compile_options(judas_world_state_tests PRIVATE -Wall -Wextra)

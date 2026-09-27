@@ -7569,10 +7569,12 @@ baseline scene file (authored; never rewritten by gameplay)
   = the world
 ```
 
-The `.judasstate` format, version 1:
+The current `.judasstate` format is version 2 (FTFT1; M29 originally wrote
+version 1 without verifiable baseline identity):
 
 ```
-JudasWorldState 1
+JudasWorldState 2
+compatibility 1 sha256 <64 lowercase hex digits>
 baseline "<scene name>"
 next-runtime-id <n>
 
@@ -7600,9 +7602,35 @@ so a bad file never half-modifies the live world. `CaptureWorldState` /
 `ApplyWorldState` are the engine operations; `F6`/`F7` and the editor's
 World menu are the demo's controls; `JUDAS_WORLD_STATE` selects the path.
 
+FTFT1 computes the baseline fingerprint once from the authored `Scene` on a
+successful `RuntimeWorld::Build`, before gameplay can mutate runtime state.
+Canonical schema 1 includes scene-format version, all serialized authored
+settings/components, stable IDs, allocator state, names, and object order
+(which controls gravity-region priority). It encodes finite IEEE numbers and
+integers in a fixed byte order, normalizes signed zero, and length-prefixes
+strings. Unserialized inactive settings are excluded so scene round-trips keep
+the same identity. File location, whitespace, timestamps, runtime handles and
+runtime states are absent. SHA-256 uses no `std::hash` or locale-sensitive text.
+Asset references enter as stable IDs; external asset bytes and engine revisions
+are outside this scene-compatibility scheme.
+
+Loading first parses into temporary data, checks format/fingerprint versions,
+compares the fingerprint, and preflights every reference, state, identity counter,
+created definition/asset reference and supported lifecycle operation. Only then
+are deltas applied on the authoritative thread. Parser/validation rejection
+leaves body handles, lifecycle records, counters, resources and source files
+unchanged. A runtime-created then destroyed entity needs no tombstone against
+the authored baseline; its consumed identity remains recorded by the counter.
+Editor Play and standalone both use `ApplyWorldStateFileIfPresent` before
+starting the session. Existing unreadable files are errors, not missing saves.
+Version-1 saves cannot be verified and are rejected; save requests also refuse
+to overwrite legacy, malformed or incompatible files. No migration is attempted.
+These guarantees concern validation failures, not process failure or out-of-memory
+exceptions during commit, nor crash-safe disk replacement.
+
 Scene serialization (M28) and world-state persistence (M29) remain two
 formats with two jobs: the first is what was authored, the second is what
-happened to it.
+happened to it. See `docs/FTFT.md` for executed FTFT1 evidence.
 
 ### Editor integration
 

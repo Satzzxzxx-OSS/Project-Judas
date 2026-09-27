@@ -410,7 +410,10 @@ private:
 bool ReadBlock(Reader& reader, Block& block) {
     std::vector<Token> tokens;
     while (reader.Next(tokens)) {
-        if (tokens[0].text == "end" && !tokens[0].quoted) return true;
+        if (tokens[0].text == "end" && !tokens[0].quoted) {
+            if (tokens.size() != 1) return reader.Fail("end expects no values");
+            return true;
+        }
         if (tokens[0].quoted) return reader.Fail("expected a key");
         const std::string key = tokens[0].text;
         std::vector<Token> values(tokens.begin() + 1, tokens.end());

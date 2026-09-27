@@ -1,16 +1,19 @@
 #include "WorldState.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <set>
 #include <sstream>
 
 #include "RuntimeWorld.h"
+#include "SceneFingerprint.h"
 #include "SceneSerialization.h"
 
 namespace {
@@ -87,9 +90,8 @@ bool ParseFloat(const Token& t, float& out) {
 }
 bool ParseU64(const Token& t, unsigned long long& out) {
     if (t.quoted || t.text.empty()) return false;
-    char* end = nullptr;
-    out = std::strtoull(t.text.c_str(), &end, 10);
-    return end && *end == '\0';
+    const auto result = std::from_chars(t.text.data(), t.text.data() + t.text.size(), out);
+    return result.ec == std::errc{} && result.ptr == t.text.data() + t.text.size();
 }
 bool ParseVec3(const std::vector<Token>& t, std::size_t start, glm::vec3& out) {
     return t.size() >= start + 3 && ParseFloat(t[start], out.x) && ParseFloat(t[start + 1], out.y) &&
@@ -115,16 +117,82 @@ bool StateDiffers(const EntityPhysicalState& a, const EntityPhysicalState& b) {
 std::string Fail(std::size_t line, const std::string& message) {
     return "world state line " + std::to_string(line) + ": " + message;
 }
+bool ValidCompatibility(const WorldStateCompatibility& c, std::string& error) {
+    if (c.formatVersion != kWorldStateFormatVersion || c.fingerprintVersion != kSceneFingerprintVersion ||
+        c.algorithm != "sha256") {
+        error = "unsupported world-state compatibility version or fingerprint algorithm";
+        return false;
+    }
+    if (c.baselineFingerprint.size() != 64 || !std::all_of(c.baselineFingerprint.begin(), c.baselineFingerprint.end(),
+        [](char x) { return (x >= '0' && x <= '9') || (x >= 'a' && x <= 'f'); })) {
+        error = "missing or invalid authored-baseline SHA-256 fingerprint; unverifiable saves cannot be applied";
+        return false;
+    }
+    return true;
+}
+
+bool ValidPhysicalState(const EntityPhysicalState& state) {
+    const auto finite = [](const glm::vec3& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); };
+    const float norm = glm::dot(state.rotation, state.rotation);
+    return finite(state.position) && finite(state.linearVelocity) && finite(state.angularVelocity) &&
+           std::isfinite(norm) && norm > 0.0f;
+}
+
+// Shared by file parsing, saving and the in-memory Apply API. These checks
+// require no world mutations or resource requests.
+bool ValidateStructure(const WorldState& state, std::string& error) {
+    if (!ValidCompatibility(state.compatibility, error)) return false;
+    if (state.baselineName.find_first_of("\r\n") != std::string::npos ||
+        state.baselineName.find('\0') != std::string::npos ||
+        state.nextRuntimeId < kRuntimeEntityIdBase ||
+        state.nextRuntimeId > static_cast<EntityId>(std::numeric_limits<std::int64_t>::max())) {
+        error = "invalid baseline name or next-runtime-id";
+        return false;
+    }
+    std::set<EntityId> seen;
+    for (const auto& change : state.entities) {
+        if (change.id == 0 || !seen.insert(change.id).second || (change.created && change.destroyed)) {
+            error = "invalid or duplicate entity record " + std::to_string(change.id);
+            return false;
+        }
+        if (change.created) {
+            if (change.id < kRuntimeEntityIdBase || change.id >= state.nextRuntimeId || change.definition.id != change.id) {
+                error = "invalid created entity id, definition id or next-runtime-id";
+                return false;
+            }
+            if (!RuntimeWorld::ValidateEntityDefinition(change.definition, error)) return false;
+        } else if (change.id >= kRuntimeEntityIdBase) {
+            error = "moved/destroyed records must refer to authored entities; runtime entities require a created record";
+            return false;
+        }
+        if (!change.destroyed && !ValidPhysicalState(change.state)) {
+            error = "entity " + std::to_string(change.id) + " has non-finite state or a degenerate rotation";
+            return false;
+        }
+    }
+    std::set<std::pair<bool, SceneObjectId>> interactables;
+    for (const auto& change : state.interactables) {
+        if (change.id == 0 || change.id >= kRuntimeEntityIdBase || !interactables.insert({change.isDoor, change.id}).second) {
+            error = "invalid or duplicate interactable reference " + std::to_string(change.id);
+            return false;
+        }
+    }
+    return true;
+}
 }  // namespace
 
 WorldState CaptureWorldState(const RuntimeWorld& world) {
     WorldState out;
     out.baselineName = world.Settings().name;
+    out.compatibility.baselineFingerprint = world.BaselineFingerprint();
     out.nextRuntimeId = world.NextRuntimeEntityId();
     for (const EntityRecord& e : world.Entities()) {
         WorldStateEntityChange change;
         change.id = e.id;
         if (e.lifecycle == EntityLifecycle::Destroyed) {
+            // A created-then-destroyed entity is absent from the baseline too.
+            // Preserve its consumed ID through nextRuntimeId, not a dangling tombstone.
+            if (!e.authored) continue;
             change.destroyed = true;
             out.entities.push_back(change);
             continue;
@@ -162,42 +230,40 @@ WorldState CaptureWorldState(const RuntimeWorld& world) {
 }
 
 bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& outError) {
-    // --- Validate everything first; touch nothing until it all checks out.
-    std::set<EntityId> seen;
-    for (const WorldStateEntityChange& change : state.entities) {
-        if (!seen.insert(change.id).second) {
-            outError = "entity " + std::to_string(change.id) + " appears twice in the world state";
-            return false;
-        }
-        const EntityRecord* existing = world.FindEntity(change.id);
+    outError.clear();
+    if (!ValidateStructure(state, outError)) return false;
+    if (!world.IsBuilt() || world.BaselineFingerprint().empty() || state.compatibility.baselineFingerprint != world.BaselineFingerprint()) {
+        outError = "authored baseline fingerprint mismatch for '" + state.baselineName +
+                   "': saved deltas require exactly compatible authored scene content";
+        return false;
+    }
+    if (state.nextRuntimeId < world.NextRuntimeEntityId()) {
+        outError = "next-runtime-id would reuse an already consumed runtime identity";
+        return false;
+    }
+    // Preflight the same capability checks used by the mutators themselves.
+    // No asset demand, handles, identity counters or world state change here.
+    for (const auto& change : state.entities) {
         if (change.created) {
-            if (change.id < kRuntimeEntityIdBase) {
-                outError = "created entity " + std::to_string(change.id) + " is not in the runtime id range";
+            if (!world.ValidateEntityCreation(change.definition, outError)) return false;
+        } else {
+            const EntityRecord* existing = world.FindEntity(change.id);
+            if (!existing || !existing->authored) {
+                outError = "world state refers to unknown authored entity " + std::to_string(change.id);
                 return false;
             }
-            if (existing) {
-                outError = "created entity " + std::to_string(change.id) + " already exists in the world";
+            if (change.destroyed) {
+                if (!world.ValidateEntityDestruction(change.id, outError)) return false;
+            } else if (existing->lifecycle == EntityLifecycle::Destroyed) {
+                outError = "cannot move destroyed entity " + std::to_string(change.id);
                 return false;
             }
-            if (change.definition.id != change.id) {
-                outError = "created entity " + std::to_string(change.id) + " has a mismatched definition id";
-                return false;
-            }
-            if (!change.definition.body || change.definition.body->motion != SceneBodyMotion::Dynamic) {
-                outError = "created entity " + std::to_string(change.id) + " needs a dynamic body";
-                return false;
-            }
-        } else if (!existing) {
-            outError = "world state refers to unknown entity " + std::to_string(change.id);
-            return false;
         }
     }
-    for (const WorldStateInteractableChange& change : state.interactables) {
-        const bool known = change.isDoor ? world.FindDoor(change.id) != nullptr
-                                         : world.FindLightSwitch(change.id) != nullptr;
+    for (const auto& change : state.interactables) {
+        const bool known = change.isDoor ? world.FindDoor(change.id) != nullptr : world.FindLightSwitch(change.id) != nullptr;
         if (!known) {
-            outError = std::string("world state refers to an unknown ") + (change.isDoor ? "door " : "light switch ") +
-                       std::to_string(change.id);
+            outError = "world state refers to an unknown interactable " + std::to_string(change.id);
             return false;
         }
     }
@@ -213,7 +279,9 @@ bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& 
                 return false;
             }
         } else {
-            world.SetEntityState(change.id, change.state);
+            if (!world.SetEntityState(change.id, change.state)) {
+                outError = "prevalidated entity became unavailable"; return false;
+            }
         }
     }
     for (const WorldStateInteractableChange& change : state.interactables) {
@@ -225,7 +293,11 @@ bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& 
 }
 
 bool SaveWorldStateToString(const WorldState& state, std::string& outText) {
+    std::string error;
+    if (!ValidateStructure(state, error)) return false;
     std::string out = "JudasWorldState " + std::to_string(kWorldStateFormatVersion) + "\n";
+    out += "compatibility " + std::to_string(state.compatibility.fingerprintVersion) + " " +
+           state.compatibility.algorithm + " " + state.compatibility.baselineFingerprint + "\n";
     out += "baseline " + Quote(state.baselineName) + "\n";
     out += "next-runtime-id " + std::to_string(state.nextRuntimeId) + "\n";
     std::vector<WorldStateEntityChange> entities = state.entities;
@@ -261,7 +333,21 @@ bool SaveWorldStateToString(const WorldState& state, std::string& outText) {
 
 bool SaveWorldStateToFile(const WorldState& state, const std::string& path, std::string& outError) {
     std::string text;
-    SaveWorldStateToString(state, text);
+    outError.clear();
+    if (!ValidateStructure(state, outError) || !SaveWorldStateToString(state, text)) return false;
+    // Never turn an unreadable, legacy or incompatible save into a new save
+    // implicitly. The operator can archive/delete it explicitly if desired.
+    std::error_code existsError;
+    const bool exists = std::filesystem::exists(path, existsError);
+    if (existsError) { outError = "cannot inspect world state file: " + existsError.message(); return false; }
+    if (exists) {
+        WorldState previous;
+        if (!LoadWorldStateFromFile(path, previous, outError)) return false;
+        if (previous.compatibility.baselineFingerprint != state.compatibility.baselineFingerprint) {
+            outError = "refusing to overwrite an incompatible authored-baseline save: " + path;
+            return false;
+        }
+    }
     // The default location is saves/<scene>.judasstate; create the folder.
     const std::filesystem::path parent = std::filesystem::path(path).parent_path();
     if (!parent.empty()) {
@@ -282,6 +368,8 @@ bool SaveWorldStateToFile(const WorldState& state, const std::string& path, std:
 }
 
 bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std::string& outError) {
+    outError.clear();
+    if (text.find('\0') != std::string::npos) { outError = "world state contains a NUL byte"; return false; }
     std::vector<std::string> lines;
     {
         std::istringstream stream(text);
@@ -307,26 +395,38 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
         return false;
     }
     unsigned long long version = 0;
-    if (tokens.size() != 2 || tokens[0].text != "JudasWorldState" || !ParseU64(tokens[1], version)) {
+    if (tokens.size() != 2 || tokens[0].quoted || tokens[0].text != "JudasWorldState" || !ParseU64(tokens[1], version)) {
         outError = Fail(lineNumber, "expected 'JudasWorldState <version>' on the first line");
         return false;
     }
     if (version != static_cast<unsigned long long>(kWorldStateFormatVersion)) {
-        outError = Fail(lineNumber, "unsupported world state version " + std::to_string(version));
+        outError = Fail(lineNumber, "unsupported world state version " + std::to_string(version) +
+                        (version == 1 ? "; legacy saves have no verifiable baseline fingerprint; preserve/archive the file explicitly" : ""));
         return false;
     }
-    bool baselineSeen = false, nextIdSeen = false;
+    bool baselineSeen = false, nextIdSeen = false, compatibilitySeen = false;
     std::set<EntityId> seen;
     while (next(lineNumber)) {
         const std::string& key = tokens[0].text;
         if (tokens[0].quoted) { outError = Fail(lineNumber, "expected a directive"); return false; }
-        if (key == "baseline") {
-            if (tokens.size() != 2 || !tokens[1].quoted) { outError = Fail(lineNumber, "baseline expects a quoted name"); return false; }
+        if (key == "compatibility") {
+            unsigned long long schema = 0;
+            if (compatibilitySeen || tokens.size() != 4 || !ParseU64(tokens[1], schema) ||
+                schema != kSceneFingerprintVersion || tokens[2].quoted || tokens[3].quoted) {
+                outError = Fail(lineNumber, "expected one supported compatibility <schema> sha256 <fingerprint> record");
+                return false;
+            }
+            state.compatibility.fingerprintVersion = static_cast<int>(schema);
+            state.compatibility.algorithm = tokens[2].text;
+            state.compatibility.baselineFingerprint = tokens[3].text;
+            compatibilitySeen = true;
+        } else if (key == "baseline") {
+            if (baselineSeen || tokens.size() != 2 || !tokens[1].quoted) { outError = Fail(lineNumber, "baseline expects one quoted name"); return false; }
             state.baselineName = tokens[1].text;
             baselineSeen = true;
         } else if (key == "next-runtime-id") {
             unsigned long long v = 0;
-            if (tokens.size() != 2 || !ParseU64(tokens[1], v) || v < kRuntimeEntityIdBase) {
+            if (nextIdSeen || tokens.size() != 2 || !ParseU64(tokens[1], v) || v < kRuntimeEntityIdBase) {
                 outError = Fail(lineNumber, "next-runtime-id must be an integer in the runtime range");
                 return false;
             }
@@ -334,7 +434,7 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
             nextIdSeen = true;
         } else if (key == "entity") {
             unsigned long long id = 0;
-            if (tokens.size() != 3 || !ParseU64(tokens[1], id) || id == 0) {
+            if (tokens.size() != 3 || tokens[2].quoted || !ParseU64(tokens[1], id) || id == 0) {
                 outError = Fail(lineNumber, "entity expects '<id> moved|destroyed|created'");
                 return false;
             }
@@ -346,13 +446,14 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
                 change.destroyed = true;
             } else if (kind == "moved" || kind == "created") {
                 change.created = kind == "created";
-                bool seenPosition = false, seenRotation = false, seenLinear = false, seenAngular = false;
+                bool seenPosition = false, seenRotation = false, seenLinear = false, seenAngular = false, seenObject = false;
                 bool closed = false;
                 while (next(lineNumber)) {
                     const std::string& field = tokens[0].text;
-                    if (field == "end") { closed = true; break; }
-                    if (field == "position" && ParseVec3(tokens, 1, change.state.position) && tokens.size() == 4) { seenPosition = true; continue; }
-                    if (field == "rotation" && tokens.size() == 5) {
+                    if (tokens[0].quoted) { outError = Fail(lineNumber, "expected an entity directive"); return false; }
+                    if (field == "end" && tokens.size() == 1) { closed = true; break; }
+                    if (field == "position" && !seenPosition && ParseVec3(tokens, 1, change.state.position) && tokens.size() == 4) { seenPosition = true; continue; }
+                    if (field == "rotation" && !seenRotation && tokens.size() == 5) {
                         float w, x, y, z;
                         if (ParseFloat(tokens[1], w) && ParseFloat(tokens[2], x) && ParseFloat(tokens[3], y) && ParseFloat(tokens[4], z)) {
                             change.state.rotation = glm::quat(w, x, y, z);
@@ -360,9 +461,9 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
                             continue;
                         }
                     }
-                    if (field == "linear-velocity" && ParseVec3(tokens, 1, change.state.linearVelocity) && tokens.size() == 4) { seenLinear = true; continue; }
-                    if (field == "angular-velocity" && ParseVec3(tokens, 1, change.state.angularVelocity) && tokens.size() == 4) { seenAngular = true; continue; }
-                    if (field == "object" && change.created) {
+                    if (field == "linear-velocity" && !seenLinear && ParseVec3(tokens, 1, change.state.linearVelocity) && tokens.size() == 4) { seenLinear = true; continue; }
+                    if (field == "angular-velocity" && !seenAngular && ParseVec3(tokens, 1, change.state.angularVelocity) && tokens.size() == 4) { seenAngular = true; continue; }
+                    if (field == "object" && change.created && !seenObject) {
                         // The definition block starts on the line just consumed.
                         std::size_t blockIndex = i - 1;
                         std::string error;
@@ -370,6 +471,7 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
                             outError = Fail(lineNumber, "created entity definition: " + error);
                             return false;
                         }
+                        seenObject = true;
                         i = blockIndex;
                         continue;
                     }
@@ -392,7 +494,7 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
             state.entities.push_back(change);
         } else if (key == "door" || key == "light-switch") {
             unsigned long long id = 0;
-            if (tokens.size() != 3 || !ParseU64(tokens[1], id) || (tokens[2].text != "true" && tokens[2].text != "false")) {
+            if (tokens.size() != 3 || tokens[2].quoted || !ParseU64(tokens[1], id) || (tokens[2].text != "true" && tokens[2].text != "false")) {
                 outError = Fail(lineNumber, key + " expects '<id> true|false'");
                 return false;
             }
@@ -403,10 +505,11 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
         }
     }
     if (!outError.empty()) return false;
-    if (!baselineSeen || !nextIdSeen) {
-        outError = "world state file is missing its baseline or next-runtime-id line";
+    if (!baselineSeen || !nextIdSeen || !compatibilitySeen) {
+        outError = "world state file is missing its compatibility, baseline or next-runtime-id line";
         return false;
     }
+    if (!ValidateStructure(state, outError)) return false;
     outState = std::move(state);
     return true;
 }
@@ -419,6 +522,7 @@ bool LoadWorldStateFromFile(const std::string& path, WorldState& outState, std::
     }
     std::stringstream buffer;
     buffer << file.rdbuf();
+    if (file.bad() || buffer.fail()) { outError = "could not read world state file: " + path; return false; }
     if (!LoadWorldStateFromString(buffer.str(), outState, outError)) {
         outError = path + ": " + outError;
         return false;
@@ -437,10 +541,12 @@ std::string DefaultWorldStatePath(const std::string& scenePath) {
 
 bool ApplyWorldStateFileIfPresent(RuntimeWorld& world, const std::string& path, bool& outApplied, std::string& outError) {
     outApplied = false;
+    outError.clear();
     if (path.empty()) return true;
-    std::ifstream probe(path, std::ios::binary);
-    if (!probe) return true;  // no saved state: the pristine baseline
-    probe.close();
+    std::error_code error;
+    const bool exists = std::filesystem::exists(path, error);
+    if (error) { outError = "cannot inspect world state file: " + error.message(); return false; }
+    if (!exists) return true;  // Only an actually absent file is 'no saved state'.
     WorldState state;
     if (!LoadWorldStateFromFile(path, state, outError)) return false;
     if (!ApplyWorldState(world, state, outError)) return false;

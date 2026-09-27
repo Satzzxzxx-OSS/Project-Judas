@@ -407,9 +407,15 @@ The runtime (and the editor's Play) apply `saves/<scene>.judasstate`
 automatically if it exists (`JUDAS_WORLD_STATE=<path>` overrides,
 `JUDAS_WORLD_STATE=none` disables). The delta records only: entities
 moved (pose + velocities), destroyed, created (their full definition),
-and door/switch states. Nothing transient is stored, and a malformed or
-inconsistent delta fails before touching the world. The baseline `.judas`
-file is never written by gameplay.
+and door/switch states. FTFT1 saves use format **2**, with a versioned SHA-256
+fingerprint of canonical authored scene data. Scene names alone never authorize
+loading. IDs, object order, transforms, components, asset IDs and authored
+settings must match; comments, whitespace and numeric spelling do not matter.
+Malformed/incompatible saves are rejected before any live-world mutation.
+Legacy version-1 saves are unverifiable and rejected without changing the file;
+archive or delete one explicitly before starting a new save. The baseline
+`.judas` file is never written by gameplay. This is strict scene compatibility,
+not migration or a hash of external asset bytes. See [FTFT ledger](docs/FTFT.md).
 
 ## Milestone 28 accepted baseline
 

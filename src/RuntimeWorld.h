@@ -249,6 +249,12 @@ public:
     // entity's slot, so nothing is duplicated.
     bool SetEntityFidelity(EntityId id, SimulationFidelity fidelity, std::string* outError = nullptr);
     bool DestroyEntity(EntityId id, std::string* outError = nullptr);
+    // Read-only preflight shared by persistence and the mutation entry points.
+    bool ValidateEntityDestruction(EntityId id, std::string& outError) const;
+    static bool ValidateEntityDefinition(const SceneObject& definition, std::string& outError);
+    bool ValidateEntityCreation(const SceneObject& definition, std::string& outError) const;
+    // Identity captured from authored Scene once by a successful Build.
+    const std::string& BaselineFingerprint() const { return m_baselineFingerprint; }
     // Creates a persistent entity at runtime from a scene-object definition
     // (its id may be preset from a delta, else one is allocated from the
     // runtime range). `state` overrides the definition's transform/initial
@@ -301,11 +307,13 @@ private:
     // Requests and references the render component's assets; false with a
     // message when an id cannot be resolved by the asset database.
     bool RequestVisualAssets(const SceneObject& o, std::string* outError);
+    bool ValidateVisualAssets(const SceneObject& o, std::string& outError) const;
     void RebuildCelestialParticipants();
 
     bool m_built = false;
     PhysicsWorld m_physics;
     SceneSettings m_settings;
+    std::string m_baselineFingerprint;
     ResourceManager* m_assets = nullptr;
 
     std::vector<std::unique_ptr<GravityField>> m_gravityFields;

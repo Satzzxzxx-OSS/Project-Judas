@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -10,6 +11,7 @@
 #include "RadialTerrain.h"
 #include "RadicalGravity.h"
 #include "ResourceManager.h"
+#include "SceneFingerprint.h"
 #include "SphericalVolume.h"
 #include "TerrainLibrary.h"
 #include "UniformGravity.h"
@@ -47,27 +49,34 @@ bool RuntimeWorld::EntityRequiresFull(const SceneObject& o) {
     return false;
 }
 
-bool RuntimeWorld::RequestVisualAssets(const SceneObject& o, std::string* outError) {
+bool RuntimeWorld::ValidateVisualAssets(const SceneObject& o, std::string& error) const {
     if (!o.render || o.render->shape != SceneShape::Mesh || !m_assets) return true;
     const AssetDatabase* db = m_assets->Assets();
     const auto check = [&](const AssetId& id, AssetType type) {
         if (id.empty()) return true;
         const AssetRecord* record = db ? db->Find(id) : nullptr;
         if (!record) {
-            if (outError) *outError = "unknown asset id " + id;
+            error = "unknown asset id " + id;
             return false;
         }
         if (record->type != type) {
-            if (outError) *outError = "asset " + record->relativePath + " is a " + AssetTypeName(record->type) + ", not a " + AssetTypeName(type);
+            error = "asset " + record->relativePath + " is a " + AssetTypeName(record->type) + ", not a " + AssetTypeName(type);
             return false;
         }
         return true;
     };
     if (o.render->meshAsset.empty()) {
-        if (outError) *outError = "mesh render has no mesh asset";
+        error = "mesh render has no mesh asset";
         return false;
     }
     if (!check(o.render->meshAsset, AssetType::Mesh) || !check(o.render->textureAsset, AssetType::Texture)) return false;
+    return true;
+}
+
+bool RuntimeWorld::RequestVisualAssets(const SceneObject& o, std::string* outError) {
+    std::string error;
+    if (!ValidateVisualAssets(o, error)) { if (outError) *outError = error; return false; }
+    if (!o.render || o.render->shape != SceneShape::Mesh || !m_assets) return true;
     // Demand: referenced for the life of this world; the load runs in the
     // background and presentation picks it up when Ready.
     m_assets->AddRef(o.render->meshAsset);
@@ -181,6 +190,8 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
 }
 
 bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::string& outError) {
+    std::string fingerprint;
+    if (!ComputeSceneFingerprint(scene, fingerprint, outError)) return false;
     Destroy();
     m_assets = resources;
     m_settings = scene.Settings();
@@ -466,6 +477,7 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
         m_fluidMesh = m_assets->GetRenderer()->CreateMesh(MeshData{});
     }
     PopulateFluid();
+    m_baselineFingerprint = std::move(fingerprint);
     return true;
 }
 
@@ -685,17 +697,25 @@ bool RuntimeWorld::ForceEntityFidelity(EntityId id, std::optional<SimulationFide
     return true;
 }
 
-bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
-    EntityRecord* e = FindEntity(id);
+bool RuntimeWorld::ValidateEntityDestruction(EntityId id, std::string& error) const {
+    const EntityRecord* e = FindEntity(id);
     if (!e) {
-        if (outError) *outError = "unknown entity id " + std::to_string(id);
+        error = "unknown entity id " + std::to_string(id);
         return false;
     }
     if (e->lifecycle == EntityLifecycle::Destroyed) return true;
     if (e->definition.vehicle || e->definition.combustible) {
-        if (outError) *outError = "entity " + std::to_string(id) + " (" + e->name + ") cannot be destroyed at runtime";
+        error = "entity " + std::to_string(id) + " (" + e->name + ") cannot be destroyed at runtime";
         return false;
     }
+    return true;
+}
+
+bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
+    std::string error;
+    if (!ValidateEntityDestruction(id, error)) { if (outError) *outError = error; return false; }
+    EntityRecord* e = FindEntity(id);
+    if (e->lifecycle == EntityLifecycle::Destroyed) return true;
     ReleaseEntityBody(*e);
     e->lifecycle = EntityLifecycle::Destroyed;
     e->fidelity = SimulationFidelity::Dormant;
@@ -716,38 +736,79 @@ void RuntimeWorld::SetNextRuntimeEntityId(EntityId next) {
     }
 }
 
-EntityId RuntimeWorld::CreateEntity(const SceneObject& definitionIn, const EntityPhysicalState* state,
-                                    std::string* outError) {
-    if (!m_built) {
-        if (outError) *outError = "no world";
-        return kInvalidSceneObjectId;
+bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::string& error) {
+    const auto singleLine = [](const std::string& value) {
+        return value.find_first_of("\r\n") == std::string::npos && value.find('\0') == std::string::npos;
+    };
+    if (!singleLine(definition.name) || (definition.body && !singleLine(definition.body->terrainSurface)) ||
+        (definition.render && (!singleLine(definition.render->meshAsset) || !singleLine(definition.render->textureAsset)))) {
+        error = "runtime entity strings must be single-line and contain no NUL bytes";
+        return false;
     }
-    SceneObject definition = definitionIn;
+    // Finite fields / enum validation follows the canonical authored schema.
+    // Check the smaller subset runtime creation can actually instantiate below.
+    Scene validation;
+    SceneObject copy = definition;
+    copy.id = 1;
+    validation.InsertObject(copy);
+    std::string fingerprint;
+    if (!ComputeSceneFingerprint(validation, fingerprint, error)) return false;
     if (!definition.body || definition.body->motion != SceneBodyMotion::Dynamic ||
-        definition.body->shape == SceneShape::Terrain || definition.body->shape == SceneShape::Mesh) {
-        if (outError) *outError = "a runtime-created entity needs a dynamic box, sphere or compound body";
-        return kInvalidSceneObjectId;
+        (definition.body->shape != SceneShape::Box && definition.body->shape != SceneShape::Sphere &&
+         definition.body->shape != SceneShape::Compound)) {
+        error = "a runtime-created entity needs a dynamic box, sphere or compound body";
+        return false;
     }
     if (definition.vehicle || definition.combustible || definition.atmosphere || definition.fluidVolume ||
-        definition.playerStart || definition.door || definition.lightSwitch || definition.gravity) {
-        if (outError) *outError = "runtime-created entities carry only body/render/celestial components";
-        return kInvalidSceneObjectId;
+        definition.playerStart || definition.door || definition.lightSwitch || definition.gravity || definition.light) {
+        error = "runtime-created entities carry only body/render/celestial components";
+        return false;
     }
-    if (definition.id == kInvalidSceneObjectId) {
-        definition.id = AllocateRuntimeEntityId();
-    } else if (definition.id < kRuntimeEntityIdBase) {
-        if (outError) *outError = "runtime-created entity ids must be in the runtime range";
-        return kInvalidSceneObjectId;
-    } else if (FindEntity(definition.id)) {
-        if (outError) *outError = "entity id " + std::to_string(definition.id) + " already exists";
-        return kInvalidSceneObjectId;
-    } else if (definition.id >= m_nextRuntimeId) {
-        m_nextRuntimeId = definition.id + 1;
+    const auto positive = [](const glm::vec3& v) { return v.x > 0 && v.y > 0 && v.z > 0; };
+    const auto& b = *definition.body;
+    const float norm = glm::dot(definition.transform.rotation, definition.transform.rotation);
+    if (!(b.mass > 0) || !std::isfinite(1.0f / b.mass) || !(norm > 0) || !std::isfinite(norm) ||
+        b.friction < 0 || b.restitution < 0 || b.restitution > 1 ||
+        (b.shape == SceneShape::Box && !positive(b.halfExtents)) ||
+        (b.shape == SceneShape::Sphere && !(b.radius > 0)) ||
+        (b.shape == SceneShape::Compound && b.compoundBoxes.empty())) {
+        error = "invalid runtime body mass, geometry, material or rotation";
+        return false;
     }
+    for (const auto& box : b.compoundBoxes) {
+        if (!positive(box.halfExtents)) { error = "compound half-extents must be positive"; return false; }
+    }
+    if (definition.render && (definition.render->shape == SceneShape::Terrain ||
+        (definition.render->shape == SceneShape::Compound && b.shape != SceneShape::Compound))) {
+        error = "render geometry is incompatible with the runtime body";
+        return false;
+    }
+    return true;
+}
+
+bool RuntimeWorld::ValidateEntityCreation(const SceneObject& definition, std::string& error) const {
+    if (!m_built) { error = "no world"; return false; }
+    if (!ValidateEntityDefinition(definition, error) || !ValidateVisualAssets(definition, error)) return false;
+    const EntityId id = definition.id == kInvalidSceneObjectId ? m_nextRuntimeId : definition.id;
+    if (id < kRuntimeEntityIdBase || id >= static_cast<EntityId>(std::numeric_limits<std::int64_t>::max())) {
+        error = "runtime-created entity id is outside the allocatable runtime range";
+        return false;
+    }
+    if (FindEntity(id)) { error = "entity id " + std::to_string(id) + " already exists"; return false; }
+    return true;
+}
+
+EntityId RuntimeWorld::CreateEntity(const SceneObject& definitionIn, const EntityPhysicalState* state,
+                                    std::string* outError) {
+    std::string error;
+    if (!ValidateEntityCreation(definitionIn, error)) { if (outError) *outError = error; return kInvalidSceneObjectId; }
+    SceneObject definition = definitionIn;
+    if (definition.id == kInvalidSceneObjectId) definition.id = m_nextRuntimeId;
     const EntityPhysicalState initial = state ? *state : StateFromDefinition(definition);
     if (!AppendEntitySlot(definition, /*authored=*/false, initial, SimulationFidelity::Full, outError)) {
         return kInvalidSceneObjectId;
     }
+    m_nextRuntimeId = std::max(m_nextRuntimeId, definition.id + 1);
     if (definition.celestial) RebuildCelestialParticipants();
     return definition.id;
 }
@@ -859,5 +920,6 @@ void RuntimeWorld::Destroy() {
     }
     m_referencedAssets.clear();
     m_assets = nullptr;
+    m_baselineFingerprint.clear();
     m_built = false;
 }

@@ -485,7 +485,7 @@ void SectionDeltaValidation() {
     World w;
     std::string error;
     w.Begin(scene, error);
-    WorldState bad;
+    WorldState bad = CaptureWorldState(w.world);
     bad.nextRuntimeId = kRuntimeEntityIdBase;
     WorldStateEntityChange unknown;
     unknown.id = 424242;
@@ -494,7 +494,7 @@ void SectionDeltaValidation() {
     Check(!ApplyWorldState(w.world, bad, error) && error.find("unknown") != std::string::npos,
           "an unknown entity id is rejected: " + error);
     Check(w.world.CountLifecycle().full == before.full, "...and nothing changed");
-    WorldState mixed;
+    WorldState mixed = CaptureWorldState(w.world);
     mixed.nextRuntimeId = kRuntimeEntityIdBase;
     WorldStateEntityChange valid;
     valid.id = IdOf(scene, "Far crate");
@@ -504,11 +504,13 @@ void SectionDeltaValidation() {
     Check(!ApplyWorldState(w.world, mixed, error) && w.world.FindEntity(valid.id)->lifecycle == EntityLifecycle::Active,
           "a delta with one bad record applies none of its good records either");
     WorldState out;
+    std::string validHeader;
+    SaveWorldStateToString(CaptureWorldState(w.world), validHeader);
     Check(!LoadWorldStateFromString("JudasWorldState 7\n", out, error) && !error.empty(), "an unsupported version fails");
-    Check(!LoadWorldStateFromString("JudasWorldState 1\nbaseline \"x\"\nnext-runtime-id 4611686018427387904\nentity 3 moved\n  position 1 2\nend\n", out, error),
+    Check(!LoadWorldStateFromString(validHeader + "entity 3 moved\n  position 1 2\nend\n", out, error),
           "a malformed physical state fails with a line number: " + error);
-    Check(!LoadWorldStateFromString("JudasWorldState 1\nbaseline \"x\"\nentity 3 destroyed\n", out, error),
-          "a missing header line fails");
+    Check(!LoadWorldStateFromString("JudasWorldState 2\nbaseline \"x\"\nentity 3 destroyed\n", out, error),
+          "a missing compatibility/header line fails");
     Check(!LoadWorldStateFromFile("saves/does_not_exist.judasstate", out, error) && !error.empty(), "a missing file fails clearly");
     bool applied = true;
     Check(ApplyWorldStateFileIfPresent(w.world, "saves/does_not_exist.judasstate", applied, error) && !applied,
@@ -535,9 +537,15 @@ void SectionOriginAndFrames() {
         w->Step(30);
     }
     std::string deltaA, deltaB;
-    SaveWorldStateToString(CaptureWorldState(a.world), deltaA);
-    SaveWorldStateToString(CaptureWorldState(b.world), deltaB);
-    Check(deltaA == deltaB, "identical local lifecycle history yields byte-identical deltas at near and far origin");
+    WorldState stateA = CaptureWorldState(a.world), stateB = CaptureWorldState(b.world);
+    Check(stateA.compatibility.baselineFingerprint != stateB.compatibility.baselineFingerprint,
+          "different authored origins have different strict baseline identities");
+    // Compare the physical delta payload, excluding intentionally distinct
+    // compatibility records. The original byte-exact local-state check remains.
+    stateB.compatibility = stateA.compatibility;
+    SaveWorldStateToString(stateA, deltaA);
+    SaveWorldStateToString(stateB, deltaB);
+    Check(deltaA == deltaB, "identical local lifecycle history yields byte-identical delta payloads at near and far origin");
 
     // M22: relative velocity to a moving frame is the same whether the
     // entity's state comes from the live body or its coarse record.
