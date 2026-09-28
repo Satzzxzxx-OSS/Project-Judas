@@ -78,7 +78,7 @@ PairSet OraclePairs(const PhysicsWorld& world) {
                 const PrimitivePose ca = PrimitiveAt(shapeA, a, pa);
                 for (int pb = 0; pb < PrimitiveCount(shapeB) && !touching; ++pb) {
                     const PrimitivePose cb = PrimitiveAt(shapeB, b, pb);
-                    const ContactManifold m = ComputeContacts(ca.shape, ca.body, cb.shape, cb.body);
+                    const ContactManifold m = ComputeContacts(ca, cb);
                     for (int p = 0; p < m.count; ++p) touching = touching || m.points[p].hit;
                 }
             }
@@ -448,6 +448,12 @@ void TestScaleStatistics() {
                 "tree height %d, %.3f ms/step (broadphase %.3f, narrowphase %.3f, solver %.3f)\n",
                 s.bodies, s.possiblePairs, s.candidatePairs, s.collidingPairs, s.contactPoints, s.treeHeight,
                 s.totalMilliseconds, s.broadphaseMilliseconds, s.narrowphaseMilliseconds, s.solverMilliseconds);
+    std::printf("    geometry predicates %zu, exact fallbacks %zu, unresolved %zu\n",
+                s.geometryPredicates, s.geometryExactFallbacks, s.geometryUnresolved);
+    std::printf("  cache orientation %zu hits %zu rebuilds; bounds %zu hits %zu rebuilds; shapes %zu; solver frames %zu; bytes %zu; allocations %zu\n",
+                s.orientationCacheHits, s.orientationCacheRebuilds, s.boundCacheHits,
+                s.boundCacheRebuilds, s.shapeCacheRebuilds, s.solverFrameBuilds,
+                s.geometryCacheBytes, s.geometryCacheAllocations);
     Check(s.possiblePairs == 1500u * 1499u / 2u + 1500u, "possible-pair count is the all-pairs count");
     Check(s.candidatePairs < s.possiblePairs / 100, "broadphase hands the narrowphase < 1% of all pairs");
     Check(s.collidingPairs == 1500 && Compare(world).missed == 0, "every crate touches the floor and nothing is missed");

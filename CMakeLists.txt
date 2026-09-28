@@ -704,3 +704,22 @@ target_compile_options(judas_async_application_tests PRIVATE -Wall -Wextra)
 add_executable(judas_uniform_gravity_scene_tests tests/UniformGravitySceneTests.cpp)
 target_link_libraries(judas_uniform_gravity_scene_tests PRIVATE judas_engine)
 target_compile_options(judas_uniform_gravity_scene_tests PRIVATE -Wall -Wextra)
+
+# FTFT4A: actual geometry queries with independent represented-input oracles.
+add_executable(judas_contact_geometry_tests tests/ContactGeometryProbe.cpp)
+target_link_libraries(judas_contact_geometry_tests PRIVATE judas_engine)
+target_compile_options(judas_contact_geometry_tests PRIVATE -Wall -Wextra)
+
+# First-contact reconstruction and persistence through the ordinary runtime.
+add_executable(judas_contact_lifecycle_tests tests/ContactLifecycleTests.cpp)
+target_link_libraries(judas_contact_lifecycle_tests PRIVATE judas_engine)
+target_compile_options(judas_contact_lifecycle_tests PRIVATE -Wall -Wextra)
+
+# FTFT4A-P: prepared geometry and actual world-cache invalidation checks.
+add_executable(judas_contact_cache_tests tests/ContactCacheTests.cpp)
+target_link_libraries(judas_contact_cache_tests PRIVATE judas_engine)
+target_compile_options(judas_contact_cache_tests PRIVATE -Wall -Wextra)
+
+# FTFT4A-P allocation/lifetime regressions; actual engine, unchanged physics.
+add_executable(judas_contact_storage_tests tests/ContactStorageTests.cpp)
+target_link_libraries(judas_contact_storage_tests PRIVATE judas_engine)

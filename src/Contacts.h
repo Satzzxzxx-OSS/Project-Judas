@@ -1,28 +1,45 @@
 #pragma once
 
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include "CollisionShapes.h"
 
-// A single-point approximation of a contact between two convex shapes.
-// Chosen deliberately over a full clipped manifold (multiple points per
-// contact) — Project Judas's own bodies (a handful of slow dynamic
-// boxes/spheres resting on curved or flat surfaces) don't need
-// multi-point stability the way a tall stacked tower would; a single point
-// plus a few solver iterations and positional correction (see
-// ContactSolver.h) is the smallest mechanism that holds bodies still at
-// rest and resolves pushes/collisions correctly for this demo. Documented
-// here as a real, known simplification — not hidden — so a future
-// milestone with a genuine multi-point-stability requirement knows exactly
-// what to revisit.
+// Geometry is evaluated from represented inputs in a parent-relative binary64
+// frame. World float points are presentation outputs, never physical anchors.
+enum class SeparationState { Separated, Touching, Penetrating, Uncertain };
 struct Contact {
     bool hit = false;
-    glm::vec3 point{0.0f};    // world-space, roughly the overlap region's center
-    glm::vec3 normal{0.0f};   // world-space unit vector; SEPARATES shape A from shape B
-                               // (push A along +normal, B along -normal, to resolve)
-    float penetration = 0.0f;  // positive = currently overlapping by this much
+    glm::vec3 point{0.0f};
+    glm::vec3 normal{0.0f}; // B toward A
+    float penetration = 0.0f; // legacy/debug: -signedSeparation
+    double signedSeparation = 0.0;
+    glm::dvec3 preciseNormal{0.0};
+    glm::dvec3 localAnchorA{0.0}, localAnchorB{0.0}; // common midpoint, parent-local
+    glm::dvec3 localWitnessA{0.0}, localWitnessB{0.0}; // actual surface features
+    bool hasLocalAnchors = false;
+    // Convenience sphere APIs do not receive a sphere orientation. Their
+    // offsets are world-oriented and converted once by the consuming solver.
+    bool anchorAInWorldFrame = false, anchorBInWorldFrame = false;
+    SeparationState separationState = SeparationState::Uncertain;
 };
+struct ContactPose {
+    glm::vec3 position{0.0f};
+    glm::quat orientation{1.0f,0.0f,0.0f,0.0f};
+    glm::vec3 localCenter{0.0f};
+};
+struct ContactPreparedOrientation;
+
+struct ContactGeometryDiagnostics {
+    std::uint64_t predicates=0, intervalResolved=0, exactFallbacks=0;
+    std::uint64_t unresolved=0, invalidInputs=0;
+    std::uint64_t numericGapFallbacks=0, preparedOrientationMisses=0;
+};
+ContactGeometryDiagnostics GetContactGeometryDiagnostics();
+void ResetContactGeometryDiagnostics();
+// Proper R(q)/dot(q,q), throws for invalid zero/nonfinite orientation.
+glm::dmat3 ContactRotation(const glm::quat& orientation);
 
 // Closest point on an axis-aligned-in-its-own-frame box (an OBB, given by
 // center/orientation/halfExtents) to an arbitrary world-space point.
@@ -44,9 +61,9 @@ void ClosestPointsSegmentToOBB(const glm::vec3& segA, const glm::vec3& segB,
                                 glm::vec3& outBoxPoint);
 
 // Discrete narrowphase pair tests. Each returns a Contact with `hit=false`
-// if the shapes are not currently overlapping.
+// if the shapes are strictly separated beyond the candidate margin.
 //
-// Milestone 32: `margin` (default 0 = overlap only, the pre-M32 answer)
+// Milestone 32: `margin` (default 0 = closed touching/overlap)
 // also reports a pair whose separation is at most `margin` — a speculative
 // contact, with `penetration` = -separation (negative). PhysicsWorld passes
 // the distance the pair can close within the current fixed step, so a body
@@ -70,19 +87,26 @@ Contact BoxVsBox(const glm::vec3& centerA, const glm::quat& orientA, const glm::
 // a flat plank, say) need every corner that's actually penetrating, or an
 // impulse applied at just one arbitrarily-chosen corner injects spurious
 // torque and the box slowly rocks/tips instead of settling flat. Fixed
-// capacity, no heap allocation: 4 is a hard geometric ceiling for two
-// boxes' worth of vertices.
+// capacity, no heap allocation: the clipped overlap polygon is reduced deterministically to four points.
 struct ContactManifold {
     Contact points[4];
     int count = 0;
+    bool uncertain = false;
     void Add(const Contact& contact) {
-        if (count < 4) points[count++] = contact;
+        if (contact.hit && count < 4) points[count++] = contact;
     }
 };
 ContactManifold BoxVsBoxManifold(const glm::vec3& centerA, const glm::quat& orientA,
                                   const glm::vec3& halfExtentsA, const glm::vec3& centerB,
                                   const glm::quat& orientB, const glm::vec3& halfExtentsB,
                                   float margin = 0.0f);
+
+// Internal precise primitive path; child offsets retain parent identity.
+ContactManifold PrimitiveContacts(const Shape& a, const ContactPose& poseA,
+                                  const Shape& b, const ContactPose& poseB,
+                                  float margin = 0.0f,
+                                  const ContactPreparedOrientation* preparedA = nullptr,
+                                  const ContactPreparedOrientation* preparedB = nullptr);
 
 // Distance from a capsule (defined by its own core segment endpoints and
 // radius) to a sphere or a box, along with the closest point ON THE OTHER

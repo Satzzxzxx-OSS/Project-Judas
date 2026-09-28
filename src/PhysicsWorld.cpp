@@ -5,6 +5,8 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <optional>
+#include <cstring>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -49,30 +51,6 @@ constexpr float kSweepQueryEpsilon = 1.0e-3f;
 constexpr float kWarmStartAnchorDistance = 0.05f;
 constexpr float kWarmStartNormalDot = 0.9f;
 
-// Milestone 32: forward floating-point error bound on a contact's computed
-// separation, used only to decide whether a tiny positive gap is real.
-//
-// The narrowphase evaluates s = n . (x_A - x_B) - (radii), where each
-// surface point is x = p + R l (p the primitive's world position, l its
-// local offset to the contact, rotated by the body's R). In IEEE-754 single
-// precision with unit roundoff u = 2^-24 and gamma_k = k u / (1 - k u)
-// (Higham, "Accuracy and Stability of Numerical Algorithms", 3.1):
-//   rotating l: one 3-term dot product per component   gamma_3 |l|
-//   adding p:                                          gamma_1 (|p| + |l|)
-//   subtracting the two surface points:                gamma_1 |x_A - x_B|
-//   projecting onto n: a 3-term dot product            gamma_3 |x_A - x_B|
-// which accumulates, to first order, to
-//   |fl(s) - s| <= gamma_8 (|p_A| + |l_A| + |p_B| + |l_B|),
-// with l = contact point - p for each side (a sphere's radius is its |l|).
-// A computed gap at or below this bound is indistinguishable from zero in
-// the arithmetic that produced it.
-float NumericalGapBound(const glm::vec3& positionA, const glm::vec3& positionB, const glm::vec3& contactPoint) {
-    constexpr float u = 1.0f / 16777216.0f;  // 2^-24
-    constexpr float gamma8 = 8.0f * u / (1.0f - 8.0f * u);
-    return gamma8 * (glm::length(positionA) + glm::length(contactPoint - positionA) + glm::length(positionB) +
-                     glm::length(contactPoint - positionB));
-}
-
 struct ContactKey {
     unsigned int slotA = 0, slotB = 0;
     unsigned int generationA = 0, generationB = 0;
@@ -87,7 +65,7 @@ struct ContactKey {
 };
 struct CachedContact {
     ContactKey key;
-    glm::vec3 localAnchorA{0.0f};
+    glm::dvec3 localAnchorA{0.0};
     glm::vec3 normal{0.0f};
     float normalImpulse = 0.0f;
     glm::vec3 tangentImpulse{0.0f};
@@ -146,6 +124,12 @@ struct ClosestBodyResult {
 };
 
 struct PhysicsWorld::Impl {
+    struct PoseBound {
+        glm::vec3 position{0};
+        glm::quat orientation{1,0,0,0};
+        Aabb bound;
+        bool valid = false;
+    };
     struct Body {
         RigidBody rigidBody;
         // Previous fixed-step pose for player movement sweeps against
@@ -154,6 +138,13 @@ struct PhysicsWorld::Impl {
         glm::vec3 previousPosition{0.0f};
         glm::quat previousOrientation{1.0f, 0.0f, 0.0f, 0.0f};
         Shape shape;
+        // Shape is immutable for this slot generation. AddBody replaces the
+        // entire cache on slot reuse, including all compound child dimensions.
+        float boundingRadius = 0;
+        std::optional<ContactPreparedOrientation> orientationCache;
+        std::optional<PreparedShapeBounds> boundPreparation;
+        bool boundPreparationValid = false;
+        PoseBound currentBound, previousBound;
         float friction = 0.5f;
         float restitution = 0.0f;
         bool isDynamic = false;
@@ -191,6 +182,78 @@ struct PhysicsWorld::Impl {
     std::vector<char> cacheUsed;
     PhysicsWorld::StepStats stats;
     std::size_t reinsertionsSinceStep = 0;
+    struct CacheCounters {
+        std::size_t orientationHits=0, orientationRebuilds=0;
+        std::size_t boundHits=0, boundRebuilds=0, shapeRebuilds=0, allocations=0, allocatedBytes=0;
+    } cacheCounters;
+
+    static bool SameFloat(float a, float b) {
+        return std::memcmp(&a,&b,sizeof(float))==0;
+    }
+    static bool SamePosition(const glm::vec3& a,const glm::vec3& b) {
+        return SameFloat(a.x,b.x) && SameFloat(a.y,b.y) && SameFloat(a.z,b.z);
+    }
+    static bool SameRotation(const glm::quat& a,const glm::quat& b) {
+        return SameFloat(a.w,b.w) && SameFloat(a.x,b.x) && SameFloat(a.y,b.y) && SameFloat(a.z,b.z);
+    }
+    static bool Matches(const PoseBound& bound,const glm::vec3& p,const glm::quat& q) {
+        return bound.valid && SamePosition(bound.position,p) && SameRotation(bound.orientation,q);
+    }
+    const ContactPreparedOrientation& Orientation(Body& body) {
+        if (body.orientationCache && body.orientationCache->Matches(body.rigidBody.orientation)) {
+            ++cacheCounters.orientationHits;
+        } else {
+            body.orientationCache.emplace(body.rigidBody.orientation);
+            body.boundPreparationValid = false;
+            ++cacheCounters.orientationRebuilds;
+        }
+        return *body.orientationCache;
+    }
+    const Aabb& CurrentBound(Body& body) {
+        const auto& p=body.rigidBody.position;
+        const auto& q=body.rigidBody.orientation;
+        if (Matches(body.currentBound,p,q)) {
+            ++cacheCounters.boundHits;
+            return body.currentBound.bound;
+        }
+        const auto& orientation=Orientation(body);
+        if (!body.boundPreparationValid) {
+            if (!body.boundPreparation) body.boundPreparation.emplace();
+            const auto capacity=body.boundPreparation->children.capacity();
+            PrepareShapeBounds(body.shape,orientation,*body.boundPreparation);
+            if (body.boundPreparation->children.capacity()!=capacity) {
+                ++cacheCounters.allocations;
+                cacheCounters.allocatedBytes+=body.boundPreparation->children.capacity()*sizeof(PreparedBoxBound);
+            }
+            body.boundPreparationValid=true;
+        }
+        body.currentBound={p,q,ShapeAabb(*body.boundPreparation,p),true};
+        ++cacheCounters.boundRebuilds;
+        return body.currentBound.bound;
+    }
+    const Aabb& PreviousBound(Body& body) {
+        const auto& p=body.previousPosition;
+        const auto& q=body.previousOrientation;
+        if (Matches(body.previousBound,p,q)) {
+            ++cacheCounters.boundHits;
+        } else if (Matches(body.currentBound,p,q)) {
+            body.previousBound=body.currentBound;
+            ++cacheCounters.boundHits;
+        } else {
+            // Normally captured before integration. This independent fallback
+            // preserves the old pose if a caller introduces another transition.
+            body.previousBound={p,q,ShapeAabb(body.shape,p,q),true};
+            ++cacheCounters.boundRebuilds;
+        }
+        return body.previousBound.bound;
+    }
+    std::size_t CacheBytes() const {
+        std::size_t bytes=bodies.capacity()*(sizeof(float)+sizeof(std::optional<ContactPreparedOrientation>)+
+            sizeof(std::optional<PreparedShapeBounds>)+sizeof(bool)+2*sizeof(PoseBound));
+        for (const Body& body:bodies) if (body.boundPreparation)
+            bytes+=body.boundPreparation->children.capacity()*sizeof(PreparedBoxBound);
+        return bytes+solver.FrameStorageBytes();
+    }
 
     // The tight broadphase bound a body must stay inside. For a dynamic
     // body it covers both the previous and the current fixed-step pose —
@@ -198,13 +261,13 @@ struct PhysicsWorld::Impl {
     // during the step, the orientation-independent bounding sphere at both
     // positions (an interpolated orientation can poke outside both
     // endpoint boxes; it can never leave the swept sphere).
-    Aabb TightBound(const Body& body) const {
-        const Aabb current = ShapeAabb(body.shape, body.rigidBody.position, body.rigidBody.orientation);
-        if (!body.isDynamic) return current;
-        Aabb bound = current.Union(ShapeAabb(body.shape, body.previousPosition, body.previousOrientation));
+    Aabb TightBound(Body& body) {
+        const Aabb current = CurrentBound(body);
+        if (!body.isDynamic) { body.previousBound=body.currentBound; return current; }
+        Aabb bound = current.Union(PreviousBound(body));
         const float turn = std::abs(glm::dot(body.previousOrientation, body.rigidBody.orientation));
         if (turn < 1.0f - 1.0e-7f) {
-            const float r = ShapeBoundingRadius(body.shape);
+            const float r = body.boundingRadius;
             bound = bound.Union(Aabb{body.previousPosition - glm::vec3(r), body.previousPosition + glm::vec3(r)});
             bound = bound.Union(Aabb{body.rigidBody.position - glm::vec3(r), body.rigidBody.position + glm::vec3(r)});
         }
@@ -216,7 +279,7 @@ struct PhysicsWorld::Impl {
     // close before the next detection.
     float StepReach(const Body& body, float fixedDeltaTime) const {
         return (glm::length(body.rigidBody.linearVelocity) +
-                glm::length(body.rigidBody.angularVelocity) * ShapeBoundingRadius(body.shape)) *
+                glm::length(body.rigidBody.angularVelocity) * body.boundingRadius) *
                fixedDeltaTime;
     }
 
@@ -373,6 +436,8 @@ struct PhysicsWorld::Impl {
                         bool isDynamic, float mass, float friction, float restitution) {
         Body body;
         body.shape = shape;
+        body.boundingRadius = ShapeBoundingRadius(shape);
+        ++cacheCounters.shapeRebuilds;
         body.friction = friction;
         body.restitution = restitution;
         body.isDynamic = isDynamic;
@@ -615,6 +680,8 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     Impl& w = *m_impl;
     const Clock::time_point stepStart = Clock::now();
     w.stats = StepStats{};
+    const auto cachesBefore = w.cacheCounters;
+    const ContactGeometryDiagnostics geometryBefore = GetContactGeometryDiagnostics();
 
     // 1) Velocity from this step's force/torque accumulators (M12). Gravity
     // is already in linearVelocity via the caller's ApplyLinearAcceleration.
@@ -626,6 +693,10 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         if (!body.isDynamic) continue;
         body.previousPosition = body.rigidBody.position;
         body.previousOrientation = body.rigidBody.orientation;
+        // Capture the old endpoint before integration. CurrentBound itself is
+        // keyed by represented pose, so a later correction cannot reuse it.
+        w.CurrentBound(body);
+        body.previousBound = body.currentBound;
         IntegrateRigidBodyVelocity(body.rigidBody, fixedDeltaTime);
         w.CoverStepReach(body, fixedDeltaTime);
     }
@@ -659,17 +730,19 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         // rest on a support that is g*dt^2 (2.7 mm at 60 Hz, 9.81 m/s^2).
         const float margin =
             (glm::length(a.rigidBody.linearVelocity - b.rigidBody.linearVelocity) +
-             glm::length(a.rigidBody.angularVelocity) * ShapeBoundingRadius(a.shape) +
-             glm::length(b.rigidBody.angularVelocity) * ShapeBoundingRadius(b.shape)) *
+             glm::length(a.rigidBody.angularVelocity) * a.boundingRadius +
+             glm::length(b.rigidBody.angularVelocity) * b.boundingRadius) *
             fixedDeltaTime;
         int pairPoints = 0;
-        const glm::quat inverseA = glm::conjugate(a.rigidBody.orientation);
+        const auto& orientationA = w.Orientation(a);
+        const auto& orientationB = w.Orientation(b);
+        const glm::dmat3 inverseA = glm::transpose(orientationA.rotation);
         for (int partA = 0; partA < PrimitiveCount(a.shape); ++partA) {
-            const PrimitivePose childA = PrimitiveAt(a.shape, a.rigidBody, partA);
+            const PrimitivePose childA = PrimitiveAt(a.shape, a.rigidBody, partA, &orientationA);
             for (int partB = 0; partB < PrimitiveCount(b.shape); ++partB) {
-                const PrimitivePose childB = PrimitiveAt(b.shape, b.rigidBody, partB);
+                const PrimitivePose childB = PrimitiveAt(b.shape, b.rigidBody, partB, &orientationB);
                 const ContactManifold manifold =
-                    ComputeContacts(childA.shape, childA.body, childB.shape, childB.body, margin);
+                    ComputeContacts(childA, childB, margin, &orientationA, &orientationB);
                 const ContactKey key{slotA, slotB, a.generation, b.generation, partA, partB};
                 const auto range = std::equal_range(
                     w.contactCache.begin(), w.contactCache.end(), CachedContact{key, {}, {}, 0.0f, {}},
@@ -677,27 +750,20 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
                 for (int p = 0; p < manifold.count; ++p) {
                     Contact contact = manifold.points[p];
                     if (!contact.hit) continue;
-                    // A speculative gap no larger than the separation's own
-                    // rounding error is not a gap: the pair is touching.
-                    // Genuine gaps above the bound are left as they are.
-                    if (contact.penetration < 0.0f &&
-                        -contact.penetration <= NumericalGapBound(childA.body.position, childB.body.position,
-                                                                  contact.point)) {
-                        contact.penetration = 0.0f;
-                    }
                     // Warm start from the nearest unused cached point of the
                     // same bodies/primitives (same generations: a reused slot
                     // never inherits a previous occupant's impulses).
-                    const glm::vec3 anchor = inverseA * (contact.point - a.rigidBody.position);
+                    const glm::dvec3 anchor = contact.hasLocalAnchors ? contact.localAnchorA :
+                        inverseA * (glm::dvec3(contact.point) - glm::dvec3(a.rigidBody.position));
                     float warmNormal = 0.0f;
                     glm::vec3 warmTangent(0.0f);
                     std::ptrdiff_t best = -1;
-                    float bestDistance = kWarmStartAnchorDistance;
+                    double bestDistance = kWarmStartAnchorDistance;
                     for (auto it = range.first; it != range.second; ++it) {
                         const std::ptrdiff_t index = it - w.contactCache.begin();
                         if (w.cacheUsed[static_cast<std::size_t>(index)] || !it->key.SameBodies(key) ||
                             glm::dot(it->normal, contact.normal) < kWarmStartNormalDot) continue;
-                        const float distance = glm::distance(it->localAnchorA, anchor);
+                        const double distance = glm::distance(it->localAnchorA, anchor);
                         if (distance < bestDistance) {
                             bestDistance = distance;
                             best = index;
@@ -712,7 +778,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
                     // share one).
                     const std::size_t before = w.solver.Constraints().size();
                     w.solver.AddContact(a.rigidBody, b.rigidBody, contact, friction, restitution,
-                                        warmNormal, warmTangent);
+                                        warmNormal, warmTangent, &orientationA.rotation, &orientationB.rotation);
                     if (w.solver.Constraints().size() > before) {
                         w.pendingCache.push_back(CachedContact{key, anchor, contact.normal, 0.0f, glm::vec3(0.0f)});
                     }
@@ -741,7 +807,11 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     std::swap(w.contactCache, w.pendingCache);
     for (const unsigned int slot : w.aliveSlots) {
         Impl::Body& body = w.bodies[slot];
-        if (body.isDynamic) IntegrateRigidBodyPosition(body.rigidBody, fixedDeltaTime);
+        if (body.isDynamic) {
+            IntegrateRigidBodyPosition(body.rigidBody, fixedDeltaTime);
+            const auto& orientation = w.Orientation(body);
+            w.solver.UpdatePreparedRotation(body.rigidBody, orientation.rotation);
+        }
     }
     w.solver.SolvePositions();
     const Clock::time_point solverEnd = Clock::now();
@@ -755,12 +825,27 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     w.stats.proxyReinsertions = w.reinsertionsSinceStep;
     w.reinsertionsSinceStep = 0;
     w.stats.treeHeight = w.tree.Height();
+    w.stats.orientationCacheHits = w.cacheCounters.orientationHits-cachesBefore.orientationHits;
+    w.stats.orientationCacheRebuilds = w.cacheCounters.orientationRebuilds-cachesBefore.orientationRebuilds;
+    w.stats.boundCacheHits = w.cacheCounters.boundHits-cachesBefore.boundHits;
+    w.stats.boundCacheRebuilds = w.cacheCounters.boundRebuilds-cachesBefore.boundRebuilds;
+    w.stats.shapeCacheRebuilds = w.cacheCounters.shapeRebuilds-cachesBefore.shapeRebuilds;
+    w.stats.solverFrameBuilds = w.solver.FrameBuilds();
+    w.stats.geometryCacheAllocations = w.cacheCounters.allocations-cachesBefore.allocations+w.solver.FrameAllocations();
+    w.stats.geometryCacheAllocatedBytes = w.cacheCounters.allocatedBytes-cachesBefore.allocatedBytes+w.solver.FrameAllocatedBytes();
+    w.stats.solverFrameNodeRequests = w.solver.FrameNodeRequests();
+    w.stats.geometryCacheBytes = w.CacheBytes();
     const Clock::time_point stepEnd = Clock::now();
     w.stats.broadphaseMilliseconds = MillisecondsBetween(broadphaseStart, narrowphaseStart) +
                                      MillisecondsBetween(solverEnd, stepEnd);
     w.stats.narrowphaseMilliseconds = MillisecondsBetween(narrowphaseStart, solverStart);
     w.stats.solverMilliseconds = MillisecondsBetween(solverStart, solverEnd);
     w.stats.totalMilliseconds = MillisecondsBetween(stepStart, stepEnd);
+    const ContactGeometryDiagnostics geometryAfter = GetContactGeometryDiagnostics();
+    w.stats.geometryPredicates = geometryAfter.predicates - geometryBefore.predicates;
+    w.stats.geometryExactFallbacks = geometryAfter.exactFallbacks - geometryBefore.exactFallbacks;
+    w.stats.geometryUnresolved = geometryAfter.unresolved - geometryBefore.unresolved;
+    w.stats.geometryNumericGapFallbacks = geometryAfter.numericGapFallbacks - geometryBefore.numericGapFallbacks;
 }
 
 const PhysicsWorld::StepStats& PhysicsWorld::LastStepStats() const { return m_impl->stats; }
@@ -782,21 +867,37 @@ bool PhysicsWorld::GetBodyBroadphaseBounds(BodyHandle handle, glm::vec3& outMin,
     return true;
 }
 
+bool PhysicsWorld::GetBodyGeometryCacheState(BodyHandle handle, GeometryCacheState& state) const {
+    const Impl::Body* body = m_impl->Get(handle);
+    if (!body) return false;
+    const auto& current = body->currentBound;
+    const auto& previous = body->previousBound;
+    state.currentPose = {current.position,current.orientation};
+    state.previousPose = {previous.position,previous.orientation};
+    state.currentMin = current.bound.min; state.currentMax = current.bound.max;
+    state.previousMin = previous.bound.min; state.previousMax = previous.bound.max;
+    state.currentValid = current.valid; state.previousValid = previous.valid;
+    state.boundingRadius = body->boundingRadius;
+    return true;
+}
+
 std::vector<PhysicsWorld::CollidingPair> PhysicsWorld::FindCollidingPairs() const {
     Impl& w = *m_impl;
     // Same candidate generation and narrowphase as Step, without solving.
     w.GenerateCandidatePairs();
     std::vector<CollidingPair> result;
     for (const auto& [slotA, slotB] : w.candidatePairs) {
-        const Impl::Body& a = w.bodies[slotA];
-        const Impl::Body& b = w.bodies[slotB];
+        Impl::Body& a = w.bodies[slotA];
+        Impl::Body& b = w.bodies[slotB];
+        const auto& orientationA = w.Orientation(a);
+        const auto& orientationB = w.Orientation(b);
         int points = 0;
         for (int partA = 0; partA < PrimitiveCount(a.shape); ++partA) {
-            const PrimitivePose childA = PrimitiveAt(a.shape, a.rigidBody, partA);
+            const PrimitivePose childA = PrimitiveAt(a.shape, a.rigidBody, partA, &orientationA);
             for (int partB = 0; partB < PrimitiveCount(b.shape); ++partB) {
-                const PrimitivePose childB = PrimitiveAt(b.shape, b.rigidBody, partB);
+                const PrimitivePose childB = PrimitiveAt(b.shape, b.rigidBody, partB, &orientationB);
                 const ContactManifold manifold =
-                    ComputeContacts(childA.shape, childA.body, childB.shape, childB.body);
+                    ComputeContacts(childA, childB, 0.0f, &orientationA, &orientationB);
                 for (int p = 0; p < manifold.count; ++p) {
                     if (manifold.points[p].hit) ++points;
                 }

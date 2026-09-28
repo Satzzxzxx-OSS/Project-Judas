@@ -1,0 +1,7 @@
+{
+  "mode": "geometry",
+  "checks": 23,
+  "failures": [],
+  "result": "PASS",
+  "scope": "FTFT4A no-ghost-gap witness ONLY; temporal cases not accepted"
+}

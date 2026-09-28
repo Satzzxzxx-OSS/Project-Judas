@@ -141,6 +141,17 @@ public:
         std::size_t collidingPairs = 0;
         std::size_t contactPoints = 0;
         std::size_t proxyReinsertions = 0;
+        // FTFT4A geometry diagnostics; no influence on contact decisions.
+        std::size_t geometryPredicates = 0;
+        std::size_t geometryExactFallbacks = 0;
+        std::size_t geometryUnresolved = 0;
+        std::size_t geometryNumericGapFallbacks = 0;
+        // Derived geometry caches; count actual work within this Step only.
+        std::size_t orientationCacheHits = 0, orientationCacheRebuilds = 0;
+        std::size_t boundCacheHits = 0, boundCacheRebuilds = 0;
+        std::size_t shapeCacheRebuilds = 0, solverFrameBuilds = 0;
+        std::size_t geometryCacheBytes = 0, geometryCacheAllocations = 0;
+        std::size_t geometryCacheAllocatedBytes = 0, solverFrameNodeRequests = 0;
         int treeHeight = 0;
         double broadphaseMilliseconds = 0.0;
         double narrowphaseMilliseconds = 0.0;
@@ -156,6 +167,16 @@ public:
     std::vector<BodyHandle> QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max) const;
     // The (fat) broadphase bound of a body, for the debug view.
     bool GetBodyBroadphaseBounds(BodyHandle handle, glm::vec3& outMin, glm::vec3& outMax) const;
+
+    // Read-only cache inspection: never recomputes or updates a cached result.
+    // Useful for checking stored geometry against an independent fresh query.
+    struct GeometryCacheState {
+        BodyTransform currentPose, previousPose;
+        glm::vec3 currentMin{0}, currentMax{0}, previousMin{0}, previousMax{0};
+        float boundingRadius = 0;
+        bool currentValid = false, previousValid = false;
+    };
+    bool GetBodyGeometryCacheState(BodyHandle handle, GeometryCacheState& state) const;
 
     // Milestone 32 oracle support (tests and the benchmark): every pair of
     // bodies whose shapes currently touch, found through the broadphase and

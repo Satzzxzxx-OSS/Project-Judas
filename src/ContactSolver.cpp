@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include "RigidBody.h"
 
@@ -49,33 +50,144 @@ void ApplyImpulse(ContactConstraint& c, const glm::vec3& rA, const glm::vec3& rB
 }
 }  // namespace
 
+namespace {
+bool SameQuaternion(const glm::quat& a, const glm::quat& b) {
+    // Component representations, including signed zero; no tolerance key.
+    return std::memcmp(&a.w,&b.w,sizeof(float))==0 &&
+           std::memcmp(&a.x,&b.x,sizeof(float))==0 &&
+           std::memcmp(&a.y,&b.y,sizeof(float))==0 &&
+           std::memcmp(&a.z,&b.z,sizeof(float))==0;
+}
+}
+
+void* ContactSolver::FrameUpstream::do_allocate(std::size_t bytes, std::size_t alignment) {
+    void* p=std::pmr::new_delete_resource()->allocate(bytes,alignment);
+    ++allocations;
+    allocatedBytes+=bytes;
+    retainedBytes+=bytes;
+    return p;
+}
+void ContactSolver::FrameUpstream::do_deallocate(void* p,std::size_t bytes,std::size_t alignment) {
+    retainedBytes-=bytes;
+    std::pmr::new_delete_resource()->deallocate(p,bytes,alignment);
+}
+
+void ContactSolver::Clear() {
+    m_constraints.clear();
+    m_pending.clear();
+    m_frames.clear();
+    m_frameIndex.clear(); // keys die; freed node storage remains in the pool
+    m_frameBuilds=0;
+    m_frameAllocations=0;
+    m_frameAllocatedBytes=0;
+    m_poolAllocationStart=m_frameUpstream.allocations;
+    m_poolBytesStart=m_frameUpstream.allocatedBytes;
+}
+
+std::size_t ContactSolver::RegisterFrame(RigidBody& body, const glm::dmat3* prepared) {
+    const auto found = m_frameIndex.find(&body);
+    if (found != m_frameIndex.end()) return found->second;
+    const std::size_t index = m_frames.size();
+    BodyFrame frame;
+    frame.body = &body;
+    frame.orientation = body.orientation;
+    if (prepared) { frame.rotation = *prepared; frame.rotationValid = true; }
+    const auto capacity=m_frames.capacity();
+    m_frames.push_back(frame);
+    if (m_frames.capacity()!=capacity) {
+        ++m_frameAllocations;
+        m_frameAllocatedBytes+=m_frames.capacity()*sizeof(BodyFrame);
+    }
+    m_frameIndex.emplace(&body,index);
+    return index;
+}
+
+void ContactSolver::UpdatePreparedRotation(RigidBody& body, const glm::dmat3& rotation) {
+    const auto found = m_frameIndex.find(&body);
+    if (found == m_frameIndex.end()) return;
+    BodyFrame& frame = m_frames[found->second];
+    frame.orientation = body.orientation;
+    frame.rotation = rotation;
+    frame.rotationValid = true;
+}
+
+std::size_t ContactSolver::FrameStorageBytes() const {
+    return m_frames.capacity()*sizeof(BodyFrame) + m_frameUpstream.retainedBytes +
+           m_constraints.capacity()*2*sizeof(std::size_t);
+}
+
 void ContactSolver::AddContact(RigidBody& bodyA, RigidBody& bodyB, const Contact& contact,
                                float friction, float restitution, float warmNormalImpulse,
-                               const glm::vec3& warmTangentImpulse) {
+                               const glm::vec3& warmTangentImpulse,
+                               const glm::dmat3* preparedRotationA,
+                               const glm::dmat3* preparedRotationB) {
     if (!contact.hit) return;
     if (bodyA.IsStatic() && bodyB.IsStatic()) return;
     ContactConstraint c;
     c.bodyA = &bodyA;
     c.bodyB = &bodyB;
+    c.frameA = RegisterFrame(bodyA, preparedRotationA);
+    c.frameB = RegisterFrame(bodyB, preparedRotationB);
     c.point = contact.point;
     c.normal = contact.normal;
     c.penetration = contact.penetration;
+    c.signedSeparation = contact.hasLocalAnchors ? contact.signedSeparation : -double(contact.penetration);
+    c.preciseNormal = contact.hasLocalAnchors ? contact.preciseNormal : glm::dvec3(contact.normal);
+    c.hasLocalAnchors = contact.hasLocalAnchors;
+    c.anchorAInWorldFrame = contact.anchorAInWorldFrame;
+    c.anchorBInWorldFrame = contact.anchorBInWorldFrame;
+    c.localAnchorA = contact.localAnchorA;
+    c.localAnchorB = contact.localAnchorB;
     c.friction = friction;
     m_constraints.push_back(c);
     m_pending.push_back(Pending{restitution, std::max(warmNormalImpulse, 0.0f), warmTangentImpulse});
 }
 
 void ContactSolver::Prepare(float fixedDeltaTime) {
+    // Frames live only within this solve. The body pointers have the same
+    // lifetime contract as constraints; Clear drops every pointer/key.
+    for (BodyFrame& frame : m_frames) {
+        const RigidBody& body = *frame.body;
+        if (!frame.rotationValid || !SameQuaternion(frame.orientation,body.orientation)) {
+            frame.rotation = ContactRotation(body.orientation);
+            frame.orientation = body.orientation;
+            frame.rotationValid = true;
+        }
+        frame.inverseInertia = body.IsStatic() ? glm::mat3(0.0f) : body.InverseInertiaWorld();
+        ++m_frameBuilds;
+    }
     for (std::size_t i = 0; i < m_constraints.size(); ++i) {
         ContactConstraint& c = m_constraints[i];
         const RigidBody& a = *c.bodyA;
         const RigidBody& b = *c.bodyB;
-        c.inverseInertiaA = a.IsStatic() ? glm::mat3(0.0f) : a.InverseInertiaWorld();
-        c.inverseInertiaB = b.IsStatic() ? glm::mat3(0.0f) : b.InverseInertiaWorld();
-        const glm::vec3 rA = c.point - a.position;
-        const glm::vec3 rB = c.point - b.position;
-        c.localAnchorA = glm::conjugate(a.orientation) * rA;
-        c.localAnchorB = glm::conjugate(b.orientation) * rB;
+        c.inverseInertiaA = m_frames[c.frameA].inverseInertia;
+        c.inverseInertiaB = m_frames[c.frameB].inverseInertia;
+        const glm::dmat3& rotationA = m_frames[c.frameA].rotation;
+        const glm::dmat3& rotationB = m_frames[c.frameB].rotation;
+        if (!c.hasLocalAnchors) {
+            // Compatibility for explicit caller contacts and the specialized
+            // approximate terrain path. Primitive contacts supply precise
+            // parent-local anchors and never take this world-point path.
+            c.localAnchorA = glm::transpose(rotationA) * (glm::dvec3(c.point) - glm::dvec3(a.position));
+            c.localAnchorB = glm::transpose(rotationB) * (glm::dvec3(c.point) - glm::dvec3(b.position));
+        }
+        // Sphere convenience signatures have no sphere orientation. They
+        // explicitly provide precise world offsets, not assumed parent axes.
+        if (c.anchorAInWorldFrame) {
+            c.localAnchorA = glm::transpose(rotationA) * c.localAnchorA;
+            c.anchorAInWorldFrame = false;
+        }
+        if (c.anchorBInWorldFrame) {
+            c.localAnchorB = glm::transpose(rotationB) * c.localAnchorB;
+            c.anchorBInWorldFrame = false;
+        }
+        const glm::dvec3 offsetA = rotationA * c.localAnchorA;
+        const glm::dvec3 offsetB = rotationB * c.localAnchorB;
+        c.initialAnchorDifference = (glm::dvec3(a.position) - glm::dvec3(b.position)) + offsetA - offsetB;
+        c.velocityOffsetA = glm::vec3(offsetA);
+        c.velocityOffsetB = glm::vec3(offsetB);
+        const glm::vec3 rA = c.velocityOffsetA;
+        const glm::vec3 rB = c.velocityOffsetB;
         const float k = InverseEffectiveMass(c, rA, rB, c.normal);
         c.normalMass = k > kEpsilon ? 1.0f / k : 0.0f;
         c.normalImpulse = 0.0f;
@@ -83,7 +195,9 @@ void ContactSolver::Prepare(float fixedDeltaTime) {
         const float closingSpeed = glm::dot(PointVelocity(a, rA) - PointVelocity(b, rB), c.normal);
         const float restitution = m_pending[i].restitution;
         const bool bounces = -closingSpeed > kRestitutionVelocityThreshold;
-        const float gap = std::max(-c.penetration, 0.0f);
+        // FTFT4A preserves the measured signed gap. The existing separated
+        // impact target/step order remains unchanged and is OPEN FTFT4B.
+        const double gap = std::max(c.signedSeparation, 0.0);
         if (gap <= 0.0f) {
             c.restitutionBias = bounces ? -restitution * closingSpeed : 0.0f;
         } else {
@@ -113,7 +227,7 @@ void ContactSolver::Prepare(float fixedDeltaTime) {
         c.tangentImpulse = tangent;
         const glm::vec3 impulse = c.normal * c.normalImpulse + c.tangentImpulse;
         if (glm::dot(impulse, impulse) > 0.0f) {
-            ApplyImpulse(c, c.point - c.bodyA->position, c.point - c.bodyB->position, impulse);
+            ApplyImpulse(c, c.velocityOffsetA, c.velocityOffsetB, impulse);
         }
     }
     m_pending.clear();
@@ -123,8 +237,8 @@ void ContactSolver::SolveVelocities(int iterations) {
     for (int iteration = 0; iteration < iterations; ++iteration) {
         for (ContactConstraint& c : m_constraints) {
             if (c.normalMass <= 0.0f) continue;
-            const glm::vec3 rA = c.point - c.bodyA->position;
-            const glm::vec3 rB = c.point - c.bodyB->position;
+            const glm::vec3 rA = c.velocityOffsetA;
+            const glm::vec3 rB = c.velocityOffsetB;
 
             // --- Normal: accumulate, clamp the total at zero, apply delta.
             const float vn = glm::dot(PointVelocity(*c.bodyA, rA) - PointVelocity(*c.bodyB, rB), c.normal);
@@ -158,6 +272,22 @@ void ContactSolver::SolveVelocities(int iterations) {
 }
 
 void ContactSolver::SolvePositions(int iterations) {
+    // This pass changes translations only. Rotate precise anchors once after
+    // pose integration; reuse the offsets through all position iterations.
+    for (BodyFrame& frame : m_frames) {
+        // Pose integration may have changed orientation. Do not use the
+        // pre-integration frame without this exact represented-value check.
+        if (!SameQuaternion(frame.orientation,frame.body->orientation)) {
+            frame.rotation = ContactRotation(frame.body->orientation);
+            frame.orientation = frame.body->orientation;
+        }
+        ++m_frameBuilds;
+    }
+    for (ContactConstraint& c : m_constraints) {
+        c.positionOffsetDifference =
+            m_frames[c.frameA].rotation * c.localAnchorA -
+            m_frames[c.frameB].rotation * c.localAnchorB;
+    }
     for (int iteration = 0; iteration < iterations; ++iteration) {
         for (ContactConstraint& c : m_constraints) {
             RigidBody& a = *c.bodyA;
@@ -167,11 +297,13 @@ void ContactSolver::SolvePositions(int iterations) {
             // Both anchors coincided with the contact point at detection;
             // their current separation along the normal is how much the
             // bodies have moved apart (positive) or together since.
-            const glm::vec3 worldA = a.position + a.orientation * c.localAnchorA;
-            const glm::vec3 worldB = b.position + b.orientation * c.localAnchorB;
-            const float penetration = c.penetration - glm::dot(worldA - worldB, c.normal);
-            const float correctionMagnitude =
-                std::max(penetration - kPenetrationSlop, 0.0f) * kPositionalCorrectionPercent;
+            const glm::dvec3 relativeAnchors =
+                (glm::dvec3(a.position) - glm::dvec3(b.position)) +
+                c.positionOffsetDifference;
+            const double penetration = -c.signedSeparation -
+                glm::dot(relativeAnchors - c.initialAnchorDifference, c.preciseNormal);
+            const float correctionMagnitude = static_cast<float>(
+                std::max(penetration - double(kPenetrationSlop), 0.0) * double(kPositionalCorrectionPercent));
             if (correctionMagnitude <= 0.0f) continue;
             const glm::vec3 correction = c.normal * (correctionMagnitude / inverseMassSum);
             if (!a.IsStatic()) a.position += correction * a.inverseMass;

@@ -6,7 +6,7 @@ someone with no prior context on this project. It is updated in place as
 milestones land, rather than kept as a per-milestone snapshot — see
 "Milestone history" below for how to recover an earlier milestone exactly.
 
-## What exists right now (M32 rigid-body checkpoint, operator review pending; M32 as scoped is NOT complete)
+## What exists right now (rigid checkpoint plus FTFT repairs; M32 as scoped is NOT complete)
 
 **Judas is a game engine.** Everything a player meets in the default
 launch — the terrain planet, its lake and atmosphere, the spacecraft, the
@@ -20,9 +20,10 @@ As of the Milestone 32 rigid-body checkpoint `PhysicsWorld` finds contact
 candidates with a dynamic AABB tree (no all-pairs pass), solves contacts
 with accumulated, warm-started impulses and Coulomb-disc friction, clips
 box-box contacts to the real overlap polygon, and generates speculative
-contacts so a body placed touching is supported from its first step (one
-known limitation: a restitution-0 body struck fast can hover at its
-pre-contact gap for one step). **The liquid/solid half of Milestone 32 —
+contacts so a body placed touching is supported from its first step.
+FTFT4A repairs primitive geometry and signed gaps; impact timing remains
+OPEN FTFT4B: a fast restitution-zero body can stop indefinitely before
+contact in zero gravity, and restitution can be applied prematurely. **The liquid/solid half of Milestone 32 —
 buoyancy, two-way coupling, player density and swimming — is deferred and
 not in this checkpoint**; liquid and player behaviour are exactly
 Milestone 31's. See "Milestone 32" at the end of this document.
@@ -8375,50 +8376,93 @@ on a box is supported at the corners of the real overlap polygon.
 
 ### Speculative contacts
 
-Detection runs on the poses at the start of the step, after velocity
-integration. Without a tolerance, a body placed exactly touching (a crate
-rebuilt from its saved record) had no contact on its first step, sank
-g·dt² ≈ 2.7 mm and ended the step at −g·dt. Contacts are therefore
-generated speculatively:
+Detection runs on start-of-step poses after velocity integration. The
+original checkpoint excluded exact equality in several narrowphase tests
+and collapsed sufficiently small gaps using a coordinate-dependent gamma8
+expression. FTFT4A supersedes that geometry rule: exact touching is closed
+contact, and a reliably positive represented separation stays positive.
 
-- **Reach.** A pair produces contacts when its separation is at most
-  `(|v_A − v_B| + |ω_A|·R_A + |ω_B|·R_B) · dt` (R: bounding radius) — the
-  distance its surfaces can close within this step at their post-force
-  velocities; g·dt² for a body at rest on a support. Before candidate
-  generation each dynamic proxy's fat bound is made to cover the body
-  grown by its own reach, so every such pair is a candidate.
-- **Solver.** A separated contact with gap *s* enforces `v_n ≥ −s/dt`: the
-  pair may close exactly the gap this step but not penetrate. Restitution
-  applies only when this step's approach actually reaches the surface.
-  Overlapping contacts use the unchanged rule.
-- **Numerical gap bound.** A computed gap no larger than its own rounding
-  error is treated as zero, so a resting body cannot flicker between
-  "touching" and "separated" where float spacing is coarse. For
-  `s = n·(x_A − x_B) − radii` with surface points `x = p + R·l`, unit
-  roundoff u = 2⁻²⁴ and γ_k = k·u/(1 − k·u) (Higham, §3.1), the first-order
-  forward error bound is
-  `|fl(s) − s| ≤ γ₈ · (|p_A| + |c − p_A| + |p_B| + |c − p_B|)`
-  (c the contact point; γ₃ rotating l, γ₁ adding p, γ₁ subtracting, γ₃
-  projecting onto n). It is about 1e-6 m for a crate near the origin and
-  1.6e-4 m at 137 m. It collapses only gaps at or below that bound; the
-  reach is not changed by it.
+- **Reach remains a candidate policy.** The existing pair reach is
+  `(|v_A − v_B| + |ω_A|·R_A + |ω_B|·R_B) · dt`. Proxy expansion and the
+  dynamic AABB tree remain in use. SAT-axis proximity is not a claim of
+  exact Euclidean distance, nor of continuous collision detection.
+- **Primitive geometry.** Sphere, box and compound-child calculations use
+  binary64 parent-relative coordinates and the proper rotation
+  `R(q)/dot(q,q)` for the actual stored nonzero quaternion. Sign predicates
+  use operation-specific outward intervals with exact expansion fallback.
+  An interval containing zero is uncertainty, not permission to snap a
+  gap to zero. Arithmetic outside the supported fallback range is reported
+  unresolved. Conservative bounds round outward on float conversion.
+- **Anchors.** Clipping and physical anchors remain local and precise.
+  Warm-start matching and the solver consume these anchors; float world
+  contact points are debug outputs. Surface witnesses are recorded
+  separately from the common impulse application midpoint.
+- **Solver policy is unchanged.** Non-bouncing separated contacts permit
+  closure at `−gap/dt`; reachable contacts above the existing speed
+  threshold receive the restitution target immediately. Friction, warm
+  starting, iteration counts and positional correction are unchanged.
+- **Terrain remains approximate.** Its specialized surface samples and
+  box sample points are retained; primitive exact predicates do not certify
+  terrain geometry. No global gap collapse is applied to that path.
 
-### Known limitation: one-step hover at restitution 0
+Mechanism and executed evidence are in
+[FTFT4A evidence](evidence/ftft4/README.md). Stored float input quantization
+and the existing fixed-origin architecture remain limitations; this repair
+cannot recover a gap erased before narrowphase receives its inputs.
 
-With a single target velocity per contact the solver cannot make both the
-end-of-step velocity and the end-of-step position exact for a separated
-contact that is struck fast. Restitution is kept exact (rebound ratio
-0.513 for e = 0.5); the cost is that **a restitution-0 body closing faster
-than the 0.5 m/s restitution threshold stops at its speculative pre-contact
-gap for one fixed step and closes to contact on the next** (measured: a
-1 mm gap approached at 0.66 m/s stays 1.0 mm above the surface for one
-step). It does not penetrate and gains no energy. A target of
-`−gap/dt + restitution term` was tried and rejected: it broke restitution
-(a 6.4 m/s drop rebounded at ratio 0.073). Fixing both needs a different
-mechanism (for example closing speculative gaps in the position pass) and
-is deferred. This is not solved.
+### FTFT4A-P: reuse of equivalent geometry calculations
 
-### Measured evidence
+The performance pass retains the repaired sign predicates, signed gaps and
+local anchors. Body-local caches hold the immutable shape radius, exact-key
+parent quaternion preparation and prepared child-bound terms. Translated
+bounds preserve the original interval addition order and have separate
+previous/current pose keys. ResetBody, including moving static doors, slot
+reuse and post-solve penetration correction still refresh the real proxies.
+
+Box SAT's interval filter reuses nine cross-body dot products and the exact
+identities of the proper homogeneous quaternion matrix. Its unchanged exact
+polynomial remains the fallback. Numerical gap/sign disagreement triggers
+exact numerator reconstruction or an explicit unresolved result. Solver
+body rotations/inertia are shared only within the appropriate solve phase;
+post-integration rotations come from freshly keyed parent preparation.
+
+The bounded storage pass clears every frame key/value each step but reuses
+hash-node storage through a solver-owned C++17 pool. Rotating compound bounds
+invalidate contents without discarding child-vector capacity. Slot/generation
+replacement resets the complete body; no live child/frame element pointer
+survives container growth. Retained storage follows high-water simultaneous
+demand and is released at world teardown, with actual upstream bytes and
+allocations exposed in diagnostics. See [whole-workload allocation evidence](evidence/ftft4/allocation/RESULTS.md).
+
+Cache preparation is part of the real creation/update paths. Whole-step and
+outer-fixture timings, including moving-static ResetBody work, are reported
+in [FTFT4A-P evidence](evidence/ftft4/performance/RESULTS.md). The original
+slow-correct results remain historical evidence, not current performance
+acceptance. This pass does not change impact timing or close full FTFT4.
+
+### OPEN FTFT4B: premature stopping and bounce
+
+The geometry repair does not change impact timing. The real PhysicsWorld
+probe reproduces a restitution-zero body stopping at its represented
+0.999987 mm pre-contact gap for all four zero-gravity steps. With no later
+force or overlap, the current mechanism has no reason to close that gap.
+Calling this merely a one-frame hover was incorrect.
+
+For restitution 0.5 and approach speed 1 m/s, the same probe ends the first
+step at 9.333313 mm instead of the independent impact-time result
+7.833340 mm. Correct rebound speed alone does not establish correct
+end position. A three-body chain also demonstrates that candidates made
+before impulses can miss a collision induced by another impact.
+
+These remain failing temporal witnesses, explicitly outside FTFT4A.
+FTFT4B needs separately authorized event advancement, impulse and remaining
+step handling. No drift formula is installed as a restitution target.
+Full FTFT4 remains open.
+
+### Original rigid checkpoint evidence (historical)
+
+The following records the original checkpoint, not FTFT4A acceptance.
+Current results and measured limitations are linked above.
 
 - 33/33 suites pass. New: `judas_broadphase_tests` (A dynamic tree against
   brute-force overlap; B–E broadphase + narrowphase against all-pairs +

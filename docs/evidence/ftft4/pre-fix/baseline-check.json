@@ -1,0 +1,7 @@
+{
+  "mode": "baseline",
+  "checks": 39,
+  "failures": [],
+  "result": "PASS",
+  "scope": "Reproduction of existing defects, NOT correct-physics acceptance"
+}

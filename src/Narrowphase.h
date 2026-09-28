@@ -6,6 +6,7 @@
 #include "Broadphase.h"
 #include "CollisionShapes.h"
 #include "Contacts.h"
+#include "ContactPreparedGeometry.h"
 #include "RigidBody.h"
 
 class RadialTerrain;
@@ -21,9 +22,19 @@ struct TerrainSample;
 int PrimitiveCount(const Shape& shape);
 struct PrimitivePose {
     Shape shape;
-    RigidBody body;
+    RigidBody body; // legacy approximate world pose for terrain/player queries
+    glm::vec3 parentPosition{0.0f};
+    glm::quat parentOrientation{1.0f,0.0f,0.0f,0.0f};
+    glm::vec3 parentLocalCenter{0.0f};
 };
-PrimitivePose PrimitiveAt(const Shape& shape, const RigidBody& parent, int index);
+PrimitivePose PrimitiveAt(const Shape& shape, const RigidBody& parent, int index,
+                          const ContactPreparedOrientation* prepared = nullptr);
+
+// Precise primitive dispatcher preserves child offsets before world rounding.
+ContactManifold ComputeContacts(const PrimitivePose& a, const PrimitivePose& b,
+                                float margin = 0.0f,
+                                const ContactPreparedOrientation* preparedA = nullptr,
+                                const ContactPreparedOrientation* preparedB = nullptr);
 
 // A terrain sample expressed in simulation space for a terrain body's pose.
 TerrainSample SampleTerrainAtWorld(const RadialTerrain& terrain, const RigidBody& body,
@@ -36,9 +47,17 @@ TerrainSample SampleTerrainAtWorld(const RadialTerrain& terrain, const RigidBody
 ContactManifold ComputeContacts(const Shape& shapeA, const RigidBody& bodyA,
                                 const Shape& shapeB, const RigidBody& bodyB, float margin = 0.0f);
 
-// Exact axis-aligned bound of a shape at a pose (terrain: its conservative
+// Outward-rounded conservative shape bound (terrain: its conservative
 // radial bound). Used only for broadphase candidate generation.
 Aabb ShapeAabb(const Shape& shape, const glm::vec3& position, const glm::quat& orientation);
+// Callers rebuild after an exact shape/orientation change. The original
+// uncached overload remains the independent arithmetic/cache comparison path.
+PreparedShapeBounds PrepareShapeBounds(const Shape& shape,
+                                      const ContactPreparedOrientation& orientation);
+// Rebuild invalid contents while retaining child storage; caller owns lifetime.
+void PrepareShapeBounds(const Shape& shape, const ContactPreparedOrientation& orientation,
+                        PreparedShapeBounds& prepared);
+Aabb ShapeAabb(const PreparedShapeBounds& prepared, const glm::vec3& position);
 // Largest distance from the body origin to any point of the shape — a bound
 // valid for every orientation (used to bound rotation during a step).
 float ShapeBoundingRadius(const Shape& shape);
