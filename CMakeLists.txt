@@ -723,3 +723,8 @@ target_compile_options(judas_contact_cache_tests PRIVATE -Wall -Wextra)
 # FTFT4A-P allocation/lifetime regressions; actual engine, unchanged physics.
 add_executable(judas_contact_storage_tests tests/ContactStorageTests.cpp)
 target_link_libraries(judas_contact_storage_tests PRIVATE judas_engine)
+
+# FTFT4B-1 diagnostics: current production path; physical failures remain failures.
+add_executable(judas_timing_defect_probe tests/TimingDefectProbe.cpp)
+target_link_libraries(judas_timing_defect_probe PRIVATE judas_engine)
+target_compile_options(judas_timing_defect_probe PRIVATE -Wall -Wextra)
