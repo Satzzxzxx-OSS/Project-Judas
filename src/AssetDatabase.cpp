@@ -54,6 +54,27 @@ bool Tokenize(const std::string& line, std::vector<std::pair<std::string, bool>>
     return true;
 }
 std::string Generic(const fs::path& p) { return p.lexically_normal().generic_string(); }
+bool IsInside(const fs::path& path, const fs::path& directory) {
+    const fs::path relative = path.lexically_normal().lexically_relative(directory.lexically_normal());
+    // Compare path components: Assets_backup is not inside Assets, while
+    // a legitimate filename beginning with ".." is not a parent traversal.
+    return !relative.empty() && relative != "." && !relative.is_absolute() && *relative.begin() != "..";
+}
+bool CanCreateMetadata(const std::string& metaPath, std::string& outError) {
+    std::error_code ec;
+    const fs::file_status status = fs::symlink_status(metaPath, ec);
+    if (ec && status.type() != fs::file_type::not_found) {
+        outError = "could not inspect asset metadata: " + metaPath + ": " + ec.message();
+        return false;
+    }
+    if (fs::exists(status)) {
+        // Missing assets and invalid sidecars still carry authored evidence;
+        // importing/tracking another file must not silently replace them.
+        outError = "asset metadata already exists: " + metaPath;
+        return false;
+    }
+    return true;
+}
 }  // namespace
 
 const char* AssetTypeName(AssetType type) {
@@ -243,8 +264,9 @@ bool AssetDatabase::Track(const std::string& assetPath, AssetRecord& outRecord, 
     std::error_code ec;
     const fs::path absolute = fs::absolute(assetPath, ec).lexically_normal();
     if (!fs::is_regular_file(absolute, ec)) { outError = "asset file does not exist: " + assetPath; return false; }
-    const std::string rel = Generic(absolute.lexically_relative(m_assetsDir));
-    if (rel.empty() || rel.rfind("..", 0) == 0) { outError = "asset is not inside the assets directory: " + assetPath; return false; }
+    if (!IsInside(absolute, m_assetsDir)) { outError = "asset is not inside the assets directory: " + assetPath; return false; }
+    const std::string metaPath = Generic(absolute) + kAssetMetaExtension;
+    if (!CanCreateMetadata(metaPath, outError)) return false;
     AssetType type;
     if (!AssetTypeForExtension(absolute.extension().string(), type)) {
         outError = "unsupported asset type: " + absolute.extension().string();
@@ -254,7 +276,6 @@ bool AssetDatabase::Track(const std::string& assetPath, AssetRecord& outRecord, 
     const AssetId id = forcedId.empty() ? MintAssetId() : forcedId;
     if (!IsValidAssetId(id)) { outError = "invalid asset id"; return false; }
     if (m_records.count(id)) { outError = "asset id already in use: " + id; return false; }
-    const std::string metaPath = Generic(absolute) + kAssetMetaExtension;
     if (!WriteMeta(metaPath, id, type, Generic(absolute), outError)) return false;
     AssetRecord record;
     record.id = id;
@@ -282,14 +303,15 @@ bool AssetDatabase::Import(const std::string& sourcePath, const std::string& des
     fs::path destination = fs::path(m_assetsDir) / (destinationRelative.empty() ? source.filename().string() : destinationRelative);
     if (fs::is_directory(destination, ec)) destination /= source.filename();
     destination = destination.lexically_normal();
-    if (Generic(destination).rfind(m_assetsDir, 0) != 0) { outError = "destination must be inside the assets directory"; return false; }
+    if (!IsInside(destination, m_assetsDir)) { outError = "destination must be inside the assets directory"; return false; }
     if (fs::exists(destination, ec)) { outError = "destination already exists: " + Generic(destination); return false; }
+    const std::string metaPath = Generic(destination) + kAssetMetaExtension;
+    if (!CanCreateMetadata(metaPath, outError)) return false;
     fs::create_directories(destination.parent_path(), ec);
     fs::copy_file(source, destination, ec);
     if (ec) { outError = "could not copy asset into the project: " + ec.message(); return false; }
     AssetRecord record;
     const AssetId id = MintAssetId();
-    const std::string metaPath = Generic(destination) + kAssetMetaExtension;
     if (!WriteMeta(metaPath, id, type, Generic(source), outError)) {
         fs::remove(destination, ec);
         return false;
@@ -310,13 +332,15 @@ bool AssetDatabase::Move(const AssetId& id, const std::string& newRelative, std:
     AssetRecord& record = it->second;
     std::error_code ec;
     fs::path destination = (fs::path(m_assetsDir) / newRelative).lexically_normal();
-    if (Generic(destination).rfind(m_assetsDir, 0) != 0) { outError = "destination must be inside the assets directory"; return false; }
+    if (!IsInside(destination, m_assetsDir)) { outError = "destination must be inside the assets directory"; return false; }
     if (destination.extension() != fs::path(record.path).extension()) { outError = "moving an asset must keep its file extension"; return false; }
     if (fs::exists(destination, ec)) { outError = "destination already exists: " + Generic(destination); return false; }
+    const std::string metaPath = Generic(destination) + kAssetMetaExtension;
+    if (!CanCreateMetadata(metaPath, outError)) return false;
     fs::create_directories(destination.parent_path(), ec);
     fs::rename(record.path, destination, ec);
     if (ec) { outError = "could not move asset: " + ec.message(); return false; }
-    fs::rename(record.path + kAssetMetaExtension, Generic(destination) + kAssetMetaExtension, ec);
+    fs::rename(record.path + kAssetMetaExtension, metaPath, ec);
     if (ec) {
         // Keep the pair together: undo the file move.
         fs::rename(destination, record.path, ec);

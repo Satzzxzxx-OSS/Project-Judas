@@ -7854,6 +7854,19 @@ the file *and* its sidecar (same extension required; either rename
 failing undoes the other). `Track` adopts an untracked file in place,
 optionally with a fixed id (how the demo tree's ids were assigned).
 
+FTFT6 hardens these identity operations: containment is checked by normalized
+path components, not a string prefix; existing destination metadata (including
+an orphaned or malformed sidecar) is never overwritten by Import, Move or
+Track. A missing asset's identity remains reserved until the operator resolves
+its metadata. These are ordinary single-process filesystem operations, not a
+crash-safe multi-file transaction or a filesystem security sandbox.
+
+[FTFT6 integration evidence](evidence/stabilization/ftft6/README.md) drives an
+ordinary tiny project's real editor loop through authoring, asset failure and
+recovery, Play/Stop and mixed lifecycle persistence, then opens the same startup
+scene through the normal asynchronous standalone application. This automated
+offscreen GL coverage does not claim human visual validation.
+
 The automated evidence (`judas_project_tests`, section B): import a real
 mesh, write a scene that refers to its id, move the asset to a new
 directory under a new name, rescan from scratch, and the same id resolves

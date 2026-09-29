@@ -741,3 +741,18 @@ add_executable(judas_impact_solver_tests tests/ImpactSolverTests.cpp)
 target_link_libraries(judas_impact_solver_tests PRIVATE judas_engine)
 add_executable(judas_impact_timing_tests tests/ImpactTimingTests.cpp)
 target_link_libraries(judas_impact_timing_tests PRIVATE judas_engine)
+
+# FTFT6: ordinary standalone application on a tiny authored project.
+add_executable(judas_project_application_tests
+    tests/ProjectApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp
+    src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_project_application_tests PRIVATE judas_engine)
+target_compile_options(judas_project_application_tests PRIVATE -Wall -Wextra)
+
+# FTFT6: mixed fidelity/persistence and asset identity integrity.
+add_executable(judas_lifecycle_integration_tests tests/LifecycleIntegrationTests.cpp)
+target_link_libraries(judas_lifecycle_integration_tests PRIVATE judas_engine)
+target_compile_options(judas_lifecycle_integration_tests PRIVATE -Wall -Wextra)
+add_executable(judas_asset_integrity_tests tests/AssetIntegrityTests.cpp)
+target_link_libraries(judas_asset_integrity_tests PRIVATE judas_engine)
+target_compile_options(judas_asset_integrity_tests PRIVATE -Wall -Wextra)

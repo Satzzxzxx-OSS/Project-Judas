@@ -59,6 +59,10 @@ private:
     // never cancelled) while it is open; the set follows every edit.
     void RefreshAssetDemand();
 
+    struct StabilizationAutomation;
+    void AdvanceStabilizationAutomation();
+    std::unique_ptr<StabilizationAutomation> m_stabilization;
+
     EngineHost* m_host = nullptr;
     Project m_project;
     EditorDocument m_document;
