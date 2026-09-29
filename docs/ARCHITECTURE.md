@@ -4334,9 +4334,10 @@ the plank.
   `PhysicsWorld` or `Renderer` treats world `+Y` as special; `RadicalGravity`
   demonstrates this directly by pointing in a continuously different world
   direction depending on where it's sampled.
-- There is still no distinction between authoritative large-world
-  coordinates and local rendering/physics coordinates — see "Future
-  constraints preserved."
+- At this milestone there was no distinction between absolute large-world
+  coordinates and local rendering/physics coordinates. M23 subsequently
+  introduced a fixed double-precision absolute origin with local float
+  simulation; it did not introduce live origin rebasing.
 
 ### Player visual representation
 
@@ -5720,15 +5721,13 @@ blocking known future requirements. None of these are implemented yet.
   authoritative world coordinate system; no body is simulated in local
   coordinates and no force is changed by choosing a frame. Extending physics
   itself to use local coordinates would require separate evidence and design.
-- **Large-world rebasing** — through Milestone 7-B this relied on Jolt's
-  optional double-precision build mode. As of Milestone 7-Final's own
-  physics engine (`src/RigidBody.h` and friends, all plain `glm::vec3`
-  single-precision), that option no longer exists — this is now an open
-  question, not a preserved one, and would need real design work (either a
-  precision upgrade to Judas's own math or a floating-origin/rebasing
-  scheme) if/when coordinates grow past what single-precision floats
-  represent well. Recorded honestly as a genuine gap this migration
-  introduced, not glossed over.
+- **Large-world coordinates and rebasing** — historically, Milestone 7-B
+  could use Jolt's optional double-precision build, an option removed by
+  Milestone 7-Final's own single-precision physics. M23 subsequently
+  implemented a fixed double-precision absolute origin with local float
+  simulation. This supports compact scenes at large absolute coordinates;
+  it does not provide live origin rebasing. Continuous travel requiring
+  origin shifts remains a [future capability](ROADMAP.md).
 - **Terrain, many collision objects, raycasts/shape queries, constraints**
   — Milestone 5 was evidence this was practical under Jolt (the player's
   entire support/movement system built from exactly one query primitive,
@@ -5780,8 +5779,9 @@ Explicitly deferred, not forgotten:
   terrain chunks, LOD, procedural terrain, oceans, atmosphere, Terrain-ML —
   the Milestone 5 sphere exists to prove architecture, not as the start of
   a planet system
-- Nested reference-frame hierarchies, local-coordinate physics integration,
-  floating origin, astronomical coordinates
+- Nested reference-frame hierarchies and live floating-origin travel.
+  M23 later added fixed-origin astronomical placement with local float
+  physics; this was not implemented at the milestone described here.
 - A general gameplay/entity framework, ECS, or scene graph — one
   `PlayerController` for one player is enough
 - Character physics beyond the move-and-slide loop this milestone needed:
@@ -6362,17 +6362,28 @@ byte-identical. These checks establish equivalence for the tested scene.
 The operator also validated visible smoothness and normal gameplay at the
 far placement.
 
-The local active scene presently spans roughly 150 m. The probe above
+The M23 validation scene spans roughly 150 m. The probe above
 shows why local float coordinates must stay near their chosen origin:
 at 1 km, this particular 4 cm traversal already accrued about 0.28 mm
 error, and by 3 km about 3.95 mm. M23 does **not** implement automatic
-rebasing, streaming, or travel across arbitrarily many kilometres in one
-local frame. The tested absolute placement reaches coordinates of
+rebasing or travel across arbitrarily many kilometres in one local
+frame. Later resource streaming does not change this coordinate contract.
+The tested absolute placement reaches coordinates of
 `3e9 m`; no claim is made for arbitrary absolute magnitudes. A future
 scene that moves far from its selected local origin will need a measured,
 atomic coordinate shift across its simulation and presentation state.
 There is no such shift in the current M23 demo, so no mid-run rebase
 continuity is claimed.
+
+### Current coordinate scope and future travel
+
+A compact game can use a very large absolute scene origin without enabling
+planetary systems. Its authoritative physics remains in one fixed local
+float frame. FTFT5 verifies that existing boundary; it does not add an
+origin-shift operation. Live rebasing is a [future capability](ROADMAP.md),
+requiring a coordinated shift of simulation and presentation state before
+continuous long-distance travel can be claimed. Historical M23 acceptance
+and its explicit exclusion of runtime rebasing remain unchanged.
 
 ## Milestone 24 — bounded dynamic liquid (operator accepted)
 

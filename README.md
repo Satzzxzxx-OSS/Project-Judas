@@ -634,11 +634,15 @@ JUDAS_WORLD_OFFSET=far ./build/judas
 
 Unset the variable to run near zero. A custom `x,y,z` metre offset is also
 accepted, for example `JUDAS_WORLD_OFFSET=1000000000,-2000000000,3000000000`.
-`R` resets the same local scenario at the chosen absolute location. There is
-no runtime rebasing or streaming yet; the active local scene must stay small
-enough for float simulation. M23's measured range and limitations are in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), "Milestone 23." Human visual
-validation has passed.
+`R` resets the same local scenario at the chosen absolute location. This is
+**fixed-origin placement**: a compact simulation can have a very large
+absolute location while physics and rendering retain small local float
+coordinates. Automatic/live origin rebasing and travel arbitrarily far
+through a continuously rebasing region are not implemented; they are
+[future capabilities](docs/ROADMAP.md), not guarantees of M23. The active
+local region must remain small enough for float simulation. M23's measured
+range and historical visual acceptance are recorded in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), "Milestone 23."
 
 **New in M20:** the interactive scene includes two massive dynamic spheres in
 unclaimed space. Their initial positions and velocities are the analytical
