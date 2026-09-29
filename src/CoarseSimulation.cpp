@@ -14,47 +14,76 @@ glm::quat IntegrateOrientation(const glm::quat& orientation, const glm::vec3& an
 }
 }  // namespace
 
-void StepCoarseEntities(RuntimeWorld& world, float dt) {
-    const PhysicsWorld& physics = world.Physics();
-    const GravityField& gravity = world.Gravity();
+void ApplyCoarseCelestialForces(RuntimeWorld& world, float dt) {
     std::vector<EntityRecord>& entities = world.MutableEntities();
+    const auto participates = [](const EntityRecord& e) {
+        return e.lifecycle == EntityLifecycle::Active && e.fidelity == SimulationFidelity::Coarse &&
+               e.definition.celestial && e.definition.body &&
+               e.definition.body->motion == SceneBodyMotion::Dynamic;
+    };
+    // Ordinary compact games and Full-only celestial scenes pay no scratch
+    // allocation or second pair traversal.
+    std::size_t coarseCount = 0;
+    for (const EntityRecord& e : entities) coarseCount += participates(e) ? 1 : 0;
+    if (coarseCount == 0) return;
 
-    // Celestial participants' pre-step positions/masses, so pairwise
-    // forces are symmetric and order-independent within the step.
-    struct Mass { glm::vec3 position; float mass; EntityId id; };
-    std::vector<Mass> masses;
-    for (const EntityRecord& e : entities) {
-        if (e.lifecycle == EntityLifecycle::Destroyed || !e.definition.celestial || !e.definition.body) continue;
-        if (e.definition.body->motion != SceneBodyMotion::Dynamic) continue;
-        if (e.fidelity == SimulationFidelity::Full) {
-            masses.push_back({physics.GetTransform(world.DynamicBodies()[e.slot].Handle()).position,
-                              e.definition.body->mass, e.id});
-        } else if (e.fidelity == SimulationFidelity::Coarse) {
-            masses.push_back({e.state.position, e.definition.body->mass, e.id});
+    PhysicsWorld& physics = world.Physics();
+    struct Participant {
+        glm::vec3 position;
+        float mass;
+        BodyHandle body;
+        EntityRecord* coarse;
+        glm::vec3 force{0.0f};
+    };
+    std::vector<Participant> participants;
+    participants.reserve(world.CelestialParticipants().size() + coarseCount);
+    // This is the runtime's actual Full participant set, including a Local
+    // vehicle even when that vehicle has no explicit celestial component.
+    for (BodyHandle handle : world.CelestialParticipants()) {
+        if (physics.IsDynamicBody(handle))
+            participants.push_back({physics.GetTransform(handle).position, physics.GetMass(handle), handle, nullptr});
+    }
+    for (EntityRecord& e : entities) {
+        if (participates(e)) participants.push_back({e.state.position, e.definition.body->mass, {}, &e});
+    }
+    // All geometry is sampled before either fidelity advances. Evaluate each
+    // cross-fidelity/coarse pair once and distribute the very same vector.
+    // Full/Full pairs remain exclusively owned by CelestialGravity.
+    for (std::size_t i = 0; i < participants.size(); ++i) {
+        for (std::size_t j = i + 1; j < participants.size(); ++j) {
+            Participant& a = participants[i];
+            Participant& b = participants[j];
+            if (!a.coarse && !b.coarse) continue;
+            const glm::vec3 onB = CelestialGravity::ForceOnB(a.position, a.mass, b.position, b.mass);
+            a.force -= onB;
+            b.force += onB;
         }
     }
+    for (Participant& p : participants) {
+        if (p.coarse) {
+            p.coarse->state.linearVelocity += p.force * (dt / p.mass);
+            // A nonzero mutual force invalidates the reduced model's settled
+            // assumption. Ordinary supported Coarse props remain untouched.
+            if (p.force != glm::vec3(0.0f)) p.coarse->coarseMotion = CoarseMotion::Inertial;
+        } else {
+            physics.ApplyForce(p.body, p.force);
+        }
+    }
+}
 
-    for (EntityRecord& e : entities) {
+void StepCoarseEntities(RuntimeWorld& world, float dt) {
+    const GravityField& gravity = world.Gravity();
+    for (EntityRecord& e : world.MutableEntities()) {
         if (e.lifecycle != EntityLifecycle::Active || e.fidelity != SimulationFidelity::Coarse) continue;
         DynamicBody& presentation = world.DynamicBodies()[e.slot];
         if (e.coarseMotion == CoarseMotion::Settled) {
             presentation.SetPoseFromState(e.state.position, e.state.rotation);
             continue;
         }
-        glm::vec3 acceleration = gravity.Sample(e.state.position);
-        for (const RuntimeWorld::PointMassSource& source : world.PointMassSources()) {
-            acceleration += CelestialGravity::AccelerationFromPointMass(
-                source.position, source.gravitationalParameter, e.state.position);
-        }
-        if (e.definition.celestial && e.definition.body) {
-            for (const Mass& other : masses) {
-                if (other.id == e.id) continue;
-                acceleration += CelestialGravity::ForceOnB(other.position, other.mass, e.state.position,
-                                                           e.definition.body->mass) /
-                                e.definition.body->mass;
-            }
-        }
-        e.state.linearVelocity += acceleration * dt;
+        // Local fields apply to ordinary Full and Coarse entities alike.
+        // Static point-mass sources are selected only by Celestial-mode
+        // vehicles, whose capability requires Full fidelity (Simulation).
+        e.state.linearVelocity += gravity.Sample(e.state.position) * dt;
         e.state.position += e.state.linearVelocity * dt;
         e.state.rotation = IntegrateOrientation(e.state.rotation, e.state.angularVelocity, dt);
         presentation.SetPoseFromState(e.state.position, e.state.rotation);

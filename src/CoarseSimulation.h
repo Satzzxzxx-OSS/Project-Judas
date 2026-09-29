@@ -14,10 +14,11 @@ class RuntimeWorld;
 //              integrator uses (velocity, then position; quaternion
 //              integrated from angular velocity), driven by the same
 //              acceleration sources a live body receives: the scene's local
-//              gravity contexts, static point-mass sources, and pairwise
-//              Newtonian gravity with the other celestial participants
-//              (live ones read from PhysicsWorld, coarse ones from their
-//              records). No contacts, no friction, no drag.
+//              gravity contexts and pairwise Newtonian gravity with the
+//              other celestial participants. Static point-mass sources belong
+//              only to Celestial-mode vehicles, which require Full fidelity.
+//              No contacts, no friction, no drag. Mutual celestial forces
+//              wake a Settled coarse celestial into inertial motion.
 //
 // This is real reduced physics, not an animation: the state it evolves is
 // exactly the state reconstruction needs, so promoting back to Full hands
@@ -32,4 +33,11 @@ class RuntimeWorld;
 // player, pilotable vehicles, compound bodies) keep their entities at Full
 // by capability (RuntimeWorld::EntityRequiresFull); this file never sees
 // them.
+// Call before PhysicsWorld::Step, once per fixed step. Each pair involving a
+// Coarse celestial is evaluated from start-of-step poses exactly once; Full
+// bodies receive accumulated force and Coarse records its reciprocal velocity
+// kick. Full/Full pair forces remain owned by CelestialGravity::ApplyForces.
+void ApplyCoarseCelestialForces(RuntimeWorld& world, float fixedDeltaTime);
+
+// Local acceleration and pose drift, after the force preparation above.
 void StepCoarseEntities(RuntimeWorld& world, float fixedDeltaTime);

@@ -46,19 +46,9 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     PrepareDynamicBodiesForStep(world.DynamicBodies(), gravity, physics, fixedDeltaTime,
                                 excludedFromLocalGravity);
     world.Celestial().ApplyForces(physics);
-    // Milestone 29: a Coarse celestial entity still pulls on the live ones
-    // (CoarseSimulation applies the reciprocal pull to it), so a pair split
-    // across fidelities keeps attracting each other.
-    for (const EntityRecord& coarse : world.Entities()) {
-        if (coarse.lifecycle != EntityLifecycle::Active || coarse.fidelity != SimulationFidelity::Coarse ||
-            !coarse.definition.celestial || !coarse.definition.body) continue;
-        for (const BodyHandle live : world.CelestialParticipants()) {
-            if (!physics.IsDynamicBody(live)) continue;
-            physics.ApplyForce(live, CelestialGravity::ForceOnB(coarse.state.position, coarse.definition.body->mass,
-                                                                physics.GetTransform(live).position,
-                                                                physics.GetMass(live)));
-        }
-    }
+    // Cross-fidelity forces use the same pre-step geometry and one shared
+    // force per pair; the coarse velocity kick precedes both pose advances.
+    ApplyCoarseCelestialForces(world, fixedDeltaTime);
 
     if (world.GetVehicle() && excludedFromLocalGravity.IsValid()) {
         const auto start = measurements && measurements->measureAtmosphere ? Clock::now()

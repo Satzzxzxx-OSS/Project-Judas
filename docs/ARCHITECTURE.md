@@ -7308,14 +7308,22 @@ bodies are not supported (no engine primitive exists); an unknown terrain
 identifier or missing mesh/texture fails the whole build with the object
 id and name.
 
+FTFT7 also ensures a Local vehicle carrying an explicit `celestial` component
+is registered exactly once. Operator-force handles are rebuilt from live entity
+definitions across creation, destruction and fidelity reconstruction. A dynamic
+celestial pair exchanges mutual force;
+a deliberately static point-mass source remains an external anchored source.
+The normal fixed-step integrator has finite timestep error, not exact orbital
+energy conservation. See [executed FTFT7 evidence](evidence/stabilization/ftft7/README.md).
+
 ### Fixed-step ordering (`src/Simulation.h`)
 
 `StepPlayedWorld` is the M7-Final..M27 interactive step, verbatim in order:
-dynamic bodies sample local gravity → pairwise celestial forces → vehicle
+dynamic bodies sample local gravity → Full/Full and cross-fidelity celestial forces → vehicle
 point-mass gravity and aerodynamic drag → M20 operator thrust → carried
 object forces/torque → vehicle pilot forces → door/switch animation →
 `PhysicsWorld::Step` → combustion → fluid emission and solve with the
-coupling rule above → player (attached or walking) → presentation sync.
+coupling rule above → Coarse local acceleration/drift → player (attached or walking) → presentation sync.
 Both the interactive loop and both harness modes call this one function;
 nothing is approximated harness-side any more.
 
@@ -7506,20 +7514,26 @@ the ONLY place any system asks "how is this entity being simulated". No
 subsystem has an `if (farAway)`; presentation draws Full and Coarse
 entities from their slot poses and skips Dormant ones, the fluid solver
 collides with live bodies only, `CelestialGravity` pairs live celestial
-bodies while `CoarseSimulation` and `Simulation` exchange pulls between
-live and coarse celestial bodies so a pair split across fidelities keeps
-attracting.
+bodies. `ApplyCoarseCelestialForces` evaluates each pair involving an Active
+Coarse celestial once from start-of-step geometry, distributes the same force
+with opposite signs, and includes automatically participating Local vehicles.
+Full bodies accumulate force before the rigid step; Coarse records receive the
+reciprocal velocity kick before their later drift. FTFT7 repaired the earlier
+post-step/omitted reactions; its pre-fix evidence is retained separately.
 
 **Coarse semantics** (`src/CoarseSimulation.h`) are deliberately modest
 and honest:
 
 - *Settled* (captured when the entity left Full below 5 cm/s and 0.05
   rad/s): frozen. It is assumed to remain supported by whatever static
-  geometry it rested on. Zero work.
+  geometry it rested on. A nonzero mutual celestial force invalidates that
+  assumption and wakes a Coarse celestial into Inertial motion.
 - *Inertial*: the same symplectic Euler update as `IntegrateRigidBody`,
   driven by the same accelerations a live body gets — the scene's gravity
-  contexts, static point-mass sources, pairwise Newtonian gravity with the
-  other celestial participants — and **no contacts**. This is real
+  contexts and, for celestial participants, pairwise Newtonian gravity —
+  and **no contacts**. Static point-mass sources are selected only by
+  Celestial-mode vehicles, which require Full fidelity; ordinary Coarse
+  bodies do not gain an extra unselected gravity source on demotion. This is real
   reduced physics over exactly the state reconstruction needs; the
   measured coarse arc of a thrown crate matches the live integrator to
   2 mm, and a zero-g sphere's full/coarse/full run matches an all-full run

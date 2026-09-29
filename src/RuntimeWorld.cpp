@@ -385,11 +385,7 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
         // --- Celestial ---
         if (o.celestial) {
             if (!o.body) return fail(o, "celestial needs a body");
-            if (isDynamic) {
-                if (o.celestial->operatorThrustForce > 0.0f) {
-                    m_operatorThrusts.push_back({bodyHandle, o.celestial->operatorThrustForce});
-                }
-            } else {
+            if (!isDynamic) {
                 if (!(o.celestial->gravitationalParameter > 0.0f)) {
                     return fail(o, "a static celestial source needs a positive gravitational parameter");
                 }
@@ -487,14 +483,27 @@ void RuntimeWorld::RebuildCelestialParticipants() {
     // Coarse celestial entities contribute through CoarseSimulation and
     // Simulation's coarse-to-live pass instead.
     m_celestialParticipants.clear();
+    m_operatorThrusts.clear();
     bool anyCelestial = false;
     for (const EntityRecord& e : m_entities) {
         if (e.lifecycle == EntityLifecycle::Destroyed || !e.definition.celestial) continue;
         anyCelestial = true;
-        if (e.fidelity == SimulationFidelity::Full) m_celestialParticipants.push_back(m_dynamicBodies[e.slot].Handle());
+        if (e.fidelity == SimulationFidelity::Full) {
+            const BodyHandle handle = m_dynamicBodies[e.slot].Handle();
+            m_celestialParticipants.push_back(handle);
+            // Operator forces belong to the entity definition, but their
+            // physics handle belongs to this live incarnation. Rebuild both
+            // inventories after creation, destruction or fidelity transitions.
+            if (e.definition.celestial->operatorThrustForce > 0.0f)
+                m_operatorThrusts.push_back({handle, e.definition.celestial->operatorThrustForce});
+        }
     }
     if (m_vehicle && m_vehicle->component.gravity == SceneVehicleGravity::Local && anyCelestial) {
-        m_celestialParticipants.push_back(m_vehicle->handle);
+        // A vehicle may also explicitly carry the celestial component. It is
+        // still one physical participant, not a second copy of every pair.
+        const auto present = std::find_if(m_celestialParticipants.begin(), m_celestialParticipants.end(),
+            [&](BodyHandle handle) { return handle.id == m_vehicle->handle.id; });
+        if (present == m_celestialParticipants.end()) m_celestialParticipants.push_back(m_vehicle->handle);
     }
     m_celestial = std::make_unique<CelestialGravity>(m_celestialParticipants);
 }
