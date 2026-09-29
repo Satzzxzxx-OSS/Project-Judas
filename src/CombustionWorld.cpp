@@ -49,6 +49,7 @@ struct RadiativePair {
     std::size_t first = 0;
     std::size_t second = 0;
     double exchangeArea = 0.0; // reciprocal m^2 view-area approximation
+    double requestedWatts = 0.0;
 };
 } // namespace
 
@@ -90,7 +91,7 @@ void CombustionWorld::Reset() {
 }
 
 void CombustionWorld::Step(float fixedDeltaTime, const PhysicsWorld& physics,
-                            const AtmosphereField& atmosphere,
+                            const AtmosphereField* atmosphere,
                             const ReferenceFrame& planetFrame,
                             const RadiantHeater* heater) {
     if (!(fixedDeltaTime > 0.0f) || !std::isfinite(fixedDeltaTime)) {
@@ -109,6 +110,9 @@ void CombustionWorld::Step(float fixedDeltaTime, const PhysicsWorld& physics,
     std::vector<glm::vec3> positions(count);
     std::vector<AtmosphereSample> gasSamples(count);
     std::vector<double> thermalPower(count, 0.0);
+    std::vector<double> conductance(count, 0.0);
+    std::vector<double> environmentalPower(count, 0.0);
+    std::vector<double> exchangeScale(count, 1.0);
     std::vector<double> viewedArea(count, 0.0);
     std::vector<double> rawViewedArea(count, 0.0);
     std::vector<RadiativePair> pairs;
@@ -129,11 +133,13 @@ void CombustionWorld::Step(float fixedDeltaTime, const PhysicsWorld& physics,
         state.environmentalHeatWattsReceived = 0.0f;
         state.relativeAirspeedMetersPerSecond = 0.0f;
         state.localOxidizerMassDensity = 0.0f;
+        state.heatExchangeScale = 1.0f;
+        state.limitedHeatExchangeJ = 0.0;
         if (!physics.IsDynamicBody(state.body)) continue;
 
         active[i] = true;
         positions[i] = physics.GetTransform(state.body).position;
-        gasSamples[i] = atmosphere.Sample(positions[i], planetFrame);
+        if (atmosphere) gasSamples[i] = atmosphere->Sample(positions[i], planetFrame);
         const AtmosphereSample& gas = gasSamples[i];
         state.localOxidizerMassDensity = gas.oxidizerMassDensity;
         if (gas.density > 0.0f) {
@@ -183,10 +189,15 @@ void CombustionWorld::Step(float fixedDeltaTime, const PhysicsWorld& physics,
         const double watts = emissivity * kStefanBoltzmann * pair.exchangeArea *
             (FourthPower(m_states[pair.first].temperatureKelvin) -
              FourthPower(m_states[pair.second].temperatureKelvin));
-        thermalPower[pair.first] -= watts;
-        thermalPower[pair.second] += watts;
-        m_states[pair.first].pairwiseHeatWattsReceived -= static_cast<float>(watts);
-        m_states[pair.second].pairwiseHeatWattsReceived += static_cast<float>(watts);
+        pair.requestedWatts = watts;
+        const double ti = m_states[pair.first].temperatureKelvin;
+        const double tj = m_states[pair.second].temperatureKelvin;
+        // Secant conductance, also defined when ti == tj. It is used only
+        // for the timestep stability budget; scale=1 retains the old flux.
+        const double g = emissivity * kStefanBoltzmann * pair.exchangeArea *
+                         (ti * ti + tj * tj) * (ti + tj);
+        conductance[pair.first] += g;
+        conductance[pair.second] += g;
     }
 
     // The heater's finite input power is intercepted geometrically. If
@@ -255,7 +266,7 @@ void CombustionWorld::Step(float fixedDeltaTime, const PhysicsWorld& physics,
         // Convective exchange grows with local gas density and relative
         // speed. Vacuum leaves only thermal radiation to cold surroundings.
         const double densityRatio = gas.density > 0.0f
-            ? static_cast<double>(gas.density) / atmosphere.Parameters().referenceDensity
+            ? static_cast<double>(gas.density) / atmosphere->Parameters().referenceDensity
             : 0.0;
         const double convectionCoefficient =
             material.convectionCoefficientWattsPerSquareMeterKelvin * densityRatio *
@@ -269,21 +280,49 @@ void CombustionWorld::Step(float fixedDeltaTime, const PhysicsWorld& physics,
             (FourthPower(gas.temperatureKelvin) -
              FourthPower(state.previousTemperatureKelvin));
         const double environmentalWatts = convectiveWatts + radiativeWatts;
-        state.environmentalHeatWattsReceived = static_cast<float>(environmentalWatts);
-        thermalPower[i] += environmentalWatts;
+        environmentalPower[i] = environmentalWatts;
+        const double ti = state.previousTemperatureKelvin;
+        const double tg = gas.temperatureKelvin;
+        conductance[i] += convectionCoefficient * material.radiativeAreaSquareMeters +
+            material.emissivity * kStefanBoltzmann * openArea * (ti * ti + tg * tg) * (ti + tg);
     }
 
-    // A common constant exposed-layer heat capacity converts net energy
-    // into temperature. Body mass/inertia and motion are untouched. The
-    // floor is a numerical guard for extreme user-supplied coefficients,
-    // not an ignition/extinguishing rule; ordinary calibrated steps stay
-    // far from it.
+    // Explicit, documented passive-exchange approximation for stiff data.
+    // dt*sum(G_actual)/C <= 1/2 gives a convex temperature update with at
+    // least half the old temperature retained. Each reciprocal edge uses
+    // ONE scale, preserving equal/opposite transfer. Chemical/heater power
+    // is external to this passive maximum-principle argument. There is no
+    // post-temperature floor and no unreported energy correction.
     for (std::size_t i = 0; i < count; ++i) {
         if (!active[i]) continue;
+        if (conductance[i] > 0.0)
+            exchangeScale[i] = std::min(1.0, m_materials[i].heatCapacityJPerK /
+                (2.0 * fixedDeltaTime * conductance[i]));
+        m_states[i].heatExchangeScale = static_cast<float>(exchangeScale[i]);
+    }
+    for (const RadiativePair& pair : pairs) {
+        const double watts = pair.requestedWatts *
+            std::min(exchangeScale[pair.first], exchangeScale[pair.second]);
+        thermalPower[pair.first] -= watts;
+        thermalPower[pair.second] += watts;
+        m_states[pair.first].pairwiseHeatWattsReceived -= static_cast<float>(watts);
+        m_states[pair.second].pairwiseHeatWattsReceived += static_cast<float>(watts);
+        const double withheld = std::abs(pair.requestedWatts - watts) * fixedDeltaTime;
+        m_states[pair.first].limitedHeatExchangeJ += withheld;
+        m_states[pair.second].limitedHeatExchangeJ += withheld;
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        if (!active[i]) continue;
+        const double watts = environmentalPower[i] * exchangeScale[i];
+        m_states[i].environmentalHeatWattsReceived = static_cast<float>(watts);
+        m_states[i].limitedHeatExchangeJ += std::abs(environmentalPower[i] - watts) * fixedDeltaTime;
+        thermalPower[i] += watts;
         const double temperature = m_states[i].previousTemperatureKelvin +
             thermalPower[i] * fixedDeltaTime / m_materials[i].heatCapacityJPerK;
-        m_states[i].temperatureKelvin = static_cast<float>(
-            std::max(1.0, std::isfinite(temperature) ? temperature : 1.0));
+        const float representedTemperature = static_cast<float>(temperature);
+        if (!(temperature >= 0.0) || !std::isfinite(representedTemperature))
+            throw std::overflow_error("CombustionWorld temperature exceeds its finite numeric range");
+        m_states[i].temperatureKelvin = representedTemperature;
     }
 }
 

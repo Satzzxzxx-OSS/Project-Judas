@@ -17,7 +17,7 @@ SDL-created context; generation and license provenance are recorded in
 
 ## Status: adversarial-audit stabilization in progress
 
-FTFT1–4 repairs are checkpointed or passing their closure validation. See
+FTFT1–8 are checkpointed or passing closure validation; fluid stabilization follows. See
 [`docs/FTFT.md`](docs/FTFT.md) for the exact status and evidence. No new
 milestone tag is implied. Full M32 liquid/solid coupling remains unfinished;
 its production remediation follows the independent stabilization items.
@@ -437,6 +437,21 @@ of orchestration, and the Dear ImGui `judas_editor` with an explicit
 Edit/Play split. The operator accepted M28; it is commit `57e69a0` on
 `main`. The M28 portability fix (`glm::glm` as well as
 `glm::glm-header-only`) stands.
+
+## Current thermal scope (FTFT8)
+
+Finite combustible coatings use temperature, fuel and sampled oxidizer; there
+is no burn timer controlling the reaction. The atmosphere is an **open prescribed
+reservoir** and flame/smoke shapes are visual output, not conserved gas CFD.
+Thermal materials also work in ordinary scenes without planetary/atmosphere
+components: absent atmosphere means vacuum radiation and zero oxidizer.
+
+Passive pair/reservoir heat exchange is limited for stiff coefficients so its
+explicit step cannot overshoot the sampled temperatures. Both ends of a pair
+receive the same transfer, and diagnostics expose any limiting. Chemical and
+heater inputs are accounted separately. This is an approximate thermal model
+with fixed carrier mass/heat capacity and no radiation occlusion, not detailed
+chemistry. See [the method and independent checks](docs/evidence/stabilization/ftft8/METHOD.md).
 
 ## Milestone 27 accepted baseline
 

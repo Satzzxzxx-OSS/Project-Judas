@@ -6927,6 +6927,28 @@ deliberately simple engineering approximation, not validated transonic
 or hypersonic aircraft physics. These limits are explicit rather than
 hidden behind a trigger or a direct velocity edit.
 
+## FTFT8 — current thermal accounting
+
+The existing M27 coating remains finite-fuel, temperature- and oxidizer-driven.
+`StepPlayedWorld` invokes the same `CombustionWorld` for an authored atmosphere
+or an explicit null/vacuum sample, so ordinary thermal scenes do not require
+planetary setup. The scripted harness now calls that shared step as well; the
+M27 historical statement below about its older harness is superseded.
+
+The old final 1 K temperature floor could introduce unreported energy. It is
+replaced by a shared passive-conductance stability limit: `s_i=min(1,C_i /
+(2 dt sum G_i))`, reciprocal edges use `min(s_i,s_j)`, and reservoir edges use
+`s_i`. Passive temperatures are convex combinations with self weight at least
+one half; actual pair exchange stays equal and opposite. External heater and
+chemical heat remain separate. Diagnostics expose reduced exchange and actual
+transferred watts. No post-temperature floor supplies heat. See
+[FTFT8 method](evidence/stabilization/ftft8/METHOD.md) for equations and scope.
+
+The gas profile is an open reservoir, smoke is presentation, rigid carrier
+mass and exposed heat capacity stay fixed, and radiation has no occlusion.
+The limiter favors stable coarse steps over exact stiff transfer rates. It
+does not make arbitrary source power or temperatures representable in float.
+
 ## Milestone 27 — finite thermal combustion (accepted)
 
 ### Authoritative state and atmospheric oxidizer

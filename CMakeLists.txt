@@ -767,3 +767,13 @@ target_compile_options(judas_orbital_integrity_tests PRIVATE -Wall -Wextra)
 add_executable(judas_spacecraft_frame_integration_tests tests/SpacecraftFrameIntegrationTests.cpp)
 target_link_libraries(judas_spacecraft_frame_integration_tests PRIVATE judas_engine)
 target_compile_options(judas_spacecraft_frame_integration_tests PRIVATE -Wall -Wextra)
+
+# FTFT8: independent finite-fuel and state-based thermal energy accounting.
+add_executable(judas_thermal_accounting_tests tests/ThermalAccountingTests.cpp)
+target_link_libraries(judas_thermal_accounting_tests PRIVATE judas_engine)
+target_compile_options(judas_thermal_accounting_tests PRIVATE -Wall -Wextra)
+
+# FTFT8: serialized-scene thermal/heater path through ordinary played-world steps.
+add_executable(judas_combustion_integration_tests tests/CombustionIntegrationTests.cpp)
+target_link_libraries(judas_combustion_integration_tests PRIVATE judas_engine)
+target_compile_options(judas_combustion_integration_tests PRIVATE -Wall -Wextra)

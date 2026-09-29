@@ -127,7 +127,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     for (LightSwitch& lightSwitch : world.LightSwitches()) lightSwitch.FixedUpdate(fixedDeltaTime);
     physics.Step(fixedDeltaTime);
 
-    if (!world.Combustibles().empty() && world.GetAtmosphere()) {
+    if (!world.Combustibles().empty()) {
         const auto start = measurements && measurements->measureFire ? Clock::now() : Clock::time_point{};
         RadiantHeater heater;
         if (session.IgniterPowered()) {
@@ -135,8 +135,9 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
                                                       player.GetLookDirection(), 0.7f, 1.5f);
             heater.powerWatts = 18000.0f;
         }
-        world.Combustion().Step(fixedDeltaTime, physics, world.GetAtmosphere()->field,
-                                world.GetAtmosphere()->frame,
+        world.Combustion().Step(fixedDeltaTime, physics,
+                                world.GetAtmosphere() ? &world.GetAtmosphere()->field : nullptr,
+                                world.GetAtmosphere() ? world.GetAtmosphere()->frame : ReferenceFrame{},
                                 session.IgniterPowered() ? &heater : nullptr);
         if (measurements && measurements->measureFire) {
             measurements->fireMilliseconds = MillisecondsSince(start);

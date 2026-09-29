@@ -57,6 +57,10 @@ struct ThermalBodyState {
     float environmentalHeatWattsReceived = 0.0f;
     float relativeAirspeedMetersPerSecond = 0.0f;
     float localOxidizerMassDensity = 0.0f;
+    // Explicit stability-limited passive exchange. Not an energy source:
+    // diagnostics report the actual reduced pair/reservoir transfers.
+    float heatExchangeScale = 1.0f;
+    double limitedHeatExchangeJ = 0.0; // incident withheld exchange, each pair appears at both ends
 };
 
 // An externally powered, isotropic point radiator. The supplied energy
@@ -84,6 +88,13 @@ public:
     // order cannot change spread. Thermal state never edits rigid velocity.
     void Step(float fixedDeltaTime, const PhysicsWorld& physics,
               const AtmosphereField& atmosphere, const ReferenceFrame& planetFrame,
+              const RadiantHeater* heater = nullptr) {
+        Step(fixedDeltaTime, physics, &atmosphere, planetFrame, heater);
+    }
+    // A null atmosphere is vacuum (zero gas, oxidizer and background K),
+    // with the same radiation/heater/fuel mechanism and no planetary setup.
+    void Step(float fixedDeltaTime, const PhysicsWorld& physics,
+              const AtmosphereField* atmosphere, const ReferenceFrame& planetFrame,
               const RadiantHeater* heater = nullptr);
 
     const ThermalBodyState* State(BodyHandle body) const;
