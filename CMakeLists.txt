@@ -38,6 +38,7 @@ endif()
 # dependency.
 
 set(JUDAS_PHYSICS_SOURCES
+    src/ImpactSolver.cpp
     src/RigidBody.cpp
     src/RigidBodyGravity.cpp
     src/Contacts.cpp
@@ -728,3 +729,15 @@ target_link_libraries(judas_contact_storage_tests PRIVATE judas_engine)
 add_executable(judas_timing_defect_probe tests/TimingDefectProbe.cpp)
 target_link_libraries(judas_timing_defect_probe PRIVATE judas_engine)
 target_compile_options(judas_timing_defect_probe PRIVATE -Wall -Wextra)
+
+add_executable(judas_rigid_motion_tests tests/RigidMotionTests.cpp)
+target_link_libraries(judas_rigid_motion_tests PRIVATE judas_engine)
+
+# FTFT4B selected-policy stop-condition witness, not a replacement world solver.
+add_executable(judas_poisson_policy_witness tests/PoissonPolicyWitness.cpp)
+target_link_libraries(judas_poisson_policy_witness PRIVATE judas_engine)
+
+add_executable(judas_impact_solver_tests tests/ImpactSolverTests.cpp)
+target_link_libraries(judas_impact_solver_tests PRIVATE judas_engine)
+add_executable(judas_impact_timing_tests tests/ImpactTimingTests.cpp)
+target_link_libraries(judas_impact_timing_tests PRIVATE judas_engine)

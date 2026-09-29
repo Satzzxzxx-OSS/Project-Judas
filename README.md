@@ -15,41 +15,36 @@ loaded with the vendored GLAD 2.0.8 OpenGL 3.3 Core loader through the
 SDL-created context; generation and license provenance are recorded in
 [`third_party/glad/README.md`](third_party/glad/README.md).
 
-## Status: Milestone 32 rigid-body checkpoint (operator review pending; M32 as scoped is NOT complete)
+## Status: adversarial-audit stabilization in progress
 
-**Milestone 32 was scoped as "Judas learns why shit floats": a real
-rigid-body broadphase and contact solver, plus general liquid/solid
-interaction (buoyancy, two-way coupling, player density, swimming). Only
-the rigid-body half is complete and is extracted here. Liquid/solid
-coupling is deferred** — the particle-liquid architecture did not produce
-correct floating, neutral buoyancy and container behaviour together (see
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), "Milestone 32"). Liquid and
-player behaviour in this checkpoint are exactly Milestone 31's.
+FTFT1–4 repairs are checkpointed or passing their closure validation. See
+[`docs/FTFT.md`](docs/FTFT.md) for the exact status and evidence. No new
+milestone tag is implied. Full M32 liquid/solid coupling remains unfinished;
+its production remediation follows the independent stabilization items.
 
-What is in it:
+Current rigid physics provides:
 
-1. **Broadphase** (`src/Broadphase.h`). A dynamic AABB tree replaces the
-   all-pairs loop; the player's sweep uses it too. 1,500 crates at Full
-   step in about 4 ms (M31: 455.6 ms on the same machine), with 1,500
-   candidate pairs of 1,125,750 possible.
-2. **Contact solver** (`src/ContactSolver.h`). Accumulated, warm-started
-   impulses with Coulomb-disc friction and box-box face clipping. Resting
-   boxes no longer creep (M31: 1.8–38 mm/s), a five-box stack stands, a
-   box holds on a slope within its friction angle and rides a moving
-   platform.
-3. **Speculative contacts.** A body placed touching is supported from its
-   first step (a derived floating-point bound treats rounding-level gaps
-   as touching). **Known limitation:** a restitution-0 body closing faster
-   than 0.5 m/s stops at its pre-contact gap for one step before landing;
-   it never penetrates or gains energy. Not solved; deferred.
-4. **Diagnostics.** Profiler broadphase/narrowphase/solver lines and a
-   "Broadphase bounds" debug view; two demonstration scenes,
-   `rigid_stability.judas` and `broadphase_stress.judas` (1,500 crates).
+1. A dynamic AABB-tree broadphase with exhaustive-oracle coverage, including
+   player sweeps. **1,500 resting crates: 14.266 ms median whole physics step**
+   in the latest seven-run comparison; the older approximately 4 ms result
+   belongs to less-robust geometry.
+2. Pair-local robust primitive geometry, preserved signed gaps and precise
+   local anchors; accumulated warm-start contact impulses, box manifolds
+   and Coulomb friction for sustained support.
+3. Event-time isolated impacts with authored restitution; deliberately
+   inelastic coupled/multiple-contact impacts. Remaining step time is
+   consumed. A transient anchored motion ledger preserves out-and-back
+   travel for dynamic/player queries. Low-speed/event-cap capture and
+   finite-resolution grazing CCD are explicit approximations.
+4. Passing current-engine timing, energy, stack, slope, platform, broadphase,
+   lifecycle and geometry checks. **43 production suites** and protected
+   async/persistence/gravity/near-far integration checks pass for FTFT4.
 
-All 33 suites pass (new: `judas_broadphase_tests`, checked against a
-brute-force oracle, and `judas_rigid_contact_tests`, each case also in a
-rotated, translated universe). Without dynamic bodies the harness is
-byte-identical to M31 at near and far origins.
+See [FTFT4 results](docs/evidence/stabilization/ftft4/RESULTS.md) for exact
+budgets, limitations and costs. Active rotating compounds and moving supports
+cost more than the old endpoint/speculative path; no broad speedup is claimed.
+The earlier zero-gravity stopping, premature bounce and energy-gain failures
+remain preserved as historical evidence, separately from the passing repair.
 
 **Milestone 31 (accepted) — Judas learns it doesn't have to wait.** Expensive
 independent work no longer stops the simulation/render thread:

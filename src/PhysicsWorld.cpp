@@ -5,7 +5,10 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <optional>
+#include <sstream>
+#include <iomanip>
 #include <cstring>
 #include <tuple>
 #include <utility>
@@ -18,6 +21,8 @@
 #include "Narrowphase.h"
 #include "RadialTerrain.h"
 #include "RigidBody.h"
+#include "RigidMotion.h"
+#include "ImpactSolver.h"
 
 // Judas's own rigid-body physics — no middleware. Collision detection,
 // contact generation, contact resolution, and integration are all owned
@@ -136,6 +141,7 @@ struct PhysicsWorld::Impl {
         // dynamic targets; initialized together with the current pose and
         // refreshed immediately before every physics integration.
         glm::vec3 previousPosition{0.0f};
+        RigidMotion motion;
         glm::quat previousOrientation{1.0f, 0.0f, 0.0f, 0.0f};
         Shape shape;
         // Shape is immutable for this slot generation. AddBody replaces the
@@ -175,6 +181,393 @@ struct PhysicsWorld::Impl {
     std::vector<std::pair<unsigned int, unsigned int>> candidatePairs;
     mutable std::vector<unsigned int> queryScratch;
     ContactSolver solver;
+    ImpactSolver impactSolver;
+    struct StartContact {
+        unsigned a,b;
+        std::size_t constraint;
+        float friction, warmNormal;
+        glm::vec3 warmTangent;
+        bool newImpact;
+    };
+    std::vector<StartContact> startContacts;
+    std::vector<std::array<unsigned,4>> separatedPairs;
+    std::vector<std::array<unsigned,4>> supportPairs;
+    struct ScheduledImpact { std::array<unsigned,4> key; double time; };
+    std::vector<ScheduledImpact> scheduledImpacts;
+    std::vector<unsigned> impactCounts;
+    std::vector<unsigned char> impactCapped;
+    double stepDuration = 0;
+
+    RigidBody PoseAt(unsigned slot, double time) const {
+        const Body& b=bodies[slot];
+        RigidBody pose=b.rigidBody;
+        if (b.isDynamic && !b.motion.Segments().empty()) {
+            const auto sampled=b.motion.Evaluate(time);
+            pose.position=sampled.position; pose.orientation=sampled.orientation;
+        }
+        return pose;
+    }
+    static double NormalSpeed(const Contact& c,const RigidBody& a,const RigidBody& b) {
+        const glm::dvec3 ra=c.hasLocalAnchors ? (c.anchorAInWorldFrame ? c.localAnchorA : ContactRotation(a.orientation)*c.localAnchorA) :
+            glm::dvec3(c.point)-glm::dvec3(a.position);
+        const glm::dvec3 rb=c.hasLocalAnchors ? (c.anchorBInWorldFrame ? c.localAnchorB : ContactRotation(b.orientation)*c.localAnchorB) :
+            glm::dvec3(c.point)-glm::dvec3(b.position);
+        return glm::dot(glm::dvec3(c.normal),glm::dvec3(a.linearVelocity-b.linearVelocity)+
+            glm::cross(glm::dvec3(a.angularVelocity),ra)-glm::cross(glm::dvec3(b.angularVelocity),rb));
+    }
+    ContactManifold PairAt(unsigned a,unsigned b,int pa,int pb,double time,float margin) const {
+        const auto aa=PoseAt(a,time),bb=PoseAt(b,time);
+        const ContactPreparedOrientation oa(aa.orientation),ob(bb.orientation);
+        return ComputeContacts(PrimitiveAt(bodies[a].shape,aa,pa,&oa),
+            PrimitiveAt(bodies[b].shape,bb,pb,&ob),margin,&oa,&ob);
+    }
+    // Lower bound on a fixed separating-plane gap along the anchored drift.
+    // For q(t)=normalize(q0+t*Omega*q0/2), instantaneous angular speed is
+    // |omega|/(1+(|omega|t/2)^2). Every rotated vertex has |r''|<=|omega|^2|r_perp|.
+    // Evaluate ALL support vertices, including those not currently extremal.
+    double PlaneDrift(unsigned a,unsigned b,int pa,int pb,double time,const glm::dvec3& n) const {
+        struct Vertex {glm::dvec3 r,velocity;double curvature;};
+        struct Support {std::array<Vertex,8> vertices;int count=0;double radius=0;};
+        auto support=[&](unsigned slot,int part) {
+            Support result;const auto& body=bodies[slot];const auto pose=PoseAt(slot,time);
+            const auto child=PrimitiveAt(body.shape,pose,part);
+            if(child.shape.type!=ShapeType::Box && child.shape.type!=ShapeType::Sphere) return result;
+            const auto rotation=ContactRotation(pose.orientation);
+            const glm::dvec3 omega(body.rigidBody.IsStatic()?glm::vec3(0):body.rigidBody.angularVelocity);
+            const double w2=glm::dot(omega,omega);
+            const double elapsed=body.isDynamic && !body.motion.Segments().empty() ? time-body.motion.Segments().back().begin : 0;
+            const glm::dvec3 instantaneous=omega/(1+.25*w2*elapsed*elapsed);
+            auto vertex=[&](glm::dvec3 local) {
+                const glm::dvec3 r=rotation*local;
+                const glm::dvec3 perpendicular=w2>0 ? r-omega*(glm::dot(omega,r)/w2) : glm::dvec3(0);
+                result.vertices[result.count++]={r,glm::dvec3(body.rigidBody.IsStatic()?glm::vec3(0):body.rigidBody.linearVelocity)+glm::cross(instantaneous,r),
+                                                  w2*glm::length(perpendicular)};
+            };
+            if(child.shape.type==ShapeType::Sphere) {vertex(glm::dvec3(child.parentLocalCenter));result.radius=child.shape.radius;}
+            else for(int k=0;k<8;++k) vertex(glm::dvec3(child.parentLocalCenter)+glm::dvec3(child.shape.halfExtents)*
+                glm::dvec3(k&1?1:-1,k&2?1:-1,k&4?1:-1));
+            return result;
+        };
+        const auto sa=support(a,pa),sb=support(b,pb);
+        if(!sa.count || !sb.count) return 0;
+        const glm::dvec3 delta=glm::dvec3(PoseAt(a,time).position)-glm::dvec3(PoseAt(b,time).position);
+        double advance=std::numeric_limits<double>::infinity();
+        for(int i=0;i<sa.count;++i) for(int j=0;j<sb.count;++j) {
+            const auto& va=sa.vertices[i];const auto& vb=sb.vertices[j];
+            const double gap=glm::dot(n,delta+va.r-vb.r)-sa.radius-sb.radius;
+            if(!(gap>0)) return 0; // This sampled normal cannot certify a separating plane.
+            const double rate=glm::dot(n,va.velocity-vb.velocity),curvature=va.curvature+vb.curvature;
+            double root=std::numeric_limits<double>::infinity();
+            if(curvature>0) {
+                const double discriminant=std::sqrt(rate*rate+2*curvature*gap);
+                root=rate<0 ? 2*gap/(discriminant-rate) : (rate+discriminant)/curvature;
+            } else if(rate<0) root=-gap/rate;
+            advance=std::min(advance,root);
+        }
+        return advance;
+    }
+
+    // Conservative advancement along a separating plane. Translation projected
+    // onto that plane plus |omega|*radius bounds its possible closing speed.
+    // Anchored quaternion interpolation turns no faster than |omega|.
+    double ImpactTime(unsigned a,unsigned b,int pa,int pb,double start,double finish) {
+        ++stats.impactQueries;
+        const auto& ba=bodies[a]; const auto& bb=bodies[b];
+        const glm::dvec3 relative=glm::dvec3(ba.rigidBody.IsStatic()?glm::vec3(0):ba.rigidBody.linearVelocity)-glm::dvec3(bb.rigidBody.IsStatic()?glm::vec3(0):bb.rigidBody.linearVelocity);
+        const double angular=(ba.rigidBody.IsStatic()?0:glm::length(glm::dvec3(ba.rigidBody.angularVelocity))*ba.boundingRadius)+
+                             (bb.rigidBody.IsStatic()?0:glm::length(glm::dvec3(bb.rigidBody.angularVelocity))*bb.boundingRadius);
+        const double speed=glm::length(relative)+angular;
+        if (!(speed>0)) return finish+1;
+        double time=start, previous=start;
+        bool uncertifiedAdvance=false;
+        for (int iteration=0;iteration<64;++iteration) {
+            ++stats.impactSearchIterations;stats.impactPeakIterations=std::max(stats.impactPeakIterations,std::size_t(iteration+1));
+            const float reach=std::nextafter(static_cast<float>(speed*(finish-time)),
+                                             std::numeric_limits<float>::infinity());
+            // Margin manifolds contain proximity features, not necessarily the
+            // zero-margin contact set. Contact truth must use the latter.
+            const auto actual=PairAt(a,b,pa,pb,time,0);
+            if(actual.count) {
+                if(time==start) return finish+1;
+                double lo=previous,hi=time;
+                for(int k=0;k<32;++k) {
+                    const double mid=(lo+hi)*.5;
+                    if(PairAt(a,b,pa,pb,mid,0).count) hi=mid;else lo=mid;
+                }
+                return hi;
+            }
+            const auto manifold=PairAt(a,b,pa,pb,time,reach);
+            if (!manifold.count) return finish+1;
+            const Contact* nearest=&manifold.points[0];
+            for (int k=1;k<manifold.count;++k)
+                if (manifold.points[k].signedSeparation<nearest->signedSeparation) nearest=&manifold.points[k];
+            const double gap=nearest->hasLocalAnchors ? nearest->signedSeparation : -double(nearest->penetration);
+            if(gap<=0) {
+                // Some specialized geometry (notably terrain) excludes exact
+                // equality at zero margin while a proximity query includes it.
+                // The latter is not a certified separating plane or an impact.
+                // Let bounded actual-contact sampling establish contact truth.
+                ++stats.impactUncertifiedAdvances;
+                uncertifiedAdvance=true;
+                break;
+            }
+            const double closing=-glm::dot(relative,nearest->hasLocalAnchors ? nearest->preciseNormal : glm::dvec3(nearest->normal))+angular;
+            if (!(closing>0)) return finish+1;
+            double increment=gap/closing;
+            if(angular>0) increment=std::max(increment,PlaneDrift(a,b,pa,pb,time,nearest->hasLocalAnchors ? nearest->preciseNormal : glm::dvec3(nearest->normal)));
+            // Progress in represented time only. A large coordinate orthogonal
+            // to motion must not enlarge the step and skip a thin obstacle.
+            increment=std::max(increment,std::nextafter(time,finish)-time);
+            previous=time;
+            time=std::min(finish,time+increment);
+            if (time<=previous) return finish+1;
+        }
+        if(!uncertifiedAdvance) ++stats.impactSearchLimit;
+        ++stats.impactSamplingFallbacks;
+        // Rotating grazing features can keep a fixed separating-plane bound
+        // arbitrarily short. Finish this PAIR query with a bounded temporal
+        // sampling approximation, never by applying an impulse across a gap.
+        // Intersections shorter than the reported sampling interval can be
+        // missed; this is deliberately not a complete continuous-CCD proof.
+        auto firstContact=[&](double lo,double hi) {
+            for(int k=0;k<32;++k) {
+                const double mid=(lo+hi)*.5;
+                if(PairAt(a,b,pa,pb,mid,0).count) hi=mid;else lo=mid;
+            }
+            return hi;
+        };
+        ++stats.impactSamplingTests;
+        if(PairAt(a,b,pa,pb,time,0).count) return firstContact(previous,time);
+        const double remaining=finish-time;
+        if(!(remaining>0)) return finish+1;
+        auto primitiveFeature=[&](unsigned slot,int part) {
+            const Shape& shape=bodies[slot].shape;
+            if(shape.type==ShapeType::Sphere) return double(shape.radius);
+            const glm::vec3 half=shape.type==ShapeType::CompoundBoxes
+                ? shape.boxes[std::size_t(part)].halfExtents : shape.halfExtents;
+            if(shape.type==ShapeType::Box || shape.type==ShapeType::CompoundBoxes)
+                return double(std::min({half.x,half.y,half.z}));
+            // Terrain uses the other, finite rigid primitive's feature size.
+            return std::numeric_limits<double>::infinity();
+        };
+        const double feature=std::min(primitiveFeature(a,pa),primitiveFeature(b,pb));
+        if(!(feature>0)) throw std::runtime_error("invalid primitive feature in impact sampling");
+        const double angularSpeed=(ba.rigidBody.IsStatic()?0:glm::length(glm::dvec3(ba.rigidBody.angularVelocity)))+
+                                  (bb.rigidBody.IsStatic()?0:glm::length(glm::dvec3(bb.rigidBody.angularVelocity)));
+        const double requested=std::max({16.0,std::ceil(16.0*speed*remaining/feature),
+                                              std::ceil(256.0*angularSpeed*remaining)});
+        constexpr unsigned kMaxSamples=65536;
+        if(requested>double(kMaxSamples)) ++stats.impactSamplingResolutionCaps;
+        const unsigned samples=static_cast<unsigned>(std::min(double(kMaxSamples),requested));
+        const double interval=remaining/double(samples);
+        stats.impactSamplingMaxInterval=std::max(stats.impactSamplingMaxInterval,interval);
+        double lo=time;
+        for(unsigned sample=1;sample<=samples;++sample) {
+            const double hi=sample==samples ? finish : time+remaining*(double(sample)/double(samples));
+            ++stats.impactSamplingTests;
+            if(PairAt(a,b,pa,pb,hi,0).count) return firstContact(lo,hi);
+            lo=hi;
+        }
+        return finish+1;
+    }
+
+    void ResolveInitialImpacts(float dt) {
+        if (std::none_of(startContacts.begin(),startContacts.end(),[](const auto& c){return c.newImpact;})) return;
+        std::vector<Contact> geometry;
+        geometry.reserve(solver.Constraints().size());
+        for(const auto& c:solver.Constraints()) {
+            Contact g;g.hit=true;g.point=c.point;g.normal=c.normal;g.preciseNormal=c.preciseNormal;
+            g.penetration=c.penetration;g.signedSeparation=c.signedSeparation;
+            g.localAnchorA=c.localAnchorA;g.localAnchorB=c.localAnchorB;g.hasLocalAnchors=c.hasLocalAnchors;
+            g.anchorAInWorldFrame=c.anchorAInWorldFrame;g.anchorBInWorldFrame=c.anchorBInWorldFrame;
+            geometry.push_back(g);
+        }
+        std::vector<unsigned> parent(bodies.size());
+        for (unsigned i=0;i<parent.size();++i) parent[i]=i;
+        auto root=[&](unsigned i){while(parent[i]!=i) {parent[i]=parent[parent[i]];i=parent[i];}return i;};
+        for (const auto& c:startContacts) if (!bodies[c.a].rigidBody.IsStatic() && !bodies[c.b].rigidBody.IsStatic())
+            parent[root(c.b)]=root(c.a);
+        std::vector<std::pair<unsigned,std::size_t>> order;
+        for (std::size_t i=0;i<startContacts.size();++i) {
+            const auto& c=startContacts[i];
+            order.emplace_back(root(bodies[c.a].rigidBody.IsStatic()?c.b:c.a),i);
+        }
+        std::sort(order.begin(),order.end());
+        for (std::size_t begin=0;begin<order.size();) {
+            std::size_t end=begin+1; bool impact=startContacts[order[begin].second].newImpact;
+            while(end<order.size() && order[end].first==order[begin].first) {
+                impact=impact||startContacts[order[end].second].newImpact;++end;
+            }
+            if (impact) {
+                std::vector<ImpactContact> rows;
+                for (auto k=begin;k<end;++k) {
+                    auto& c=startContacts[order[k].second];
+                    const bool persistent=c.warmNormal>0;
+                    c.warmNormal=0;c.warmTangent=glm::vec3(0);
+                    if (geometry[c.constraint].signedSeparation>0) continue;
+                    auto& a=bodies[c.a];auto& b=bodies[c.b];
+                    rows.push_back({&a.rigidBody,&b.rigidBody,geometry[c.constraint],c.friction,
+                                    std::max(a.restitution,b.restitution),persistent});
+                }
+                const auto result=impactSolver.Solve(rows,dt);
+                if(!result.energyBudgetSatisfied) throw std::runtime_error("inelastic impact energy guard failed");
+                if(result.effectiveRestitution==0) for(auto k=begin;k<end;++k) startContacts[order[k].second].newImpact=false;
+                ++stats.impactEvents; stats.impactSafetyFallback+=result.safetyFallback;
+            }
+            begin=end;
+        }
+        // Only the rare time-zero impact path needs rebuilt warm-start inputs.
+        // Persistent contact solver arithmetic and APIs remain unchanged.
+        solver.Clear();
+        for(const auto& c:startContacts) {
+            auto& a=bodies[c.a];auto& b=bodies[c.b];
+            const auto& oa=Orientation(a);const auto& ob=Orientation(b);
+            solver.AddContact(a.rigidBody,b.rigidBody,geometry[c.constraint],c.friction,0,
+                c.warmNormal,c.warmTangent,&oa.rotation,&ob.rotation);
+        }
+    }
+
+    void AdvanceImpacts(float dt) {
+        stepDuration=dt;
+        impactCounts.assign(bodies.size(),0); impactCapped.assign(bodies.size(),0);
+        for (const auto slot:aliveSlots) if (bodies[slot].isDynamic)
+            bodies[slot].motion.Begin(MakeHandle(slot).id,bodies[slot].rigidBody,dt);
+        // Initial touching impacts can launch a previously stationary body.
+        // Refresh those trajectories before searching for a separated event.
+        if(stats.impactEvents) {
+            for(auto slot:aliveSlots) if(bodies[slot].isDynamic) CoverStepReach(bodies[slot],dt);
+            GenerateCandidatePairs(); separatedPairs.clear();
+            for(const auto& pair:candidatePairs)
+                for(int pa=0;pa<PrimitiveCount(bodies[pair.first].shape);++pa)
+                    for(int pb=0;pb<PrimitiveCount(bodies[pair.second].shape);++pb)
+                        separatedPairs.push_back({pair.first,pair.second,unsigned(pa),unsigned(pb)});
+        }
+        double now=0;
+        scheduledImpacts.clear();
+        std::map<std::array<unsigned,4>,std::size_t> scheduledIndex;
+        auto schedule=[&](const std::array<unsigned,4>& key) {
+            const double time=std::binary_search(supportPairs.begin(),supportPairs.end(),key) ? double(dt)+1 :
+                ImpactTime(key[0],key[1],int(key[2]),int(key[3]),now,dt);
+            const auto found=scheduledIndex.find(key);
+            if(found!=scheduledIndex.end()) scheduledImpacts[found->second].time=time;
+            else {scheduledIndex.emplace(key,scheduledImpacts.size());scheduledImpacts.push_back({key,time});}
+        };
+        for(const auto& key:separatedPairs) schedule(key);
+        for (;;) {
+            double earliest=double(dt)+1; unsigned seedA=0,seedB=0;
+            std::array<unsigned,4> selected{};
+            for (const auto& event:scheduledImpacts) {
+                if(event.time<earliest || (event.time==earliest && event.key<selected)) {
+                    earliest=event.time;selected=event.key;seedA=event.key[0];seedB=event.key[1];
+                }
+            }
+            if (earliest>dt) break;
+            now=earliest;
+            std::vector<unsigned> island;
+            std::vector<unsigned char> included(bodies.size(),0);
+            auto include=[&](unsigned slot){if(!included[slot] && !bodies[slot].rigidBody.IsStatic()) {
+                included[slot]=1;island.push_back(slot);}};
+            include(seedA);include(seedB);
+            std::vector<std::pair<unsigned,unsigned>> touching;
+            for (std::size_t next=0;next<island.size();++next) {
+                const unsigned a=island[next]; const auto pose=PoseAt(a,now);
+                const auto candidates=QuerySlots(ShapeAabb(bodies[a].shape,pose.position,pose.orientation));
+                for (unsigned b:candidates) {
+                    if (a==b) continue;
+                    const auto pair=std::minmax(a,b);
+                    if (std::find(touching.begin(),touching.end(),std::pair<unsigned,unsigned>(pair))!=touching.end()) continue;
+                    bool hit=false;
+                    for(int pa=0;pa<PrimitiveCount(bodies[a].shape);++pa)
+                        for(int pb=0;pb<PrimitiveCount(bodies[b].shape);++pb)
+                            hit=hit||PairAt(a,b,pa,pb,now,0).count>0;
+                    if(hit) {touching.emplace_back(pair);include(b);}
+                }
+            }
+            // A supported body's incoming impact is mechanically coupled even
+            // when a cached support point currently has a small positive gap.
+            // This only chooses restitution zero: separated support geometry
+            // is never inserted into the actual-contact impulse rows below.
+            const bool supportedIsland=std::any_of(supportPairs.begin(),supportPairs.end(),
+                [&](const auto& pair){return included[pair[0]] || included[pair[1]];});
+            bool capture=supportedIsland;
+            std::vector<std::pair<glm::vec3,glm::vec3>> oldVelocities;
+            oldVelocities.reserve(island.size());
+            for(unsigned slot:island) {
+                auto& body=bodies[slot];const auto pose=PoseAt(slot,now);
+                oldVelocities.emplace_back(body.rigidBody.linearVelocity,body.rigidBody.angularVelocity);
+                body.rigidBody.position=pose.position;body.rigidBody.orientation=pose.orientation;
+                if (++impactCounts[slot]>16) {
+                    if(!impactCapped[slot]) {impactCapped[slot]=1;++stats.impactEventCapFallback;}
+                    capture=true;
+                }
+            }
+            std::vector<ImpactContact> rows;
+            std::vector<std::array<unsigned,4>> eventPairs;
+            for (const auto& pair:touching) {
+                auto& a=bodies[pair.first];auto& b=bodies[pair.second];
+                for(int pa=0;pa<PrimitiveCount(a.shape);++pa)
+                    for(int pb=0;pb<PrimitiveCount(b.shape);++pb) {
+                        const auto m=PairAt(pair.first,pair.second,pa,pb,now,0);
+                        if(m.count) eventPairs.push_back({pair.first,pair.second,unsigned(pa),unsigned(pb)});
+                        for(int k=0;k<m.count;++k) {
+                            rows.push_back({&a.rigidBody,&b.rigidBody,m.points[k],
+                                std::sqrt(std::max(0.f,a.friction)*std::max(0.f,b.friction)),
+                                std::max(a.restitution,b.restitution),false});
+                            lastStepContacts.push_back({m.points[k].point,m.points[k].normal,m.points[k].penetration});
+                        }
+                    }
+            }
+            if(rows.empty()) throw std::runtime_error("impact bracket lost contact geometry");
+            const auto result=impactSolver.Solve(rows,dt,capture);
+            if(!result.energyBudgetSatisfied) throw std::runtime_error("inelastic impact energy guard failed");
+            if(result.effectiveRestitution==0) {
+                supportPairs.insert(supportPairs.end(),eventPairs.begin(),eventPairs.end());
+                std::sort(supportPairs.begin(),supportPairs.end());supportPairs.erase(std::unique(supportPairs.begin(),supportPairs.end()),supportPairs.end());
+            }
+            ++stats.impactEvents;stats.impactSafetyFallback+=result.safetyFallback;
+            contactCache.erase(std::remove_if(contactCache.begin(),contactCache.end(),
+                [&](const CachedContact& c){return included[c.key.slotA] || included[c.key.slotB];}),contactCache.end());
+            std::vector<unsigned> changed;
+            for(std::size_t i=0;i<island.size();++i) {
+                const auto slot=island[i];auto& b=bodies[slot];
+                if(SamePosition(oldVelocities[i].first,b.rigidBody.linearVelocity) &&
+                   SamePosition(oldVelocities[i].second,b.rigidBody.angularVelocity)) continue;
+                changed.push_back(slot);
+                b.motion.ChangeVelocity(b.rigidBody,now);
+                CoverStepReach(b,static_cast<float>(dt-now));
+                supportPairs.erase(std::remove_if(supportPairs.begin(),supportPairs.end(),[&](const auto& pair) {
+                    return (pair[0]==slot || pair[1]==slot) &&
+                        std::find(eventPairs.begin(),eventPairs.end(),pair)==eventPairs.end();
+                }),supportPairs.end());
+            }
+            // Cached event times depend only on the two anchored trajectories.
+            // Recompute incident queries after an actual velocity change; retain
+            // every unaffected event (including disjoint simultaneous events).
+            std::vector<std::array<unsigned,4>> dirty;
+            dirty.push_back(selected); // retire the event even if its impulse is zero
+            for(const auto& event:scheduledImpacts)
+                if(std::find(changed.begin(),changed.end(),event.key[0])!=changed.end() ||
+                   std::find(changed.begin(),changed.end(),event.key[1])!=changed.end()) dirty.push_back(event.key);
+            for(unsigned slot:changed) {
+                const auto candidates=QuerySlots(tree.FatAabb(bodies[slot].proxy));
+                for(unsigned other:candidates) if(other!=slot) {
+                    const auto a=std::min(slot,other),b=std::max(slot,other);
+                    for(int pa=0;pa<PrimitiveCount(bodies[a].shape);++pa)
+                        for(int pb=0;pb<PrimitiveCount(bodies[b].shape);++pb)
+                            dirty.push_back({a,b,unsigned(pa),unsigned(pb)});
+                }
+            }
+            std::sort(dirty.begin(),dirty.end());dirty.erase(std::unique(dirty.begin(),dirty.end()),dirty.end());
+            for(const auto& key:dirty) schedule(key);
+            if(now>=dt) break;
+        }
+        for(const auto slot:aliveSlots) if(bodies[slot].isDynamic) {
+            auto& body=bodies[slot];const auto pose=body.motion.Evaluate(dt);
+            stats.motionSegments+=body.motion.Segments().size();stats.motionStorageBytes+=body.motion.StorageBytes();
+            body.rigidBody.position=pose.position;body.rigidBody.orientation=pose.orientation;
+        }
+    }
+
     // Milestone 32 warm-start state: last step's converged impulses, sorted
     // by key, and the keys/anchors of this step's constraints in solver order.
     std::vector<CachedContact> contactCache;
@@ -271,6 +664,11 @@ struct PhysicsWorld::Impl {
             bound = bound.Union(Aabb{body.previousPosition - glm::vec3(r), body.previousPosition + glm::vec3(r)});
             bound = bound.Union(Aabb{body.rigidBody.position - glm::vec3(r), body.rigidBody.position + glm::vec3(r)});
         }
+        if (body.motion.Segments().size()>1) for(const auto& segment:body.motion.Segments()) {
+            const float r=body.boundingRadius;
+            bound=bound.Union(Aabb{glm::min(segment.position,segment.endPosition)-glm::vec3(r),
+                                  glm::max(segment.position,segment.endPosition)+glm::vec3(r)});
+        }
         return bound;
     }
 
@@ -353,10 +751,12 @@ struct PhysicsWorld::Impl {
         for (const unsigned int i : candidates) {
             const Body& body = bodies[i];
             const bool interpolateBody = interpolateDynamicBodyMotion && body.isDynamic;
-            const glm::vec3 bodyPosition = interpolateBody
+            const bool ledger=interpolateBody && bodyMotionAlpha<1.0f && !body.motion.Segments().empty();
+            const auto observed=ledger ? body.motion.Evaluate(std::clamp(double(bodyMotionAlpha),0.0,1.0)*stepDuration) : body.rigidBody;
+            const glm::vec3 bodyPosition = ledger ? observed.position : interpolateBody
                 ? glm::mix(body.previousPosition, body.rigidBody.position, bodyMotionAlpha)
                 : body.rigidBody.position;
-            const glm::quat bodyOrientation = interpolateBody
+            const glm::quat bodyOrientation = ledger ? observed.orientation : interpolateBody
                 ? glm::normalize(glm::slerp(body.previousOrientation, body.rigidBody.orientation,
                                             bodyMotionAlpha))
                 : body.rigidBody.orientation;
@@ -691,6 +1091,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         Impl::Body& body = w.bodies[slot];
         if (!body.rigidBody.IsStatic()) ++movable;
         if (!body.isDynamic) continue;
+        body.motion.Clear();
         body.previousPosition = body.rigidBody.position;
         body.previousOrientation = body.rigidBody.orientation;
         // Capture the old endpoint before integration. CurrentBound itself is
@@ -717,12 +1118,13 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     w.solver.Clear();
     w.lastStepContacts.clear();
     w.pendingCache.clear();
+    w.startContacts.clear();
+    w.separatedPairs.clear();
     w.cacheUsed.assign(w.contactCache.size(), 0);
     for (const auto& [slotA, slotB] : w.candidatePairs) {
         Impl::Body& a = w.bodies[slotA];
         Impl::Body& b = w.bodies[slotB];
         const float friction = std::sqrt(std::max(a.friction, 0.0f) * std::max(b.friction, 0.0f));
-        const float restitution = std::max(a.restitution, b.restitution);
         // Speculative margin: the distance this pair's surfaces can close
         // within the step at their post-force velocities (relative linear
         // motion plus each body's rotation at its bounding radius). Any
@@ -747,6 +1149,13 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
                 const auto range = std::equal_range(
                     w.contactCache.begin(), w.contactCache.end(), CachedContact{key, {}, {}, 0.0f, {}},
                     [](const CachedContact& x, const CachedContact& y) { return x.key < y.key; });
+                bool touchingManifold=false;
+                for (int p=0;p<manifold.count;++p) {
+                    const auto& c=manifold.points[p];
+                    touchingManifold=touchingManifold || (c.hasLocalAnchors ? c.signedSeparation<=0 : c.penetration>=0);
+                }
+                if(!touchingManifold && manifold.count)
+                    touchingManifold=ComputeContacts(childA,childB,0,&orientationA,&orientationB).count>0;
                 for (int p = 0; p < manifold.count; ++p) {
                     Contact contact = manifold.points[p];
                     if (!contact.hit) continue;
@@ -774,13 +1183,21 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
                         warmNormal = w.contactCache[static_cast<std::size_t>(best)].normalImpulse;
                         warmTangent = w.contactCache[static_cast<std::size_t>(best)].tangentImpulse;
                     }
-                    // Impulses act on the parent bodies (compound children
-                    // share one).
-                    const std::size_t before = w.solver.Constraints().size();
-                    w.solver.AddContact(a.rigidBody, b.rigidBody, contact, friction, restitution,
-                                        warmNormal, warmTangent, &orientationA.rotation, &orientationB.rotation);
-                    if (w.solver.Constraints().size() > before) {
-                        w.pendingCache.push_back(CachedContact{key, anchor, contact.normal, 0.0f, glm::vec3(0.0f)});
+                    // A separated, newly encountered pair is handled at TOI.
+                    // Existing cached support retains its gap-closing constraint.
+                    const double gap=contact.hasLocalAnchors ? contact.signedSeparation : -double(contact.penetration);
+                    if (gap>0 && best<0 && !touchingManifold) {
+                        const std::array<unsigned,4> pair{slotA,slotB,unsigned(partA),unsigned(partB)};
+                        if(w.separatedPairs.empty() || w.separatedPairs.back()!=pair) w.separatedPairs.push_back(pair);
+                        continue;
+                    }
+                    const auto constraint=w.solver.Constraints().size();
+                    w.solver.AddContact(a.rigidBody,b.rigidBody,contact,friction,0,
+                        warmNormal,warmTangent,&orientationA.rotation,&orientationB.rotation);
+                    if(w.solver.Constraints().size()>constraint) {
+                        w.pendingCache.push_back({key,anchor,contact.normal,0,glm::vec3(0)});
+                        w.startContacts.push_back({slotA,slotB,constraint,friction,warmNormal,warmTangent,
+                            best<0 && gap<=0 && Impl::NormalSpeed(contact,a.rigidBody,b.rigidBody)<-0.5});
                     }
                     w.lastStepContacts.push_back({contact.point, contact.normal, contact.penetration});
                     ++pairPoints;
@@ -794,6 +1211,14 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
 
     // 4) Accumulated-impulse velocity solve (src/ContactSolver.h), then
     // positions from the solved velocities, then direct penetration removal.
+    w.ResolveInitialImpacts(fixedDeltaTime);
+    w.supportPairs.clear();
+    for(const auto& c:w.startContacts) if(!c.newImpact) {
+        const auto& key=w.pendingCache[c.constraint].key;
+        w.supportPairs.push_back({c.a,c.b,unsigned(key.partA),unsigned(key.partB)});
+    }
+    std::sort(w.supportPairs.begin(),w.supportPairs.end());
+    w.supportPairs.erase(std::unique(w.supportPairs.begin(),w.supportPairs.end()),w.supportPairs.end());
     w.solver.Prepare(fixedDeltaTime);
     w.solver.SolveVelocities();
     // Remember this step's converged impulses for the next step's warm start.
@@ -805,13 +1230,10 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     std::stable_sort(w.pendingCache.begin(), w.pendingCache.end(),
                      [](const CachedContact& x, const CachedContact& y) { return x.key < y.key; });
     std::swap(w.contactCache, w.pendingCache);
-    for (const unsigned int slot : w.aliveSlots) {
-        Impl::Body& body = w.bodies[slot];
-        if (body.isDynamic) {
-            IntegrateRigidBodyPosition(body.rigidBody, fixedDeltaTime);
-            const auto& orientation = w.Orientation(body);
-            w.solver.UpdatePreparedRotation(body.rigidBody, orientation.rotation);
-        }
+    w.AdvanceImpacts(fixedDeltaTime);
+    for (const unsigned int slot:w.aliveSlots) {
+        auto& body=w.bodies[slot];
+        if(body.isDynamic) w.solver.UpdatePreparedRotation(body.rigidBody,w.Orientation(body).rotation);
     }
     w.solver.SolvePositions();
     const Clock::time_point solverEnd = Clock::now();
@@ -968,6 +1390,7 @@ void PhysicsWorld::ResetBody(BodyHandle handle, const glm::vec3& position,
     body->rigidBody.position = position;
     body->rigidBody.orientation = rotation;
     body->previousPosition = position;
+    body->motion.Clear();
     body->previousOrientation = rotation;
     body->rigidBody.linearVelocity = glm::vec3(0.0f);
     body->rigidBody.angularVelocity = glm::vec3(0.0f);
@@ -992,7 +1415,7 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
     if (!m_impl->hasPlayerShape) return result;
 
     const float displacementLength = glm::length(displacement);
-    if (displacementLength < 1.0e-6f) return result;
+    if (displacementLength < 1.0e-6f && !interpolateDynamicBodyMotion) return result;
 
     const glm::vec3 localSegA(0.0f, -m_impl->playerShape.halfHeight, 0.0f);
     const glm::vec3 localSegB(0.0f, m_impl->playerShape.halfHeight, 0.0f);
@@ -1045,9 +1468,18 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
     // collision detection for every shape pair.
     constexpr int kSubsteps = 24;
     constexpr int kBisectionIterations = 20;
+    std::vector<float> divisions{0,1};
+    if(interpolateDynamicBodyMotion && bodyMotionEnd>bodyMotionStart && m_impl->stepDuration>0)
+        for(auto slot:candidates) for(const auto& segment:m_impl->bodies[slot].motion.Segments()) {
+            const float t=(float(segment.end/m_impl->stepDuration)-bodyMotionStart)/(bodyMotionEnd-bodyMotionStart);
+            if(t>0 && t<1) divisions.push_back(t);
+        }
+    std::sort(divisions.begin(),divisions.end());
+    divisions.erase(std::unique(divisions.begin(),divisions.end()),divisions.end());
     float previousT = 0.0f;
+    for(std::size_t interval=1;interval<divisions.size();++interval)
     for (int step = 1; step <= kSubsteps; ++step) {
-        const float t = static_cast<float>(step) / static_cast<float>(kSubsteps);
+        const float t=glm::mix(divisions[interval-1],divisions[interval],float(step)/kSubsteps);
         const ClosestBodyResult stepResult = evaluateAt(t);
         if (stepResult.bodyIndex >= 0 && stepResult.distance <= 0.0f) {
             float lo = previousT;

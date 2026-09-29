@@ -116,8 +116,8 @@ public:
     std::size_t AliveBodyCount() const;
     std::size_t DynamicBodyCount() const;
 
-    // Milestone 30: the contacts the final solver iteration of the most
-    // recent Step resolved (one entry per manifold point, so a resting box
+    // Contacts submitted to initial support and later impact solves in the
+    // most recent Step (one entry per manifold point, so a resting box
     // on a floor reports 4). Read-only diagnostics for the profiler and the
     // debug view; nothing in simulation reads this back.
     struct DebugContact {
@@ -132,7 +132,9 @@ public:
     // solver did. `possiblePairs` is the number of pairs an exhaustive
     // all-pairs pass would have had to test (every pair with at least one
     // movable body); `candidatePairs` is what the broadphase actually handed
-    // the narrowphase; `collidingPairs` is how many of those had a contact.
+    // the initial narrowphase; `collidingPairs` and `contactPoints` count
+    // that initial pass. Later event work has separate impact counters;
+    // LastStepContacts also includes its actual contact rows.
     struct StepStats {
         std::size_t bodies = 0;
         std::size_t dynamicBodies = 0;
@@ -152,6 +154,14 @@ public:
         std::size_t shapeCacheRebuilds = 0, solverFrameBuilds = 0;
         std::size_t geometryCacheBytes = 0, geometryCacheAllocations = 0;
         std::size_t geometryCacheAllocatedBytes = 0, solverFrameNodeRequests = 0;
+        std::size_t impactEvents=0, impactSafetyFallback=0, impactEventCapFallback=0;
+        std::size_t impactQueries=0, impactSearchIterations=0, impactPeakIterations=0, impactSearchLimit=0;
+        std::size_t impactUncertifiedAdvances=0; // proximity geometry cannot certify an advance
+        // Bounded pair-local fallback after conservative-advancement exhaustion.
+        // A contact interval shorter than max interval may be missed.
+        std::size_t impactSamplingFallbacks=0, impactSamplingTests=0, impactSamplingResolutionCaps=0;
+        double impactSamplingMaxInterval=0.0;
+        std::size_t motionSegments=0, motionStorageBytes=0;
         int treeHeight = 0;
         double broadphaseMilliseconds = 0.0;
         double narrowphaseMilliseconds = 0.0;

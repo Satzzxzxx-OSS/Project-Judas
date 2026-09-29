@@ -21,9 +21,10 @@ candidates with a dynamic AABB tree (no all-pairs pass), solves contacts
 with accumulated, warm-started impulses and Coulomb-disc friction, clips
 box-box contacts to the real overlap polygon, and generates speculative
 contacts so a body placed touching is supported from its first step.
-FTFT4A repairs primitive geometry and signed gaps; impact timing remains
-OPEN FTFT4B: a fast restitution-zero body can stop indefinitely before
-contact in zero gravity, and restitution can be applied prematurely. **The liquid/solid half of Milestone 32 —
+FTFT4A repairs primitive geometry and signed gaps. FTFT4 closes the measured
+impact-timing/energy defects using actual-time isolated impacts, deliberately
+inelastic coupled events, and an anchored motion ledger. Rotating-graze CCD
+has an explicit finite sampling resolution; see the current results below. **The liquid/solid half of Milestone 32 —
 buoyancy, two-way coupling, player density and swimming — is deferred and
 not in this checkpoint**; liquid and player behaviour are exactly
 Milestone 31's. See "Milestone 32" at the end of this document.
@@ -8397,10 +8398,11 @@ contact, and a reliably positive represented separation stays positive.
   Warm-start matching and the solver consume these anchors; float world
   contact points are debug outputs. Surface witnesses are recorded
   separately from the common impulse application midpoint.
-- **Solver policy is unchanged.** Non-bouncing separated contacts permit
-  closure at `−gap/dt`; reachable contacts above the existing speed
-  threshold receive the restitution target immediately. Friction, warm
-  starting, iteration counts and positional correction are unchanged.
+- **Historical FTFT4A solver policy.** At that checkpoint, non-bouncing
+  separated contacts permitted closure at `−gap/dt`, while reachable
+  contacts above the speed threshold received restitution immediately.
+  The FTFT4B stabilization work below replaces this timing for new impacts;
+  it retains the persistent accumulated-impulse solver.
 - **Terrain remains approximate.** Its specialized surface samples and
   box sample points are retained; primitive exact predicates do not certify
   terrain geometry. No global gap collapse is applied to that path.
@@ -8438,26 +8440,58 @@ Cache preparation is part of the real creation/update paths. Whole-step and
 outer-fixture timings, including moving-static ResetBody work, are reported
 in [FTFT4A-P evidence](evidence/ftft4/performance/RESULTS.md). The original
 slow-correct results remain historical evidence, not current performance
-acceptance. This pass does not change impact timing or close full FTFT4.
+acceptance. Those geometry/storage passes did not change impact timing.
+The stabilization policy accepts their cost only if the current paired gate
+passes: at most 15 ms median whole crate step and at most 10% additional cost
+versus `c43af4c`. The historical approximately 4 ms result used less-robust
+geometry. Exhaustive-oracle wall time is separate from production step cost.
 
-### OPEN FTFT4B: premature stopping and bounce
+### FTFT4B stabilization: pragmatic impact timing — CLOSED with approximations
 
-The geometry repair does not change impact timing. The real PhysicsWorld
-probe reproduces a restitution-zero body stopping at its represented
-0.999987 mm pre-contact gap for all four zero-gravity steps. With no later
-force or overlap, the current mechanism has no reason to close that gap.
-Calling this merely a one-frame hover was incorrect.
+The source-matched validation is recorded in
+[FTFT4 results](evidence/stabilization/ftft4/RESULTS.md). The authorized policy
+retains the existing accumulated-impulse/warm-start solver for persistent
+support, stacks and friction. New separated impacts use event-time geometry
+and a step-local motion ledger after one force/torque velocity update.
+Only affected trajectories restart after impulses; remaining physical time
+must be consumed. Anchored rotation preserves an unaffected body's original
+no-impact endpoint without globally subdividing its quaternion integration.
 
-For restitution 0.5 and approach speed 1 m/s, the same probe ends the first
-step at 9.333313 mm instead of the independent impact-time result
-7.833340 mm. Correct rebound speed alone does not establish correct
-end position. A three-body chain also demonstrates that candidates made
-before impulses can miss a collision induced by another impact.
+A genuinely isolated closing contact uses its authored restitution and
+Coulomb friction. A connected multi-contact event, induced contact, impact
+into persistent support or mixed-restitution island uses **zero normal
+restitution**. This is a deliberate game-engine approximation, not a general
+simultaneous-impact material law. The candidate `ImpactSolver` uses the same
+contact geometry and existing impulse machinery. A tentative energy-budget
+failure restores pre-impact velocities and retries with zero restitution
+and zero impact friction, counting `impactSafetyFallback`; persistent
+friction resumes normally. Prescribed moving-boundary work is external.
 
-These remain failing temporal witnesses, explicitly outside FTFT4A.
-FTFT4B needs separately authorized event advancement, impulse and remaining
-step handling. No drift formula is installed as a restitution target.
-Full FTFT4 remains open.
+The existing 0.5 m/s restitution threshold captures low-speed contacts.
+The authorized event safety policy captures connected contacts inelastically
+after 16 events for a body/island, consumes the remaining time, and reports
+`impactEventCapFallback`. It must not freeze a separated body or discard
+elapsed time. Ledger segments must drive swept bounds and player queries,
+including out-and-back motion. `ResetBody` remains a discontinuous reset,
+not an inferred continuous kinematic trajectory.
+
+The immutable [baseline](evidence/ftft4b/baseline/RESULTS.md) records the
+old zero-gravity stop at a 0.999987 mm gap, premature rebound, missed induced
+chain collision and coupled-impact energy creation. Its failures are not
+rewritten as passing evidence. The previous PLUS/Poisson policy is rejected:
+[its preserved counterexample](evidence/ftft4b/implementation/RESULTS.md)
+adds 6.590445 J with exact momentum closure. The new response policy supersedes
+that attempted law while retaining compatible motion-ledger work.
+
+See [the concise current method and gates](evidence/stabilization/ftft4/METHOD.md).
+The actual-engine witnesses, rigid/geometry/lifecycle/terrain regressions,
+43 production suites and protected integrations pass. Seven paired runs give
+14.266 ms median whole crate step (+1.13% versus c43). Active rotating compound
+work remains materially more expensive (6.279 versus 1.227 ms in the measured
+32-body workload); this is not a broad speedup. Pair-local sampling after
+64 advancement iterations or an uncertified proximity gap is an explicit
+finite-resolution CCD approximation. Brief between-sample grazes can be missed;
+positive gaps alone never receive impact impulses.
 
 ### Original rigid checkpoint evidence (historical)
 
