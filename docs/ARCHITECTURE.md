@@ -7677,7 +7677,8 @@ World menu are the demo's controls; `JUDAS_WORLD_STATE` selects the path.
 
 FTFT1 computes the baseline fingerprint once from the authored `Scene` on a
 successful `RuntimeWorld::Build`, before gameplay can mutate runtime state.
-Canonical schema 2 (extended in FTFT9 for cavity, player-fluid and update-rate settings)
+Canonical schema 3 (M33 adds camera configuration and stable texture references;
+FTFT9's schema 2 added cavity, player-fluid and update-rate settings)
 includes scene-format version, all serialized authored
 settings/components, stable IDs, allocator state, names, and object order
 (which controls gravity-region priority). It encodes finite IEEE numbers and
@@ -8620,3 +8621,15 @@ checkpoint. A later milestone should start from a different coupling
 architecture (for example analytic rigid-body hydrostatics against a
 resolved liquid surface, or a dedicated pressure solve), not from these
 variants.
+
+## M33 — authored render cameras (feature candidate)
+
+[Camera-to-surface ownership and authoring](M33.md) extends the existing scene,
+RuntimeWorld and Renderer boundary. Optional cameras own presentation-only runtime
+records; Renderer owns their framebuffer, colour texture and depth attachment.
+Generated textures use normal TextureHandles/material draws, not AssetDatabase IDs.
+The ordinary shadow/geometry/transparency paths view the same world at one
+presentation alpha; simulation is never stepped per camera. Targets are lazy,
+render-frame cadence is authored, and active-target feedback uses a counted safe
+fallback. Play/Stop releases generated resources and retains authored state.
+This is nonrecursive render-to-texture, not portals or reflected clipping.

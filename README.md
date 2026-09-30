@@ -17,6 +17,10 @@ SDL-created context; generation and license provenance are recorded in
 
 ## JUDAS STATUS: READY FOR NEW FEATURE DEVELOPMENT
 
+**M33 feature candidate:** authored cameras can render into generated textures
+consumed by ordinary scene materials. See [camera authoring and demo](docs/M33.md).
+Operator visual acceptance/checkpointing is pending; portals are not implemented.
+
 FTFT1–9 are checkpointed, and the final clean Release validation passed; see
 [`docs/STABILIZATION_STATUS.md`](docs/STABILIZATION_STATUS.md). See
 [`docs/FTFT.md`](docs/FTFT.md) for the exact status and evidence. No new
