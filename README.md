@@ -15,21 +15,21 @@ loaded with the vendored GLAD 2.0.8 OpenGL 3.3 Core loader through the
 SDL-created context; generation and license provenance are recorded in
 [`third_party/glad/README.md`](third_party/glad/README.md).
 
-## Status: adversarial-audit stabilization in progress
+## JUDAS STATUS: READY FOR NEW FEATURE DEVELOPMENT
 
-FTFT1–8 are checkpointed. FTFT9 has a passing approximate-mode candidate awaiting
-operator review and checkpointing; see [`docs/STABILIZATION_STATUS.md`](docs/STABILIZATION_STATUS.md). See
+FTFT1–9 are checkpointed, and the final clean Release validation passed; see
+[`docs/STABILIZATION_STATUS.md`](docs/STABILIZATION_STATUS.md). See
 [`docs/FTFT.md`](docs/FTFT.md) for the exact status and evidence. No new
 milestone tag is implied. Full high-fidelity M32 liquid/solid coupling remains
 future research, separate from the approximate production model.
 
-FTFT9's current development path uses particle/PBF liquid motion with sampled
+FTFT9's production path uses particle/PBF liquid motion with sampled
 approximate hydrostatics/drag, explicit geometric container cavities, and custom
 player swimming. Exterior collision and analytic support have distinct ownership;
 exact exterior liquid/body momentum conservation is not claimed. The historical
 M24–M26 results below retain their original scope and do not describe this new
-coupling. Current behavioural evidence and numerical limits are recorded in the
-ledger; the final repository checkpoint remains pending.
+coupling. Current behavioural evidence and accepted numerical limits are recorded
+in the ledger and the [final gate](docs/evidence/stabilization/final-gate/README.md).
 
 Current rigid physics provides:
 

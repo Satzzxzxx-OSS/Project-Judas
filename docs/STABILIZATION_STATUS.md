@@ -1,12 +1,14 @@
 # Judas stabilization status
 
-**FTFT9 TESTED CANDIDATE — operator review/checkpoint and final release gate pending.**
+**JUDAS STATUS: READY FOR NEW FEATURE DEVELOPMENT**
 
-FTFT4–8 are committed closures. The approximate production-fluid implementation
-is uncommitted work with passing required behavioural/performance checks.
-No milestone tag or FTFT9 checkpoint has been created. See
-[the current measured candidate](evidence/stabilization/ftft9/completion-candidate/RESULTS.md)
-and [the concise ledger](FTFT.md).
+FTFT1–9 are committed closures within their documented scopes. The final gate on
+`1b3a134bdb3d7876d8ed8261571311ca7880e386` configured and built Release from an
+absent build directory, with zero compiler warnings, then passed the complete
+mandatory validation once. No engine implementation changes were needed.
+See [final executed evidence](evidence/stabilization/final-gate/README.md),
+[the preserved FTFT9 candidate](evidence/stabilization/ftft9/completion-candidate/RESULTS.md)
+and [the concise ledger](FTFT.md). No milestone tag was created.
 
 ## Verified scope and closure commits
 
@@ -20,9 +22,9 @@ and [the concise ledger](FTFT.md).
 | FTFT6 | Tested ordinary nonplanetary editor/project/asset/lifecycle paths | `a0ba6d1dbaf60954a08b165e09e60741469ac0f3` |
 | FTFT7 | Tested orbital, spacecraft and reference-frame force/motion paths with finite-step error budgets | `6145762bbc295b586846c5dcc29aea49915f5e34` |
 | FTFT8 | Finite-fuel combustion and thermal accounting with an explicit atmospheric reservoir | `d2246cd19ad70065d121ffc5d4a4445ebca5d82b` |
-| FTFT9 | Tested approximate hydrostatics/drag, declared containers and custom-controller swimming; review/checkpoint pending | — |
+| FTFT9 | Approved approximate hydrostatics/drag, declared containers and custom-controller swimming | `1b3a134bdb3d7876d8ed8261571311ca7880e386` |
 
-FTFT1's strict compatibility policy has no general save migration. The pending
+FTFT1's strict compatibility policy has no general save migration. The production
 fluid metadata uses canonical fingerprint schema 2 and rejects old-schema saves;
 the persistence format and atomic validation mechanism remain unchanged.
 
@@ -37,30 +39,34 @@ the persistence format and atomic validation mechanism remain unchanged.
   celestial simulation is contact-free. No exact energy conservation is claimed.
 - The atmosphere is a prescribed open reservoir. Combustion uses approximate
   material/thermal properties; smoke is visual, not evolved conservative gas CFD.
-- The pending fluid candidate uses PBF motion at an authored cadence, sampled
+- The production fluid model uses PBF motion at an authored cadence, sampled
   hydrostatics/linear drag, declared cavities and controller swimming. Exterior
   fluid/body momentum is deliberately not conserved. Required approximate-mode
   gates pass; local particle agitation and sub-particle-scale equilibrium have
   explicit limitations. This is not a high-fidelity pressure-coupled solver.
 
-## Remaining stabilization work
+## Final stabilization gate — 30 September 2026
 
-FTFT9 code work is complete as a candidate. The requested hard-solid/soft-skin
-boundary fix passes, as do resolved-motion integration and non-displacing player
-sampling. Required body/player/container gates pass. The one broad run passed
-60/61 suites; a safe-anchor repair then passed the original boundary suite and
-all nine affected fluid suites. That original broad FAIL remains in the evidence;
-it is not relabelled. No second full matrix was run.
+The final clean Release run passed **61/61 production suites**, actual async
+**12 cases / 246 assertions**, current-schema persistence validation, default-async
+editor Play/Stop, standalone startup, and four 900-step classic/terrain near/far
+harnesses with identical near/far physical payloads. Both shipped fluid performance
+cases passed. Engine/test/script source fingerprints and protected paths were
+unchanged throughout execution. The full gate took 569.738 seconds, including
+217.849 seconds for the fresh build. No mandatory regression required repair.
 
-1. Operator review and FTFT9 checkpoint remain; no commit/push/tag is made here.
-2. The final clean-from-scratch Release/stabilization gate and final repository
-   signoff remain after review. This continuation used normal Release builds.
-3. Six additional diagnostic failures remain visible: individual-particle
-   micro-rest and sub-particle-sized-body settling. `--strict-diagnostics` still
-   reports failure for them; the brief's physical tolerances were not widened.
-4. PBF micro-agitation, filled local columns/internal-air-pocket resolution,
-   sampling order, nonuniform missing-data interpolation and finite collision
-   sampling are approximation limits. Unresolvable hard overlap fails explicitly.
+Historical broad-run failures and rejected experiments remain unchanged; their
+outputs are not relabelled. The prior 60/61 run is superseded as current acceptance
+evidence by this complete 61/61 run, not erased.
+
+Known accepted limitations:
+
+- Six optional micro-diagnostics remain visible: individual-particle micro-rest
+  and sub-particle-sized-body settling. `--strict-diagnostics` still reports
+  failure; physical tolerances were not widened.
+- PBF micro-agitation, filled local columns/internal-air-pocket resolution,
+  sampling order, nonuniform missing-data interpolation and finite collision
+  sampling remain approximate. Unresolvable hard overlap fails explicitly.
 
 Default production particle cadence is 30 Hz, rigid physics 60 Hz. Exterior
 hydrostatic support owns the body's response; exterior particle collision is
@@ -73,23 +79,21 @@ claimed. The protected high-fidelity prototypes remain future research.
 
 | Workload | Measured value | Evidence/scope |
 |---|---:|---|
-| 1,500 resting crates | 14.266 ms median whole physics step | FTFT4 seven-run closure; not remeasured here |
+| 1,500 resting crates | 14.266 ms prior seven-run median; 12.059 ms final-gate reported step | Final gate reused the existing broadphase fixture once; the single step is not a new seven-run median |
 | 32 active offset compounds | 6.279 ms mean-step median | FTFT4 closure; known costly case |
-| Classic fluid, 125 particles | 7.085 ms particle median; 9.869 ms maximum | Final source; 360 rigid / 180 particle steps |
-| Terrain fluid, 125 particles | 11.832 ms particle median; 15.538 ms maximum | Same run/count |
-| Classic hybrid amortized cost | 4.325 ms / 60 Hz rigid frame | Includes coupling/field/player sampling |
-| Terrain hybrid amortized cost | 5.746 ms / 60 Hz rigid frame | Includes coupling/field/player sampling |
+| Classic fluid, 125 particles | 6.961 ms particle median; 10.008 ms maximum | Final clean Release; 360 rigid / 180 particle steps |
+| Terrain fluid, 125 particles | 11.790 ms particle median; 14.245 ms maximum | Same run/count |
+| Classic hybrid amortized cost | 4.199 ms / 60 Hz rigid frame | Includes coupling/field/player sampling |
+| Terrain hybrid amortized cost | 5.661 ms / 60 Hz rigid frame | Includes coupling/field/player sampling |
 | Larger body-reference pools | Approximately 15–38 ms particle medians | Stress fixtures, not shipped-125 performance scope |
 | Normal editor/runtime frame | Not benchmarked here | Fixed-step CPU timing excludes renderer/frame cost |
 | Async application | 12 cases / 246 assertions pass | Actual nonblocking GL application, not a latency benchmark |
 
-[Current evidence](evidence/stabilization/ftft9/completion-candidate/RESULTS.md)
-records 11 body, 12 player and 8 container cases, plus original boundary/coupling
-regressions. Persistence, actual-GL async, editor Play/Stop, standalone startup,
-scene gravity and four 900-step near/far harnesses passed in the broad run.
-Source fingerprints distinguish that run from the one-file anchor correction
-and final-source affected fluid reruns. Compiler warnings: zero. Human visual
-validation: not run. Prior failed candidates and raw outputs remain unchanged.
+[Final evidence](evidence/stabilization/final-gate/README.md) contains the complete
+61-suite results, source/binary fingerprints, raw commands/logs and performance
+CSVs. The earlier candidate evidence remains intact. Compiler warnings: zero.
+Offscreen runtime EGL messages are retained in logs; no human visual validation
+is claimed. Prior failed candidates and raw outputs remain unchanged.
 
 ## Future capabilities
 
@@ -98,4 +102,4 @@ animation/AI/networking and render-to-texture/portals remain roadmap features.
 The P1-C/P1-C-M/P1-PF research prototypes are preserved and are not integrated
 into production. See [ROADMAP.md](ROADMAP.md).
 
-**JUDAS STATUS: FTFT9 TESTED CANDIDATE — AWAITING REVIEW AND FINAL STABILIZATION SIGNOFF.**
+**JUDAS STATUS: READY FOR NEW FEATURE DEVELOPMENT**

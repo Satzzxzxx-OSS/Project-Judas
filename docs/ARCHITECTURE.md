@@ -26,14 +26,16 @@ impact-timing/energy defects using actual-time isolated impacts, deliberately
 inelastic coupled events, and an anchored motion ledger. Rotating-graze CCD
 has an explicit finite sampling resolution; see the current results below.
 
-FTFT9 has a tested candidate for the authorized **approximate production hybrid**:
+FTFT9 provides the authorized **approximate production hybrid**:
 particle/PBF flow, sampled analytic hydrostatics and drag, explicit body-local
 fluid cavities, and custom-controller swimming. Its current validation status is
 in `docs/FTFT.md` and `docs/STABILIZATION_STATUS.md`; required behavioural gates
-pass, while optional strict diagnostics and numerical limitations remain explicit.
+pass, including the final clean Release gate, while optional strict diagnostics
+and numerical limitations remain explicit.
 Particles use actual resolved rigid paths. Physical solid exclusion takes priority
 over numerical skin clearance; the query-only player samples interior liquid
-without pretending to displace it. Review/checkpointing is pending. Exterior particle collision
+without pretending to displace it. FTFT9 is checkpointed at `1b3a134`; the final
+verification is recorded in `docs/evidence/stabilization/final-gate/`. Exterior particle collision
 has no second rigid reaction, so exact exterior liquid/solid momentum conservation
 is not claimed. The historical M24–M32 accounts below describe their original
 checkpoints, including the now-superseded light-body reaction cutoff. The protected
