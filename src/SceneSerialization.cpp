@@ -1,4 +1,5 @@
 #include "SceneSerialization.h"
+#include "AssetDatabase.h"
 
 #include <cmath>
 #include <cstdio>
@@ -13,6 +14,7 @@
 #include "Scene.h"
 
 namespace {
+const char* B(bool value) { return value ? "true" : "false"; }
 
 // --- Writing ---------------------------------------------------------------
 
@@ -90,6 +92,14 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("render.texture-asset", Quote(r.textureAsset));
         if (r.textureCamera) w.Line("render.texture-camera", std::to_string(r.textureCamera));
     }
+    if (o.audioEmitter) {
+        const auto& a=*o.audioEmitter;w.Line("audio-emitter", "");
+        w.Line("audio.asset",Quote(a.asset));w.Line("audio.enabled",B(a.enabled));w.Line("audio.play-on-start",B(a.playOnStart));
+        w.Line("audio.loop",B(a.loop));w.Line("audio.spatial",B(a.spatial));w.Line("audio.volume",F(a.volume));w.Line("audio.pitch",F(a.pitch));
+        w.Line("audio.reference-distance",F(a.referenceDistance));w.Line("audio.maximum-distance",F(a.maximumDistance));w.Line("audio.rolloff",F(a.rolloff));
+        w.Line("audio.attenuation",a.attenuation==AudioAttenuation::Inverse?"inverse":a.attenuation==AudioAttenuation::Linear?"linear":"none");
+    }
+    if(o.audioListener){w.Line("audio-listener", "");w.Line("listener.enabled",B(o.audioListener->enabled));w.Line("listener.follow-view",B(o.audioListener->followActiveView));}
     if (o.renderCamera) {
         const auto& c = *o.renderCamera;
         w.Line("render-camera", "");
@@ -532,6 +542,24 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         if (p.Has("render.texture-camera") && !p.Id("render.texture-camera", r.textureCamera)) return false;
         o.render = r;
     }
+    if(p.Has("audio-emitter")) {
+        SceneAudioEmitterComponent a;
+        if(!p.Header("audio-emitter",0,0)||!p.String("audio.asset",a.asset)||!p.Bool("audio.enabled",a.enabled)||
+           !p.Bool("audio.play-on-start",a.playOnStart)||!p.Bool("audio.loop",a.loop)||!p.Bool("audio.spatial",a.spatial)||
+           !p.Float("audio.volume",a.volume)||!p.Float("audio.pitch",a.pitch)||!p.Float("audio.reference-distance",a.referenceDistance)||
+           !p.Float("audio.maximum-distance",a.maximumDistance)||!p.Float("audio.rolloff",a.rolloff))return false;
+        const auto* model=p.Header("audio.attenuation",1,1);if(!model)return false;
+        if((*model)[0].text=="inverse")a.attenuation=AudioAttenuation::Inverse;
+        else if((*model)[0].text=="linear")a.attenuation=AudioAttenuation::Linear;
+        else if((*model)[0].text=="none")a.attenuation=AudioAttenuation::None;
+        else return reader.Fail("unknown audio attenuation");
+        if(!ValidAudioSettings(a)||(!a.asset.empty()&&!IsValidAssetId(a.asset)))return reader.Fail("invalid audio settings or asset id");
+        o.audioEmitter=a;
+    }
+    if(p.Has("audio-listener")){
+        SceneAudioListenerComponent l;if(!p.Header("audio-listener",0,0)||!p.Bool("listener.enabled",l.enabled)||!p.Bool("listener.follow-view",l.followActiveView))return false;
+        o.audioListener=l;
+    }
     if (p.Has("render-camera")) {
         SceneRenderCameraComponent c;
         if (!p.Header("render-camera", 0, 0) || !p.Bool("camera.enabled", c.enabled) ||
@@ -910,6 +938,9 @@ bool LoadSceneFromString(const std::string& text, Scene& outScene, std::string& 
         outError = "scene file has no settings block";
         return false;
     }
+    int activeListeners=0;
+    for(const auto& object:scene.Objects()) if(object.audioListener&&object.audioListener->enabled)++activeListeners;
+    if(activeListeners>1)return reader.Fail("scene has more than one enabled audio listener");
     for (const auto& o : scene.Objects()) {
         if (!o.render || !o.render->textureCamera) continue;
         const auto* camera = scene.Find(o.render->textureCamera);

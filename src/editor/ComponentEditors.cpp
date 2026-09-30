@@ -57,6 +57,25 @@ void AssetField(EditorDocument& doc, const char* label, std::string& assetId, As
     }
 }
 
+void DrawAudioEmitter(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
+    auto& a=*o.audioEmitter;
+    AssetField(doc,"Audio clip",a.asset,AssetType::Audio,true,state);
+    Checkbox(doc,"Enabled",a.enabled);Checkbox(doc,"Play on start",a.playOnStart);
+    Checkbox(doc,"Loop",a.loop);Checkbox(doc,"Spatial (3D)",a.spatial);
+    DragScalar(doc,"Volume",a.volume,.01f,0,1);DragScalar(doc,"Pitch",a.pitch,.01f,.125f,8);
+    if(a.spatial){
+        const char* const models[]={"None","Inverse distance","Linear distance"};
+        Combo(doc,"Attenuation",a.attenuation,models,3);
+        DragScalar(doc,"Reference distance",a.referenceDistance,.1f,.001f,a.maximumDistance-.001f);
+        DragScalar(doc,"Maximum distance",a.maximumDistance,.1f,a.referenceDistance+.001f,100000);
+        DragScalar(doc,"Rolloff",a.rolloff,.01f,0,100);
+    }
+}
+void DrawAudioListener(EditorDocument& doc,SceneObject& o,EditorPanelState&){
+    auto& l=*o.audioListener;Checkbox(doc,"Enabled",l.enabled);Checkbox(doc,"Follow active camera view",l.followActiveView);
+    ImGui::TextDisabled("One enabled listener per scene. Local -Z forward / +Y up.");
+}
+
 void DrawRenderCamera(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
     auto& c = *o.renderCamera;
     Checkbox(doc, "Enabled", c.enabled);
@@ -288,6 +307,8 @@ ComponentEditor Make(const char* name, char indicator, std::optional<T> SceneObj
 
 const std::vector<ComponentEditor>& ComponentEditorRegistry() {
     static const std::vector<ComponentEditor> registry = {
+        Make<SceneAudioEmitterComponent>("Audio emitter", 'U', &SceneObject::audioEmitter, DrawAudioEmitter),
+        Make<SceneAudioListenerComponent>("Audio listener", 'N', &SceneObject::audioListener, DrawAudioListener),
         Make<SceneRenderCameraComponent>("Render camera", 'K', &SceneObject::renderCamera, DrawRenderCamera),
         Make<SceneRenderComponent>("Render", 'R', &SceneObject::render, DrawRender),
         Make<SceneBodyComponent>("Body", 'B', &SceneObject::body, DrawBody),

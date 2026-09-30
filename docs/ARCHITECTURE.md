@@ -7677,7 +7677,7 @@ World menu are the demo's controls; `JUDAS_WORLD_STATE` selects the path.
 
 FTFT1 computes the baseline fingerprint once from the authored `Scene` on a
 successful `RuntimeWorld::Build`, before gameplay can mutate runtime state.
-Canonical schema 3 (M33 adds camera configuration and stable texture references;
+Canonical schema 4 (M34 adds audio emitter/listener metadata; M33 added camera configuration and stable texture references;
 FTFT9's schema 2 added cavity, player-fluid and update-rate settings)
 includes scene-format version, all serialized authored
 settings/components, stable IDs, allocator state, names, and object order
@@ -8633,3 +8633,16 @@ presentation alpha; simulation is never stepped per camera. Targets are lazy,
 render-frame cadence is authored, and active-target feedback uses a counted safe
 fallback. Play/Stop releases generated resources and retains authored state.
 This is nonrecursive render-to-texture, not portals or reflected clipping.
+
+## M34 audio boundary
+
+EngineHost owns AudioSystem (miniaudio 0.11.23 under MIT-0), independently of Renderer.
+AssetDatabase recognizes audio IDs; ResourceManager asynchronously reads/decodes
+WAV/MP3/FLAC and installs immutable whole PCM clips. AudioSystem owns voices and
+the lazy output device. RuntimeWorld owns authored emitter/listener bindings and
+releases voices on Play/Stop, disable/destruction and world teardown. InteractivePlay
+updates positions once per main frame using presented entity poses and full listener
+orientation, optionally from the active view; secondary render cameras do not tick audio.
+No gameplay-specific sounds, streaming or acoustics model is implied. Canonical
+authored schema 4 includes audio fields; prior save fingerprints are incompatible.
+See [M34](M34.md) for exact settings, lifecycle, limits and listening acceptance.

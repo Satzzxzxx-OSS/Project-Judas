@@ -30,10 +30,12 @@ bool InteractivePlay::Begin(RuntimeWorld& world, const WorldCoordinates& worldCo
     m_resetOccurred = false;
     m_wasPauseMenuOpen = false;
     m_lastAerodynamicDrag = {};
+    world.BeginAudio();
     return true;
 }
 
 void InteractivePlay::End() {
+    if(m_session.IsActive()) m_session.World().EndAudio();
     m_session.End();
 }
 
@@ -193,6 +195,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
         view = player.GetViewMatrix(presentationAlpha, m_session.ViewMode());
     }
     const auto sceneStart = Clock::now();
+    world.UpdateAudio(view,presentationAlpha);
     RenderWorldFrame(renderer, window.Width(), window.Height(), world, &m_session, view,
                      player.GetProjectionMatrix(aspectRatio), player.GetPresentedPosition(presentationAlpha),
                      presentationAlpha);

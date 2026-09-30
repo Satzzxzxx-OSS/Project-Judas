@@ -57,6 +57,9 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
+    src/AudioData.cpp
+    src/AudioSystem.cpp
+    src/WorldAudio.cpp
     src/Window.cpp
     src/Renderer.cpp
     src/PlayerController.cpp
@@ -124,7 +127,14 @@ add_library(judas_engine STATIC
 )
 target_include_directories(judas_engine PUBLIC src ${SDL2_INCLUDE_DIRS})
 find_package(Threads REQUIRED)
-target_link_libraries(judas_engine PUBLIC SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads)
+add_library(judas_audio_backend STATIC src/AudioBackend.c)
+target_include_directories(judas_audio_backend PUBLIC third_party/miniaudio)
+target_compile_definitions(judas_audio_backend PUBLIC MA_NO_RESOURCE_MANAGER MA_NO_ENCODING MA_NO_GENERATION)
+target_link_libraries(judas_audio_backend PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
+if(UNIX)
+    target_link_libraries(judas_audio_backend PUBLIC m)
+endif()
+target_link_libraries(judas_engine PUBLIC SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads judas_audio_backend)
 target_compile_options(judas_engine PRIVATE -Wall -Wextra)
 
 add_executable(judas
@@ -836,3 +846,7 @@ target_compile_options(judas_production_fluid_performance PRIVATE -Wall -Wextra)
 add_executable(judas_render_camera_tests tests/RenderCameraTests.cpp src/editor/EditorHistory.cpp)
 target_link_libraries(judas_render_camera_tests PRIVATE judas_engine)
 target_compile_options(judas_render_camera_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_audio_tests tests/AudioTests.cpp src/editor/EditorHistory.cpp)
+target_link_libraries(judas_audio_tests PRIVATE judas_engine)
+target_compile_options(judas_audio_tests PRIVATE -Wall -Wextra)

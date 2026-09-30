@@ -1,4 +1,5 @@
 #pragma once
+#include "AudioTypes.h"
 
 #include <cstdint>
 #include <optional>
@@ -231,12 +232,24 @@ struct SceneRenderCameraComponent {
     float farPlane = 1000.0f;
 };
 
+struct SceneAudioEmitterComponent : AudioSettings {
+    std::string asset;
+    bool enabled=true, playOnStart=true;
+};
+struct SceneAudioListenerComponent {
+    bool enabled=true;
+    // Binds the active presentation camera, independent of any controller.
+    bool followActiveView=false;
+};
+
 struct SceneObject {
     SceneObjectId id = kInvalidSceneObjectId;
     std::string name;
     SceneTransform transform;
     std::optional<SceneRenderComponent> render;
     std::optional<SceneRenderCameraComponent> renderCamera;
+    std::optional<SceneAudioEmitterComponent> audioEmitter;
+    std::optional<SceneAudioListenerComponent> audioListener;
     std::optional<SceneBodyComponent> body;
     std::optional<SceneGravityComponent> gravity;
     std::optional<SceneLightComponent> light;

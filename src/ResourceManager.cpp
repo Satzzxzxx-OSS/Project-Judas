@@ -21,8 +21,8 @@ const char* ResourceStateName(ResourceState state) {
     return "?";
 }
 
-ResourceManager::ResourceManager(Renderer* renderer, const AssetDatabase* assets, JobSystem* jobs)
-    : m_renderer(renderer), m_assets(assets), m_jobs(jobs), m_ownerThread(std::this_thread::get_id()) {}
+ResourceManager::ResourceManager(Renderer* renderer, const AssetDatabase* assets, JobSystem* jobs, AudioSystem* audio)
+    : m_audio(audio), m_renderer(renderer), m_assets(assets), m_jobs(jobs), m_ownerThread(std::this_thread::get_id()) {}
 
 ResourceManager::~ResourceManager() {
     Shutdown();
@@ -95,6 +95,8 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
     TraceTask(task, ResourceTracePoint::DecodeBegin, bytes.size());
     if (task.type == AssetType::Mesh) {
         task.succeeded = ParseObjMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
+    } else if (task.type == AssetType::Audio) {
+        task.succeeded = DecodeAudioFromMemory(bytes.data(),bytes.size(),task.audio,task.error);
     } else {
         task.succeeded = DecodeTextureFromMemory(bytes.data(), bytes.size(), task.path, task.texture, task.error);
     }
@@ -121,7 +123,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     ++m_stats.misses;
     entry.error.clear();
     if (m_shutDown) { Fail(entry, "resource manager is shut down"); return entry; }
-    if (!m_renderer && !m_headlessResidency) { Fail(entry, "no renderer (headless)"); return entry; }
+    if (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency)) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
     std::string path;
     if (!Resolve(id, expected, entry, path)) return entry;
 
@@ -178,10 +180,14 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         Fail(entry, task->error.empty() ? std::string("load failed") : task->error);
         return;
     }
-    if (!m_renderer && !m_headlessResidency) { Fail(entry, "no renderer (headless)"); return; }
+    if (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency)) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
     if (task->type == AssetType::Mesh) {
         if (m_renderer) entry.mesh = m_renderer->CreateMesh(task->mesh);
         entry.bytes = EstimateMeshBytes(task->mesh);
+    } else if (task->type == AssetType::Audio) {
+        entry.bytes=task->audio.samples.size()*sizeof(float);
+        entry.audio=m_audio->CreateClip(std::move(task->audio));
+        if(!entry.audio.IsValid()){Fail(entry,"audio clip installation failed");return;}
     } else {
         if (m_renderer) entry.texture = m_renderer->CreateTexture(task->texture);
         entry.bytes = EstimateTextureBytes(task->texture);
@@ -201,6 +207,21 @@ bool TypeMismatch(ResourceState state, AssetType actual, AssetType expected) {
     return state != ResourceState::Unloaded && state != ResourceState::Cancelled && actual != expected;
 }
 }  // namespace
+
+ResourceState ResourceManager::RequestAudio(const AssetId& id, JobPriority priority) {
+    if(id.empty())return ResourceState::Unloaded;
+    const auto& e=Begin(id,AssetType::Audio,priority);
+    return TypeMismatch(e.state,e.type,AssetType::Audio)?ResourceState::Failed:e.state;
+}
+AudioClipHandle ResourceManager::GetAudio(const AssetId& id,std::string& error,JobPriority priority) {
+    if(id.empty()){error="no audio asset selected";return {};}
+    const auto& e=Begin(id,AssetType::Audio,priority);
+    if(TypeMismatch(e.state,e.type,AssetType::Audio)){error="asset is not audio";return {};}
+    if(e.state==ResourceState::Failed)error=e.error;
+    else if(e.state!=ResourceState::Ready)error="loading";
+    else error.clear();
+    return e.state==ResourceState::Ready?e.audio:AudioClipHandle{};
+}
 
 ResourceState ResourceManager::RequestMesh(const AssetId& id, JobPriority priority) {
     if (id.empty()) return ResourceState::Unloaded;
@@ -373,10 +394,12 @@ void ResourceManager::DestroyGpu(Entry& entry) {
     if (entry.state == ResourceState::Ready) {
         if (m_renderer && entry.mesh.IsValid()) m_renderer->DestroyMesh(entry.mesh);
         if (m_renderer && entry.texture.IsValid()) m_renderer->DestroyTexture(entry.texture);
+        if (m_audio && entry.audio.IsValid()) m_audio->DestroyClip(entry.audio);
         m_stats.bytesResident -= std::min(m_stats.bytesResident, entry.bytes);
     }
     entry.mesh = MeshHandle{};
     entry.texture = TextureHandle{};
+    entry.audio = AudioClipHandle{};
     entry.bytes = 0;
 }
 
@@ -449,7 +472,7 @@ void ResourceManager::ReleaseAll() {
     }
     for (const std::shared_ptr<LoadTask>& task : m_inFlight) TraceTask(*task, ResourceTracePoint::StaleDiscarded);
     m_inFlight.clear();
-    m_stats.loadedMeshes = m_stats.loadedTextures = m_stats.loadedTerrainMeshes = m_stats.failed = 0;
+    m_stats.loadedMeshes = m_stats.loadedTextures = m_stats.loadedAudio = m_stats.loadedTerrainMeshes = m_stats.failed = 0;
     m_stats.bytesResident = 0;
 }
 
@@ -463,7 +486,7 @@ void ResourceManager::Shutdown() {
 }
 
 void ResourceManager::RefreshCounts() const {
-    std::size_t loading = 0, ready = 0, failed = 0, meshes = 0, textures = 0;
+    std::size_t loading = 0, ready = 0, failed = 0, meshes = 0, textures = 0, audio = 0;
     for (const auto& [id, entry] : m_entries) {
         switch (entry.state) {
             case ResourceState::Queued:
@@ -473,6 +496,7 @@ void ResourceManager::RefreshCounts() const {
                 ++ready;
                 if (entry.mesh.IsValid()) ++meshes;
                 if (entry.texture.IsValid()) ++textures;
+                if (entry.audio.IsValid()) ++audio;
                 break;
             case ResourceState::Failed: ++failed; break;
             default: break;
@@ -483,6 +507,7 @@ void ResourceManager::RefreshCounts() const {
     m_stats.failed = failed;
     m_stats.loadedMeshes = meshes;
     m_stats.loadedTextures = textures;
+    m_stats.loadedAudio = audio;
     m_stats.budgetBytes = m_budgetBytes;
 }
 

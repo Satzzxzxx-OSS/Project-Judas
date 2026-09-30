@@ -98,6 +98,8 @@ void DrawEditorMainMenu(EditorDocument& doc, EditorPanelState& state, EditorRequ
         item("Gravity region", "gravity-region");
         item("Player start", "player-start");
         item("Render camera", "render-camera");
+        item("Audio emitter", "audio-emitter");
+        item("Audio listener", "audio-listener");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
@@ -356,7 +358,7 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
         char source[512], destination[256];
         CopyToBuffer(state.importSourceInput, source, sizeof(source));
         CopyToBuffer(state.importDestinationInput, destination, sizeof(destination));
-        if (ImGui::InputTextWithHint("Source file", "/path/to/model.obj | texture.png | font.ttf", source, sizeof(source))) state.importSourceInput = source;
+        if (ImGui::InputTextWithHint("Source file", "/path/to/model.obj | texture.png | font.ttf | sound.wav", source, sizeof(source))) state.importSourceInput = source;
         if (ImGui::InputTextWithHint("Destination (in assets)", "models/model.obj (empty keeps the file name)", destination, sizeof(destination))) state.importDestinationInput = destination;
         if (ImGui::Button("Import") && !state.importSourceInput.empty()) {
             requests.importSource = state.importSourceInput;
@@ -586,7 +588,7 @@ SceneObjectId CreateObjectOfKind(EditorDocument& doc, const std::string& kind, c
                                         : kind == "dynamic-sphere" ? "Dynamic sphere" : kind == "mesh" ? "Mesh"
                                         : kind == "point-light" ? "Point light" : kind == "spot-light" ? "Spot light"
                                         : kind == "door" ? "Door" : kind == "gravity-region" ? "Gravity region"
-                                        : kind == "player-start" ? "Player start" : kind == "render-camera" ? "Render camera" : "Object");
+                                        : kind == "player-start" ? "Player start" : kind == "render-camera" ? "Render camera" : kind == "audio-emitter" ? "Audio emitter" : kind == "audio-listener" ? "Audio listener" : "Object");
     o.transform.position = position;
     if (kind == "box" || kind == "dynamic-box") {
         o.render = SceneRenderComponent{};
@@ -626,6 +628,10 @@ SceneObjectId CreateObjectOfKind(EditorDocument& doc, const std::string& kind, c
         o.gravity->regionHalfExtents = glm::vec3(20.0f);
     } else if (kind == "render-camera") {
         o.renderCamera = SceneRenderCameraComponent{};
+    } else if (kind == "audio-emitter") {
+        o.audioEmitter=SceneAudioEmitterComponent{};
+    } else if (kind == "audio-listener") {
+        o.audioListener=SceneAudioListenerComponent{};
     } else if (kind == "player-start") {
         o.playerStart = ScenePlayerStartComponent{};
     }

@@ -25,6 +25,7 @@
 #include "ReferenceFrame.h"
 #include "Renderer.h"
 #include "Scene.h"
+#include "AudioSystem.h"
 
 class RadialTerrain;
 class ResourceManager;
@@ -71,6 +72,21 @@ public:
         MeshHandle mesh;
         glm::vec3 color{0.5f};
     };
+    struct AudioEmitter {
+        SceneObjectId id=0;SceneTransform transform;BodyHandle staticBody;
+        SceneAudioEmitterComponent settings;AudioVoiceHandle voice;
+        bool wantPlay=false;std::string error;
+    };
+    struct AudioListener {
+        SceneObjectId id=0;SceneTransform transform;BodyHandle staticBody;
+        SceneAudioListenerComponent settings;
+    };
+    void BeginAudio();void EndAudio();
+    void UpdateAudio(const glm::mat4& activeView,float alpha=1.0f);
+    bool PlayAudio(SceneObjectId id);bool StopAudio(SceneObjectId id);
+    bool PauseAudio(SceneObjectId id);bool ResumeAudio(SceneObjectId id);
+    bool SetAudioEnabled(SceneObjectId id,bool enabled);
+    const std::vector<AudioEmitter>& AudioEmitters() const {return m_audioEmitters;}
     // M33: authored camera pose/configuration plus transient presentation resources.
     struct RenderCamera {
         SceneObjectId id = 0;
@@ -346,6 +362,10 @@ private:
     std::vector<StaticBody> m_staticBodies;
     std::vector<Terrain> m_terrains;
     std::vector<StaticRenderable> m_staticRenderables;
+    AudioSystem* m_audioSystem=nullptr;
+    bool m_audioRunning=false;
+    std::vector<AudioEmitter> m_audioEmitters;
+    std::optional<AudioListener> m_audioListener;
     mutable std::vector<RenderCamera> m_renderCameras;
     mutable Renderer* m_cameraRenderer = nullptr;
     mutable std::uint64_t m_cameraFrame = 0;

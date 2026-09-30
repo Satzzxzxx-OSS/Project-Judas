@@ -4,6 +4,7 @@
 #include <string>
 
 #include "AssetDatabase.h"
+#include "AudioSystem.h"
 #include "JobSystem.h"
 #include "Renderer.h"
 #include "ResourceManager.h"
@@ -48,6 +49,7 @@ public:
     // and enforces the resource budget.
     void PumpResources();
 
+    AudioSystem& Audio() { return m_audio; }
     Window& GetWindow() { return m_window; }
     Renderer& GetRenderer() { return m_renderer; }
     AssetDatabase& Assets() { return m_assetDatabase; }
@@ -56,6 +58,7 @@ public:
     JobSystem& Jobs() { return *m_jobs; }
 
 private:
+    AudioSystem m_audio;
     Window m_window;
     Renderer m_renderer;
     AssetDatabase m_assetDatabase;

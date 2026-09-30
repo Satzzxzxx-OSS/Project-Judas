@@ -81,9 +81,9 @@ int main() {
               "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
           "SHA-256 million-a known vector");
     // Independently packed with Python struct's explicit big-endian formats
-    // and hashlib.sha256, not this canonical writer: 146 bytes for schema-3 Scene{} (scene format 3).
-    Check(Fingerprint(Scene{}) == "a85d3fdd8857106fe17a9d109711ae79bd8b088c40686b28924375bf9d09f3a3",
-          "schema 3 default Scene independent binary/hash golden vector");
+    // and hashlib.sha256, not this canonical writer: 146 bytes for schema-4 Scene{} (scene format 3).
+    Check(Fingerprint(Scene{}) == "1c079c361e91128744bd243dfce8b9130909686812277a56d25bb1d0399c2ce1",
+          "schema 4 default Scene independent binary/hash golden vector");
     const auto s = AllComponents();
     RoundTrip(s, "all-component scene");
     auto zeros = s;

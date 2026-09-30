@@ -73,8 +73,8 @@ void InvalidCanonical(const Scene& source, const std::string& label,
 }
 }
 int main() {
-    Check(kSceneFingerprintVersion == 3 && kSceneFormatVersion == 3,
-          "explicit canonical schema 3; authored scene grammar stays version 3");
+    Check(kSceneFingerprintVersion == 4 && kSceneFormatVersion == 3,
+          "explicit canonical schema 4; authored scene grammar stays version 3");
     const Scene authored = Fixture(true);
     std::string text, error;
     Check(SaveSceneToString(authored, text), "serialize cavity and fluid parameters");
@@ -100,7 +100,7 @@ int main() {
     Scene legacyScene;
     Check(LoadSceneFromString(oldText, legacyScene, error), "older authored scene remains readable");
     Check(ScenesEqual(defaults, legacyScene), "omitted authored fields use documented defaults");
-    Check(Fingerprint(defaults) == Fingerprint(legacyScene), "omitted/explicit defaults have same schema-3 identity");
+    Check(Fingerprint(defaults) == Fingerprint(legacyScene), "omitted/explicit defaults have same schema-4 identity");
     for (const auto& key : newKeys) Check(withDefaults.find(key) != std::string::npos, "writer emits explicit default: " + key);
 
     for (const char* value : {"0 0 0 0 .2 .3", "0 0 0 -.1 .2 .3", "nan 0 0 .1 .2 .3",

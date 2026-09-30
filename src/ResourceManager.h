@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "AssetDatabase.h"
+#include "AudioSystem.h"
 #include "JobSystem.h"
 #include "MeshData.h"
 #include "Renderer.h"
@@ -68,6 +69,7 @@ const char* ResourceStateName(ResourceState state);
 struct ResourceStats {
     std::size_t loadedMeshes = 0;
     std::size_t loadedTextures = 0;
+    std::size_t loadedAudio = 0;
     std::size_t loadedTerrainMeshes = 0;
     std::size_t failed = 0;
     std::size_t loading = 0;   // Queued + Loading + CpuReady
@@ -87,7 +89,7 @@ class ResourceManager {
 public:
     // `jobs` may be null: then every asynchronous request is executed
     // synchronously on the caller (equivalent to blocking mode).
-    ResourceManager(Renderer* renderer, const AssetDatabase* assets, JobSystem* jobs = nullptr);
+    ResourceManager(Renderer* renderer, const AssetDatabase* assets, JobSystem* jobs = nullptr, AudioSystem* audio = nullptr);
     ~ResourceManager();
     ResourceManager(const ResourceManager&) = delete;
     ResourceManager& operator=(const ResourceManager&) = delete;
@@ -107,6 +109,9 @@ public:
 
     // Non-blocking demand: starts (or joins) the load and returns the
     // state now. Ready is answered from cache (a hit).
+    ResourceState RequestAudio(const AssetId& id, JobPriority priority = JobPriority::Normal);
+    AudioClipHandle GetAudio(const AssetId& id, std::string& error, JobPriority priority = JobPriority::Normal);
+    AudioSystem* GetAudioSystem() const { return m_audio; }
     ResourceState RequestMesh(const AssetId& id, JobPriority priority = JobPriority::Normal);
     ResourceState RequestTexture(const AssetId& id, JobPriority priority = JobPriority::Normal);
 
@@ -190,6 +195,7 @@ private:
         std::string error;
         MeshData mesh;
         TextureData texture;
+        AudioData audio;
         std::thread::id decodeThread;
         ResourceTrace trace;
         JobHandle job;
@@ -200,6 +206,7 @@ private:
         AssetType type = AssetType::Mesh;
         MeshHandle mesh;
         TextureHandle texture;
+        AudioClipHandle audio;
         std::string error;
         unsigned int generation = 0;
         unsigned int refs = 0;
@@ -220,6 +227,7 @@ private:
     void Fail(Entry& entry, const std::string& message);
     void RefreshCounts() const;
 
+    AudioSystem* m_audio = nullptr;
     Renderer* m_renderer = nullptr;
     const AssetDatabase* m_assets = nullptr;
     JobSystem* m_jobs = nullptr;

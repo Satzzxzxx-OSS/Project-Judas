@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "MeshData.h"
+#include "AudioData.h"
 #include "ModelLoader.h"
 #include "TextureData.h"
 #include "TextureLoader.h"
@@ -82,6 +83,7 @@ const char* AssetTypeName(AssetType type) {
         case AssetType::Mesh: return "mesh";
         case AssetType::Texture: return "texture";
         case AssetType::Font: return "font";
+        case AssetType::Audio: return "audio";
     }
     return "mesh";
 }
@@ -90,6 +92,7 @@ bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
     if (e == ".obj") { outType = AssetType::Mesh; return true; }
     if (e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".bmp" || e == ".tga") { outType = AssetType::Texture; return true; }
+    if (e == ".wav" || e == ".mp3" || e == ".flac") { outType = AssetType::Audio; return true; }
     if (e == ".ttf") { outType = AssetType::Font; return true; }
     return false;
 }
@@ -127,6 +130,7 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
             TextureData data;
             return LoadTextureFromFile(path, data, outError);
         }
+        case AssetType::Audio: { AudioData data;return LoadAudioFromFile(path,data,outError); }
         case AssetType::Font: {
             std::ifstream file(path, std::ios::binary);
             if (!file) { outError = "could not open font file: " + path; return false; }
@@ -185,7 +189,8 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
             if (tokens[1].first == "mesh") outType = AssetType::Mesh;
             else if (tokens[1].first == "texture") outType = AssetType::Texture;
             else if (tokens[1].first == "font") outType = AssetType::Font;
-            else return fail("type must be mesh, texture or font");
+            else if (tokens[1].first == "audio") outType = AssetType::Audio;
+            else return fail("type must be mesh, texture, font or audio");
             typeSeen = true;
         } else if (key == "source") {
             if (sourceSeen) return fail("duplicate source");
@@ -296,7 +301,7 @@ bool AssetDatabase::Import(const std::string& sourcePath, const std::string& des
     if (!fs::is_regular_file(source, ec)) { outError = "source file does not exist: " + sourcePath; return false; }
     AssetType type;
     if (!AssetTypeForExtension(source.extension().string(), type)) {
-        outError = "unsupported asset type '" + source.extension().string() + "' (supported: .obj, .png/.jpg/.bmp/.tga, .ttf)";
+        outError = "unsupported asset type '" + source.extension().string() + "' (supported: .obj, .png/.jpg/.bmp/.tga, .ttf, .wav/.mp3/.flac)";
         return false;
     }
     if (!ValidateAssetFile(Generic(source), type, outError)) return false;

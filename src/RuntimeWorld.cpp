@@ -186,6 +186,9 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
 }
 
 bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::string& outError) {
+    int activeAudioListeners=0;
+    for(const auto& o:scene.Objects())if(o.audioListener&&o.audioListener->enabled)++activeAudioListeners;
+    if(activeAudioListeners>1){outError="more than one enabled audio listener";return false;}
     for (const auto& o : scene.Objects()) {
         if (o.renderCamera) {
             const auto& c = *o.renderCamera;
@@ -207,6 +210,7 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
     if (!ComputeSceneFingerprint(scene, fingerprint, outError)) return false;
     Destroy();
     m_assets = resources;
+    m_audioSystem=resources?resources->GetAudioSystem():nullptr;
     m_settings = scene.Settings();
     if (!m_physics.Init()) {
         outError = "physics initialization failed";
@@ -361,6 +365,21 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
             m_gravityRegions.push_back(GravityRegion{o.id, g, position, rotation});
         }
 
+        if(o.audioEmitter){
+            AudioEmitter emitter;emitter.id=o.id;emitter.transform=o.transform;emitter.settings=*o.audioEmitter;
+            emitter.wantPlay=emitter.settings.playOnStart;
+            if(!isDynamic)emitter.staticBody=bodyHandle;
+            m_audioEmitters.push_back(emitter);
+            if(m_assets&&!emitter.settings.asset.empty()){
+                m_assets->AddRef(emitter.settings.asset);m_referencedAssets.push_back(emitter.settings.asset);
+                if(emitter.settings.enabled)m_assets->RequestAudio(emitter.settings.asset);
+            }
+        }
+        if(o.audioListener&&o.audioListener->enabled){
+            AudioListener listener;listener.id=o.id;listener.transform=o.transform;listener.settings=*o.audioListener;
+            if(!isDynamic)listener.staticBody=bodyHandle;
+            m_audioListener=listener;
+        }
         if (o.renderCamera) {
             RenderCamera camera; camera.id = o.id; camera.transform = o.transform; camera.settings = *o.renderCamera;
             if (!isDynamic) camera.staticBody = bodyHandle;
@@ -754,6 +773,7 @@ bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
     EntityRecord* e = FindEntity(id);
     if (e->lifecycle == EntityLifecycle::Destroyed) return true;
     ReleaseEntityBody(*e);
+    if(m_audioSystem)for(auto& emitter:m_audioEmitters)if(emitter.id==id){m_audioSystem->DestroyVoice(emitter.voice);emitter.voice={};emitter.wantPlay=false;}
     e->lifecycle = EntityLifecycle::Destroyed;
     if (m_cameraRenderer) for (auto& camera : m_renderCameras) {
         if (camera.id == id) { m_cameraRenderer->DestroyRenderTarget(camera.target); camera.target = {}; }
@@ -800,7 +820,7 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
         return false;
     }
     if (definition.vehicle || definition.combustible || definition.atmosphere || definition.fluidVolume ||
-        definition.renderCamera || definition.playerStart || definition.door || definition.lightSwitch || definition.gravity || definition.light) {
+        definition.audioEmitter || definition.audioListener || definition.renderCamera || definition.playerStart || definition.door || definition.lightSwitch || definition.gravity || definition.light) {
         error = "runtime-created entities carry only body/render/celestial components";
         return false;
     }
@@ -917,6 +937,8 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
+    EndAudio();
+    m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;
     if (!m_built) return;
     if (m_cameraRenderer) for (const auto& camera : m_renderCameras) m_cameraRenderer->DestroyRenderTarget(camera.target);
     m_renderCameras.clear(); m_cameraRenderer = nullptr; m_cameraFrame = 0;

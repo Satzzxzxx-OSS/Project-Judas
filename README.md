@@ -1,3 +1,5 @@
+M34 audio candidate: [authoring, ownership and listening checklist](docs/M34.md). Operator listening acceptance is pending.
+
 # Project Judas
 
 **Judas is a game engine.** It is purpose-built for one class of game —
@@ -1354,6 +1356,12 @@ under the Bitstream Vera License (a permissive, redistribution-friendly
 license) — see [`assets/fonts/DejaVuSans-LICENSE.txt`](assets/fonts/DejaVuSans-LICENSE.txt)
 for the full text. Rasterized at runtime via `stb_truetype`
 (`third_party/stb_truetype.h`, public domain).
+
+`third_party/miniaudio/` (Milestone 34) is miniaudio v0.11.23 by David Reid,
+Copyright 2025 David Reid. Judas uses its **MIT-0 (MIT No Attribution)** option.
+The original header notices and complete dual-license text are preserved in
+[`third_party/miniaudio/LICENSE`](third_party/miniaudio/LICENSE). Attribution is
+retained voluntarily; no in-game credit screen is required by that license.
 
 ## License
 

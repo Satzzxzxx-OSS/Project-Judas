@@ -9,6 +9,7 @@
 #include <string>
 
 #include "Scene.h"
+#include "AssetDatabase.h"
 #include "SceneSerialization.h"
 
 namespace {
@@ -104,6 +105,13 @@ void WriteObject(CanonicalWriter& w, const SceneObject& o) {
         w.Vector(r.color); w.Number(r.alpha); w.Vector(r.secondaryColor); w.Number(r.secondaryAlpha);
         w.Text(r.meshAsset); w.Text(r.textureAsset); w.U64(r.textureCamera);
     }
+    w.Boolean(o.audioEmitter.has_value());
+    if(o.audioEmitter){const auto& a=*o.audioEmitter;w.Context(object+" audio emitter");w.Text(a.asset);w.Boolean(a.enabled);w.Boolean(a.playOnStart);w.Boolean(a.loop);w.Boolean(a.spatial);
+        w.Number(a.volume);w.Number(a.pitch);w.Number(a.referenceDistance);w.Number(a.maximumDistance);w.Number(a.rolloff);w.Enum(a.attenuation,2,"audio attenuation");
+        if(!ValidAudioSettings(a)||(!a.asset.empty()&&!IsValidAssetId(a.asset)))w.Fail("invalid audio settings or asset reference");
+    }
+    w.Boolean(o.audioListener.has_value());
+    if(o.audioListener){w.Boolean(o.audioListener->enabled);w.Boolean(o.audioListener->followActiveView);}
     w.Boolean(o.renderCamera.has_value());
     if (o.renderCamera) {
         const auto& c = *o.renderCamera;
