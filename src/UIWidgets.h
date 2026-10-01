@@ -54,6 +54,7 @@ public:
     // Keyboard navigation: `direction` is -1 (up) or +1 (down), wraps
     // around the button list. A no-op on a screen with no buttons.
     void MoveFocus(int direction);
+    void ResetFocus() { m_focusIndex = 0; }
 
     // Activates the currently focused button, if any.
     void Activate(UIStack& stack);

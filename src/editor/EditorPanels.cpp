@@ -495,6 +495,31 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
     ImGui::SameLine();
     if (ImGui::Button("Run project")) requests.runProject = true;
     ImGui::Separator();
+    if(ImGui::CollapsingHeader("Input actions and axes")){
+        static char newName[128]="";static bool newAxis=false;
+        ImGui::InputText("New input name",newName,sizeof(newName));ImGui::Checkbox("Analog axis",&newAxis);
+        if(ImGui::Button("Create input")){if(!s.input.Add(newName,newAxis))state.status="Input name is empty or already exists";else newName[0]=0;}
+        ImGui::TextWrapped("Controls: key:Space, mouse:Left, mouse:dx/dy/wheelX/wheelY, pad:South, stick:LeftX. Edit bindings, then Save project. Play uses these bindings.");
+        for(std::size_t i=0;i<s.input.entries.size();++i){
+            auto& entry=s.input.entries[i];ImGui::PushID(static_cast<int>(i));
+            if(ImGui::TreeNode(entry.name.c_str(),"%s (%s)",entry.name.c_str(),entry.axis?"axis":"action")){
+                char inputName[129];CopyToBuffer(entry.name,inputName,sizeof(inputName));
+                if(ImGui::InputText("Rename",inputName,sizeof(inputName)))s.input.Rename(entry.name,inputName);
+                if(ImGui::Button("Delete input")){const auto name=entry.name;s.input.Remove(name);ImGui::TreePop();ImGui::PopID();break;}
+                for(std::size_t b=0;b<entry.bindings.size();++b){
+                    ImGui::PushID(static_cast<int>(b));auto binding=entry.bindings[b];char control[129];CopyToBuffer(binding.control,control,sizeof(control));
+                    bool changed=ImGui::InputText("Control",control,sizeof(control));binding.control=control;
+                    changed|=ImGui::DragFloat("Scale",&binding.scale,.05f,-10000,10000);
+                    if(binding.control.rfind("stick:",0)==0)changed|=ImGui::SliderFloat("Deadzone",&binding.deadzone,0,.99f);
+                    if(changed&&!s.input.ReplaceBinding(entry.name,b,binding))state.status="Invalid input binding";
+                    if(ImGui::Button("Remove binding")){s.input.RemoveBinding(entry.name,b);ImGui::PopID();break;}
+                    ImGui::Separator();ImGui::PopID();
+                }
+                if(ImGui::Button("Add binding"))s.input.AddBinding(entry.name,{"key:Space"});
+                ImGui::TreePop();
+            }ImGui::PopID();
+        }
+    }
     ImGui::TextDisabled("Scenes in the project (double-click opens):");
     for (const std::string& scene : state.sceneFiles) {
         if (ImGui::Selectable(scene.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&

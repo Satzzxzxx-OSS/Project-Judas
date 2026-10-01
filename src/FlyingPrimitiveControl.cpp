@@ -129,15 +129,10 @@ void ApplyFlyingPrimitiveControl(FlyingPrimitiveControl& control, const Window& 
     // harmless no-op — it does NOT zero the spacecraft's existing
     // velocity, unlike Milestone 11's unconditional SetLinearVelocity.
     glm::vec3 desiredDirection(0.0f);
-    if (window.IsActionActive(Action::MoveForward)) desiredDirection += forward;
-    if (window.IsActionActive(Action::MoveBackward)) desiredDirection -= forward;
-    if (window.IsActionActive(Action::StrafeRight)) desiredDirection += right;
-    if (window.IsActionActive(Action::StrafeLeft)) desiredDirection -= right;
-    if (window.IsActionActive(Action::MoveUp)) desiredDirection += up;
-    if (window.IsActionActive(Action::MoveDown)) desiredDirection -= up;
-    if (glm::length(desiredDirection) > 0.0f) {
-        desiredDirection = glm::normalize(desiredDirection);
-    }
+    desiredDirection += forward*window.InputAxis("move_y");
+    desiredDirection += right*window.InputAxis("move_x");
+    desiredDirection += up*window.InputAxis("move_z");
+    if (glm::length(desiredDirection)>1)desiredDirection=glm::normalize(desiredDirection);
     physics.ApplyForce(control.handle, desiredDirection * kControlForceMagnitude);
 
     // --- Rotation: a single net local-space TORQUE, not a commanded
@@ -154,17 +149,9 @@ void ApplyFlyingPrimitiveControl(FlyingPrimitiveControl& control, const Window& 
     // docs/ARCHITECTURE.md, "Milestone 12, Rotational inertia."
     // SAS owns attitude while enabled. Pilot translation remains available;
     // turn SAS off to apply the raw M12 rotational torque controls again.
-    float pitchTorque = 0.0f;
-    if (!control.sasEnabled && window.IsActionActive(Action::PitchUp)) pitchTorque += kControlTorqueMagnitude;
-    if (!control.sasEnabled && window.IsActionActive(Action::PitchDown)) pitchTorque -= kControlTorqueMagnitude;
-
-    float yawTorque = 0.0f;
-    if (!control.sasEnabled && window.IsActionActive(Action::YawLeft)) yawTorque += kControlTorqueMagnitude;
-    if (!control.sasEnabled && window.IsActionActive(Action::YawRight)) yawTorque -= kControlTorqueMagnitude;
-
-    float rollTorque = 0.0f;
-    if (!control.sasEnabled && window.IsActionActive(Action::RollRight)) rollTorque += kControlTorqueMagnitude;
-    if (!control.sasEnabled && window.IsActionActive(Action::RollLeft)) rollTorque -= kControlTorqueMagnitude;
+    const float pitchTorque=control.sasEnabled?0:window.InputAxis("pitch")*kControlTorqueMagnitude;
+    const float yawTorque=control.sasEnabled?0:window.InputAxis("yaw")*kControlTorqueMagnitude;
+    const float rollTorque=control.sasEnabled?0:window.InputAxis("roll")*kControlTorqueMagnitude;
 
     const glm::vec3 torque = right * pitchTorque + up * yawTorque + forward * rollTorque;
     physics.ApplyTorque(control.handle, torque);

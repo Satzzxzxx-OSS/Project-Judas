@@ -1366,3 +1366,8 @@ retained voluntarily; no in-game credit screen is required by that license.
 ## License
 
 MIT — see [`LICENSE`](LICENSE). Do what you like with it.
+
+## M35 — Project input candidate
+
+Named actions/axes, keyboard/mouse/controller input, project bindings and rebinding.
+See [M35 workflow and scope](docs/M35.md). Human input validation is pending.

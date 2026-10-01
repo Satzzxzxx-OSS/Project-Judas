@@ -32,6 +32,13 @@ class Renderer;
 class PauseMenu {
 public:
     PauseMenu();
+    // Callbacks capture this and the stack holds pointers to member screens.
+    // Moving or copying would leave those references bound to the old owner.
+    PauseMenu(const PauseMenu&) = delete;
+    PauseMenu& operator=(const PauseMenu&) = delete;
+    PauseMenu(PauseMenu&&) = delete;
+    PauseMenu& operator=(PauseMenu&&) = delete;
+    void Reset();
 
     bool IsOpen() const { return m_stack.IsOpen(); }
     bool IsHudVisible() const { return m_hudVisible; }

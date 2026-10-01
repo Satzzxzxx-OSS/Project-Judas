@@ -11,6 +11,7 @@
 // time, but nothing in this file ever invokes them — appearance is human-
 // validated instead, per this milestone's own brief.
 #include <cstdio>
+#include <type_traits>
 
 #include <glm/glm.hpp>
 
@@ -151,6 +152,29 @@ void TestPauseMenuFlow() {
     Check(!menu.IsOpen(), "back from the pause root closes the menu (resume)");
 }
 
+void TestPauseMenuResetLifetime() {
+    static_assert(!std::is_move_assignable<PauseMenu>::value,
+                  "menu callbacks must retain their original owner");
+    static_assert(!std::is_copy_constructible<PauseMenu>::value,
+                  "member screen pointers cannot be copied");
+    PauseMenu menu;
+    for (int i = 0; i < 3; ++i) {
+        menu.Reset();
+        Check(!menu.IsOpen() && menu.IsHudVisible() && !menu.QuitRequested(),
+              "reset restores clean Play menu state");
+        menu.HandleBackRequest();
+        menu.Layout(1024, 768);
+        menu.NavigateDown();
+        menu.Activate();
+        menu.Activate();
+        Check(!menu.IsHudVisible(), "Options callback belongs to the reset live menu");
+        menu.HandleBackRequest();
+        menu.NavigateDown();
+        menu.Activate();
+        Check(menu.QuitRequested(), "Quit callback belongs to the reset live menu");
+    }
+}
+
 void TestPauseMenuResumeButtonClosesRegardlessOfDepth() {
     std::printf("Section D: Resume closes the menu even from a nested screen\n");
 
@@ -271,6 +295,7 @@ int main() {
     TestUIStackBasics();
     TestUIMenuScreenLayoutAndFocus();
     TestPauseMenuFlow();
+    TestPauseMenuResetLifetime();
     TestPauseMenuResumeButtonClosesRegardlessOfDepth();
     TestPauseMenuQuitFlag();
     TestPauseMenuHudToggle();

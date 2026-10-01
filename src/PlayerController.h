@@ -56,7 +56,7 @@ public:
     // Reads mouse-look delta and latches jump key presses. Call exactly
     // once per render frame, regardless of how many (or how few) fixed
     // physics steps happen that frame.
-    void UpdateFrameInput(Window& window);
+    void UpdateFrameInput(Window& window, float frameDeltaTime=1.f/60);
 
     // FTFT9 approximate swimming. Density is kg/m^3; drag is a linear
     // relaxation rate (1/s); propulsion is bounded acceleration (m/s^2).

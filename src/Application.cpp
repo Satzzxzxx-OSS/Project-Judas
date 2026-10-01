@@ -61,6 +61,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     // reference; a scene outside any project resolves nothing.
     if (options.project.IsLoaded()) {
         host.OpenProjectAssets(options.project.RootDir(), options.project.AssetsDir());
+        if(!host.GetWindow().Input().SetMap(options.project.Settings().input,error)){std::fprintf(stderr,"Input map: %s\n",error.c_str());return 1;}
         for (const AssetProblem& problem : host.Assets().Problems()) {
             std::fprintf(stderr, "Asset problem: %s: %s\n", problem.path.c_str(), problem.message.c_str());
         }

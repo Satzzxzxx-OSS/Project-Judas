@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include "InputSystem.h"
 
 // Milestone 30: a Judas PROJECT — the unit a game is made in. It sits above
 // individual scenes: a root directory, where its assets and scenes live,
@@ -25,6 +26,7 @@
 // the existing assets/ tree); a new game gets Assets/ Scenes/ Saves/ from
 // the editor's New Project. Neither layout is assumed by engine code.
 struct ProjectSettings {
+    InputMap input = InputMap::Defaults();
     std::string name;
     std::string startupScene;  // project-relative scene file
     std::string assetsDir = "Assets";

@@ -8646,3 +8646,11 @@ orientation, optionally from the active view; secondary render cameras do not ti
 No gameplay-specific sounds, streaming or acoustics model is implied. Canonical
 authored schema 4 includes audio fields; prior save fingerprints are incompatible.
 See [M34](M34.md) for exact settings, lifecycle, limits and listening acceptance.
+
+## M35 current input boundary
+
+Window adapts SDL physical events/controllers into InputSystem. ProjectSettings
+owns the named InputMap; editor Play and standalone use the same map. Logical
+queries are non-consuming; fixed-step edge snapshots latch zero-step-frame input.
+Compatibility Action/Consume adapters now resolve named data rather than physical
+key switches. Scene fingerprint schema remains unchanged. See `docs/M35.md`.

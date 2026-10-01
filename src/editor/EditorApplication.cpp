@@ -377,6 +377,7 @@ bool EditorApplication::OpenProject(const std::string& projectFile, std::string&
     if (!project.Load(projectFile, outError)) return false;
     m_project = project;
     m_host->OpenProjectAssets(m_project.RootDir(), m_project.AssetsDir());
+    if(!m_host->GetWindow().Input().SetMap(m_project.Settings().input,outError))return false;
     RefreshProjectLists();
     m_panels.showProjectSettings = false;
     m_panels.browserSelection.clear();
@@ -472,6 +473,7 @@ bool EditorApplication::StartPlay(std::string& outError) {
         m_world.reset();
         return false;
     }
+    if(m_project.IsLoaded()&&!m_host->GetWindow().Input().SetMap(m_project.Settings().input,outError))return false;
     m_play = std::make_unique<InteractivePlay>();
     if (!m_play->Begin(*m_world, WorldCoordinates(m_document.GetScene().Settings().worldOrigin), outError)) {
         m_play.reset();

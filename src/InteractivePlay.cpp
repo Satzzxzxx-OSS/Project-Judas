@@ -24,7 +24,7 @@ bool InteractivePlay::Begin(RuntimeWorld& world, const WorldCoordinates& worldCo
     End();
     m_worldCoordinates = worldCoordinates;
     if (!m_session.Begin(world, outError)) return false;
-    m_pauseMenu = PauseMenu();
+    m_pauseMenu.Reset();
     m_physicsAccumulator = 0.0f;
     m_fixedStepsSinceReset = 0;
     m_resetOccurred = false;
@@ -144,7 +144,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     // no input, no accumulator, no steps.
     if (!m_pauseMenu.IsOpen()) {
         m_session.HandleFrameInput(window, torchToggleRequested, interactRequested, viewToggleRequested,
-                                   throwRequested, sasToggleRequested);
+                                   throwRequested, sasToggleRequested, frameDeltaTime);
         if (m_session.ConsumeResetOccurred()) {
             m_lastAerodynamicDrag = {};
             m_physicsAccumulator = 0.0f;
@@ -157,6 +157,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
                                m_measurements.measureFluid;
         while (m_physicsAccumulator >= SimulationTiming::kFixedTimestep &&
                stepsThisFrame < SimulationTiming::kMaxPhysicsStepsPerFrame) {
+            window.Input().BeginFixedStep();
             const auto stepStart = Clock::now();
             m_measurements.atmosphereMeasured = m_measurements.fireMeasured = m_measurements.fluidMeasured = false;
             StepPlayedWorld(m_session, window, SimulationTiming::kFixedTimestep, &m_measurements);
@@ -171,6 +172,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
         if (stepsThisFrame == SimulationTiming::kMaxPhysicsStepsPerFrame) m_physicsAccumulator = 0.0f;
         m_lastStepsThisFrame = stepsThisFrame;
     } else {
+        window.ClearPendingRequests();
         m_lastStepsThisFrame = 0;
     }
 

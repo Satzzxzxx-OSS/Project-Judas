@@ -3,7 +3,7 @@
 #include <cstdio>
 
 bool Window::Init(const char* title, int width, int height, bool visible) {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return false;
     }
@@ -51,6 +51,8 @@ Window::~Window() {
 }
 
 void Window::Shutdown() {
+    if(m_controller){SDL_GameControllerClose(m_controller);m_controller=nullptr;}
+    m_input.Reset();
     if (m_glContext) {
         SDL_GL_DeleteContext(m_glContext);
         m_glContext = nullptr;
@@ -71,33 +73,34 @@ void Window::SetEventHook(std::function<void(const SDL_Event&)> hook) {
 
 bool Window::ConsumeSpawnEntityRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_spawnEntityRequested;
+    const bool requested = ConsumeNamedAction("spawn");
     m_spawnEntityRequested = false;
     return requested;
 }
 
 bool Window::ConsumeDestroyEntityRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_destroyEntityRequested;
+    const bool requested = ConsumeNamedAction("destroy");
     m_destroyEntityRequested = false;
     return requested;
 }
 
 bool Window::ConsumeSaveWorldStateRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_saveWorldStateRequested;
+    const bool requested = ConsumeNamedAction("save_state");
     m_saveWorldStateRequested = false;
     return requested;
 }
 
 bool Window::ConsumeDeleteWorldStateRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_deleteWorldStateRequested;
+    const bool requested = ConsumeNamedAction("delete_state");
     m_deleteWorldStateRequested = false;
     return requested;
 }
 
 void Window::ClearPendingRequests() {
+    m_input.DiscardPending();m_consumed.clear();
     m_spawnEntityRequested = m_destroyEntityRequested = m_saveWorldStateRequested = m_deleteWorldStateRequested = false;
     m_resetRequested = m_jumpRequested = m_controlToggleRequested = m_torchToggleRequested = false;
     m_interactRequested = m_viewToggleRequested = m_throwRequested = m_sasToggleRequested = false;
@@ -109,72 +112,45 @@ void Window::SetInputClaimed(bool keyboard, bool mouse) {
     m_mouseClaimed = mouse;
 }
 
-void Window::PollEvents() {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        if (m_eventHook) m_eventHook(event);
-        if (event.type == SDL_QUIT) {
-            m_shouldClose = true;
-        } else if (event.type == SDL_WINDOWEVENT) {
-            if (event.window.event == SDL_WINDOWEVENT_CLOSE) {
-                m_shouldClose = true;
-            } else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                m_width = event.window.data1;
-                m_height = event.window.data2;
-            }
-        } else if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
-            if (m_keyboardClaimed) continue;
-            if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
-                // Milestone 13: Escape now drives menu back/pause
-                // navigation (see PauseMenu::HandleBackRequest) instead of
-                // the old standalone "toggle mouse capture" debug feature
-                // it had through Milestone 12 — capture is now driven
-                // explicitly by whether the menu is open (see
-                // SetMouseCaptured, called from Application::Run), so a
-                // separate manual toggle would just fight it.
-                m_uiBackRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_R) {
-                m_resetRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-                m_jumpRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_F) {
-                m_controlToggleRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_T) {
-                m_torchToggleRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_G) {
-                m_interactRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_V) {
-                m_viewToggleRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_H) {
-                m_throwRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_X) {
-                m_sasToggleRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_Z) {
-                m_spawnEntityRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_Y) {
-                m_destroyEntityRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_F6) {
-                m_saveWorldStateRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_F7) {
-                m_deleteWorldStateRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_UP) {
-                m_uiUpRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
-                m_uiDownRequested = true;
-            } else if (event.key.keysym.scancode == SDL_SCANCODE_RETURN ||
-                       event.key.keysym.scancode == SDL_SCANCODE_KP_ENTER) {
-                m_uiActivateRequested = true;
-            }
-        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            if (m_mouseClaimed) continue;
-            if (event.button.button == SDL_BUTTON_LEFT) {
-                m_uiClickRequested = true;
-                m_uiClickX = event.button.x;
-                m_uiClickY = event.button.y;
-            }
-        }
+namespace {
+const char* PadButton(int b){static const char* names[]={"South","East","West","North","Back","Guide","Start","LeftStick","RightStick","LeftShoulder","RightShoulder","DpadUp","DpadDown","DpadLeft","DpadRight"};return b>=0&&b<15?names[b]:nullptr;}
+const char* PadAxis(int a){static const char* names[]={"LeftX","LeftY","RightX","RightY","LeftTrigger","RightTrigger"};return a>=0&&a<6?names[a]:nullptr;}
+const char* MouseButton(int b){switch(b){case 1:return "Left";case 2:return "Middle";case 3:return "Right";case 4:return "X1";case 5:return "X2";default:return nullptr;}}
+}
+void Window::RefreshController(){
+    if(m_controller&&!SDL_GameControllerGetAttached(m_controller)){SDL_GameControllerClose(m_controller);m_controller=nullptr;m_controllerId=-1;m_input.ClearDevice("pad:");m_input.ClearDevice("stick:");}
+    if(!m_controller){for(int i=0;i<SDL_NumJoysticks();++i)if(SDL_IsGameController(i)){m_controller=SDL_GameControllerOpen(i);if(m_controller){m_controllerId=SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(m_controller));break;}}}
+    if(m_controller){
+        for(int b=0;b<15;++b)m_input.SetPhysical(std::string("pad:")+PadButton(b),(m_keyboardClaimed||!m_inputFocused)?0:SDL_GameControllerGetButton(m_controller,static_cast<SDL_GameControllerButton>(b)));
+        for(int a=0;a<6;++a){const int v=SDL_GameControllerGetAxis(m_controller,static_cast<SDL_GameControllerAxis>(a));const float normalized=a>=4?std::max(0,v)/32767.f:v/(v<0?32768.f:32767.f);m_input.SetPhysical(std::string("stick:")+PadAxis(a),(m_keyboardClaimed||!m_inputFocused)?0:normalized);}
     }
 }
+void Window::PollEvents(){
+    m_input.BeginFrame();m_consumed.clear();
+    if(m_keyboardClaimed)m_input.ClearDevice("key:");
+    if(m_mouseClaimed)m_input.ClearDevice("mouse:");
+    SDL_Event event;
+    while(SDL_PollEvent(&event)){
+        if(m_eventHook)m_eventHook(event);
+        if(event.type==SDL_QUIT)m_shouldClose=true;
+        else if(event.type==SDL_WINDOWEVENT){
+            if(event.window.event==SDL_WINDOWEVENT_CLOSE)m_shouldClose=true;
+            if(event.window.event==SDL_WINDOWEVENT_SIZE_CHANGED){m_width=event.window.data1;m_height=event.window.data2;}
+            if(event.window.event==SDL_WINDOWEVENT_FOCUS_LOST){m_inputFocused=false;m_input.Reset();ClearPendingRequests();}
+            if(event.window.event==SDL_WINDOWEVENT_FOCUS_GAINED)m_inputFocused=true;
+        }else if((event.type==SDL_KEYDOWN||event.type==SDL_KEYUP)&&!m_keyboardClaimed){
+            m_input.SetPhysical(std::string("key:")+SDL_GetScancodeName(event.key.keysym.scancode),event.type==SDL_KEYDOWN?1:0);
+        }else if((event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_MOUSEBUTTONUP)&&!m_mouseClaimed){
+            if(const char* name=MouseButton(event.button.button))m_input.SetPhysical(std::string("mouse:")+name,event.type==SDL_MOUSEBUTTONDOWN?1:0);
+            if(event.type==SDL_MOUSEBUTTONDOWN){m_uiClickX=event.button.x;m_uiClickY=event.button.y;}
+        }else if(event.type==SDL_MOUSEMOTION&&!m_mouseClaimed&&m_mouseCaptured){m_input.AddDelta("mouse:dx",float(event.motion.xrel));m_input.AddDelta("mouse:dy",float(event.motion.yrel));}
+        else if(event.type==SDL_MOUSEWHEEL&&!m_mouseClaimed){const float sign=event.wheel.direction==SDL_MOUSEWHEEL_FLIPPED?-1.f:1.f;m_input.AddDelta("mouse:wheelX",sign*event.wheel.x);m_input.AddDelta("mouse:wheelY",sign*event.wheel.y);}
+    }
+    // Restore held physical keys after UI ownership ends without stale edges.
+    if(!m_keyboardClaimed&&m_inputFocused){const auto* keys=SDL_GetKeyboardState(nullptr);for(int i=0;i<SDL_NUM_SCANCODES;++i)if(keys[i])m_input.SetPhysical(std::string("key:")+SDL_GetScancodeName(static_cast<SDL_Scancode>(i)),1);}
+    RefreshController();
+}
+bool Window::ConsumeNamedAction(const std::string& name){return m_input.Action(name).pressed&&m_consumed.insert(name).second;}
 
 void Window::SwapBuffers() {
     SDL_GL_SwapWindow(m_window);
@@ -185,51 +161,8 @@ bool Window::IsActionActive(Action action) const {
         return m_testActionState[static_cast<int>(action)];
     }
 
-    if (m_keyboardClaimed) return false;
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
-    switch (action) {
-        case Action::MoveForward:
-            return keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
-        case Action::MoveBackward:
-            return keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
-        case Action::StrafeLeft:
-            return keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT];
-        case Action::StrafeRight:
-            return keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT];
-        case Action::MoveUp:
-            return keys[SDL_SCANCODE_E];
-        case Action::MoveDown:
-            return keys[SDL_SCANCODE_Q];
-        // Milestone 11: spacecraft attitude control while piloting (see
-        // src/FlyingPrimitiveControl.h) — a fresh keyboard cluster (IJKL +
-        // U/O) chosen specifically so it shares no scancode with anything
-        // above, including the arrow-key aliases.
-        case Action::PitchUp:
-            return keys[SDL_SCANCODE_I];
-        case Action::PitchDown:
-            return keys[SDL_SCANCODE_K];
-        case Action::YawLeft:
-            return keys[SDL_SCANCODE_J];
-        case Action::YawRight:
-            return keys[SDL_SCANCODE_L];
-        case Action::RollLeft:
-            return keys[SDL_SCANCODE_U];
-        case Action::RollRight:
-            return keys[SDL_SCANCODE_O];
-        case Action::PlanetProgradeThrust:
-            return keys[SDL_SCANCODE_P];
-        case Action::PlanetRetrogradeThrust:
-            return keys[SDL_SCANCODE_M];
-        case Action::PlanetRadialThrust:
-            return keys[SDL_SCANCODE_N];
-        case Action::AddTerrainWater:
-            return keys[SDL_SCANCODE_B];
-        case Action::UseIgniter:
-            return keys[SDL_SCANCODE_C];
-        case Action::Count:
-            return false;
-    }
-    return false;
+    static const char* names[]={"move_forward","move_backward","strafe_left","strafe_right","move_up","move_down","pitch_up","pitch_down","yaw_left","yaw_right","roll_left","roll_right","prograde","retrograde","radial","add_water","igniter"};
+    const int index=static_cast<int>(action);return index>=0&&index<static_cast<int>(Action::Count)&&m_input.Action(names[index]).held;
 }
 
 void Window::GetMouseDelta(int& deltaX, int& deltaY) const {
@@ -241,20 +174,8 @@ void Window::GetMouseDelta(int& deltaX, int& deltaY) const {
         return;
     }
 
-    // Always drain SDL's accumulator, even while not captured, so motion
-    // that happened while the mouse was released doesn't reappear as a
-    // jump the moment it's recaptured.
-    int rawDeltaX = 0;
-    int rawDeltaY = 0;
-    SDL_GetRelativeMouseState(&rawDeltaX, &rawDeltaY);
-
-    if (m_mouseCaptured) {
-        deltaX = rawDeltaX;
-        deltaY = rawDeltaY;
-    } else {
-        deltaX = 0;
-        deltaY = 0;
-    }
+    deltaX=m_mouseCaptured?static_cast<int>(m_input.Axis("look_x")):0;
+    deltaY=m_mouseCaptured?static_cast<int>(m_input.Axis("look_y")):0;
 }
 
 bool Window::ConsumeResetRequest() {
@@ -263,7 +184,7 @@ bool Window::ConsumeResetRequest() {
         m_testResetRequested = false;
         return requested;
     }
-    const bool requested = m_resetRequested;
+    const bool requested = ConsumeNamedAction("reset");
     m_resetRequested = false;
     return requested;
 }
@@ -274,7 +195,7 @@ bool Window::ConsumeJumpRequest() {
         m_testJumpRequested = false;
         return requested;
     }
-    const bool requested = m_jumpRequested;
+    const bool requested = ConsumeNamedAction("jump");
     m_jumpRequested = false;
     return requested;
 }
@@ -285,7 +206,7 @@ bool Window::ConsumeControlToggleRequest() {
         m_testControlToggleRequested = false;
         return requested;
     }
-    const bool requested = m_controlToggleRequested;
+    const bool requested = ConsumeNamedAction("control_toggle");
     m_controlToggleRequested = false;
     return requested;
 }
@@ -296,7 +217,7 @@ bool Window::ConsumeTorchToggleRequest() {
         m_testTorchToggleRequested = false;
         return requested;
     }
-    const bool requested = m_torchToggleRequested;
+    const bool requested = ConsumeNamedAction("torch_toggle");
     m_torchToggleRequested = false;
     return requested;
 }
@@ -311,20 +232,20 @@ bool Window::ConsumeInteractRequest() {
         m_testInteractRequested = false;
         return requested;
     }
-    const bool requested = m_interactRequested;
+    const bool requested = ConsumeNamedAction("interact");
     m_interactRequested = false;
     return requested;
 }
 
 bool Window::ConsumeViewToggleRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_viewToggleRequested;
+    const bool requested = ConsumeNamedAction("view_toggle");
     m_viewToggleRequested = false;
     return requested;
 }
 
 bool Window::ConsumeThrowRequest() {
-    const bool requested = m_throwRequested;
+    const bool requested = ConsumeNamedAction("throw");
     m_throwRequested = false;
     return requested;
 }
@@ -335,7 +256,7 @@ bool Window::ConsumeSasToggleRequest() {
         m_testSasToggleRequested = false;
         return requested;
     }
-    const bool requested = m_sasToggleRequested;
+    const bool requested = ConsumeNamedAction("sas_toggle");
     m_sasToggleRequested = false;
     return requested;
 }
@@ -375,35 +296,35 @@ void Window::RequestTestControlToggle() {
 
 bool Window::ConsumeUIBackRequest() {
     if (m_testInputMode) return false;  // no JUDAS_TEST_SCRIPT scripting for UI in M13 — see Window.h
-    const bool requested = m_uiBackRequested;
+    const bool requested = ConsumeNamedAction("pause");
     m_uiBackRequested = false;
     return requested;
 }
 
 bool Window::ConsumeUINavigateUpRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_uiUpRequested;
+    const bool requested = ConsumeNamedAction("ui_up");
     m_uiUpRequested = false;
     return requested;
 }
 
 bool Window::ConsumeUINavigateDownRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_uiDownRequested;
+    const bool requested = ConsumeNamedAction("ui_down");
     m_uiDownRequested = false;
     return requested;
 }
 
 bool Window::ConsumeUIActivateRequest() {
     if (m_testInputMode) return false;
-    const bool requested = m_uiActivateRequested;
+    const bool requested = ConsumeNamedAction("ui_activate");
     m_uiActivateRequested = false;
     return requested;
 }
 
 bool Window::ConsumeUIClickRequest(int& outX, int& outY) {
     if (m_testInputMode) return false;
-    const bool requested = m_uiClickRequested;
+    const bool requested = ConsumeNamedAction("ui_click");
     outX = m_uiClickX;
     outY = m_uiClickY;
     m_uiClickRequested = false;
@@ -422,4 +343,24 @@ void Window::GetMousePosition(int& outX, int& outY) const {
 void Window::SetMouseCaptured(bool captured) {
     m_mouseCaptured = captured;
     SDL_SetRelativeMouseMode(captured ? SDL_TRUE : SDL_FALSE);
+}
+
+float Window::InputAxis(const std::string& name)const{
+    if(m_testInputMode){
+        auto pair=[&](Action positive,Action negative){return float(IsActionActive(positive))-float(IsActionActive(negative));};
+        if(name=="move_y")return pair(Action::MoveForward,Action::MoveBackward);
+        if(name=="move_x")return pair(Action::StrafeRight,Action::StrafeLeft);
+        if(name=="move_z")return pair(Action::MoveUp,Action::MoveDown);
+        if(name=="pitch")return pair(Action::PitchUp,Action::PitchDown);
+        if(name=="yaw")return pair(Action::YawLeft,Action::YawRight);
+        if(name=="roll")return pair(Action::RollRight,Action::RollLeft);
+        return 0;
+    }
+    return m_input.Axis(name);
+}
+
+void Window::GetLookDelta(float& x,float& y)const{
+    if(m_testInputMode){int ix=0,iy=0;GetMouseDelta(ix,iy);x=float(ix);y=float(iy);return;}
+    x=m_mouseCaptured?m_input.Axis("look_x"):0;
+    y=m_mouseCaptured?m_input.Axis("look_y"):0;
 }

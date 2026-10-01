@@ -33,6 +33,15 @@ PauseMenu::PauseMenu()
               UIButton{"Back", [](UIStack& stack) { stack.Pop(); }},
           }) {}
 
+void PauseMenu::Reset() {
+    m_stack.Clear();
+    m_pauseScreen.ResetFocus();
+    m_optionsScreen.ResetFocus();
+    m_hudVisible = true;
+    m_quitRequested = false;
+    m_optionsScreen.SetButtonLabel(0, HudToggleLabel(m_hudVisible));
+}
+
 void PauseMenu::HandleBackRequest() {
     if (!m_stack.IsOpen()) {
         m_stack.Push(m_pauseScreen);

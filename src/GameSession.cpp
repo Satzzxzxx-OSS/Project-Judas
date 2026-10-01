@@ -201,12 +201,12 @@ void GameSession::UpdateInteractionTarget() {
 
 void GameSession::HandleFrameInput(Window& window, bool torchToggleRequested, bool interactRequested,
                                    bool viewToggleRequested, bool throwRequested,
-                                   bool sasToggleRequested) {
+                                   bool sasToggleRequested, float frameDeltaTime) {
     if (!m_world) return;
     ApplyPlayerViewToggle(m_viewMode, viewToggleRequested, /*gameplayOwnsInput=*/true);
     // Mouse look and jump-key latching happen every render frame,
     // independent of how many fixed physics steps run this frame.
-    m_player->UpdateFrameInput(window);
+    m_player->UpdateFrameInput(window,frameDeltaTime);
 
     if (window.ConsumeResetRequest()) ResetToAuthoredState();
     if (window.ConsumeSpawnEntityRequest()) SpawnPersistentEntity();

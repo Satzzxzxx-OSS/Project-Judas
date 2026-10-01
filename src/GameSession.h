@@ -50,7 +50,7 @@ public:
     // `igniterHeld` etc. are read from the window here so no gameplay
     // system ever learns that a menu exists.
     void HandleFrameInput(Window& window, bool torchToggleRequested, bool interactRequested,
-                          bool viewToggleRequested, bool throwRequested, bool sasToggleRequested);
+                          bool viewToggleRequested, bool throwRequested, bool sasToggleRequested, float frameDeltaTime=1.f/60);
 
     // Recomputes the current interaction target from the player's pose.
     // Safe to call while paused (read-only).

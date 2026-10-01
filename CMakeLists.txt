@@ -61,6 +61,7 @@ add_library(judas_engine STATIC
     src/AudioSystem.cpp
     src/WorldAudio.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     src/Renderer.cpp
     src/PlayerController.cpp
     src/PlayerView.cpp
@@ -351,6 +352,7 @@ add_executable(judas_spacecraft_control_tests
     tests/SpacecraftControlTests.cpp
     src/FlyingPrimitiveControl.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     ${JUDAS_PHYSICS_SOURCES}
     src/PhysicsWorld.cpp
 )
@@ -364,6 +366,7 @@ add_executable(judas_spacecraft_flight_tests
     tests/SpacecraftFlightTests.cpp
     src/FlyingPrimitiveControl.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     ${JUDAS_PHYSICS_SOURCES}
     src/PhysicsWorld.cpp
     src/CelestialGravity.cpp
@@ -512,6 +515,7 @@ add_executable(judas_player_curved_locomotion_tests
     src/PilotAttachment.cpp
     src/FlyingPrimitiveControl.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     src/StepClimb.cpp
     src/PhysicsWorld.cpp
     ${JUDAS_PHYSICS_SOURCES}
@@ -537,6 +541,7 @@ add_executable(judas_world_coordinates_tests
     src/ReferenceFrame.cpp
     src/ShadowTransforms.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     src/StepClimb.cpp
     src/PhysicsWorld.cpp
     ${JUDAS_TEST_SUPPORT_SOURCES}
@@ -598,6 +603,7 @@ add_executable(judas_terrain_physics_tests
     src/LightTransforms.cpp
     src/StepClimb.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     ${JUDAS_PHYSICS_SOURCES}
     src/PhysicsWorld.cpp
     src/RadicalGravity.cpp
@@ -639,6 +645,7 @@ add_executable(judas_atmospheric_flight_tests
     src/DynamicBody.cpp
     src/FlyingPrimitiveControl.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     ${JUDAS_PHYSICS_SOURCES}
     src/PhysicsWorld.cpp
 )
@@ -659,6 +666,7 @@ add_executable(judas_combustion_tests
     src/RadicalGravity.cpp
     src/FlyingPrimitiveControl.cpp
     src/Window.cpp
+    src/InputSystem.cpp
     ${JUDAS_PHYSICS_SOURCES}
     src/PhysicsWorld.cpp
 )
@@ -850,3 +858,7 @@ target_compile_options(judas_render_camera_tests PRIVATE -Wall -Wextra)
 add_executable(judas_audio_tests tests/AudioTests.cpp src/editor/EditorHistory.cpp)
 target_link_libraries(judas_audio_tests PRIVATE judas_engine)
 target_compile_options(judas_audio_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_input_tests tests/InputTests.cpp)
+target_link_libraries(judas_input_tests PRIVATE judas_engine)
+target_compile_options(judas_input_tests PRIVATE -Wall -Wextra)

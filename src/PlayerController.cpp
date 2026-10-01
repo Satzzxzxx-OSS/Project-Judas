@@ -148,10 +148,10 @@ void PlayerController::SetFluidSample(const PlayerFluidSample& sample) {
     m_fluidSample = sample;
 }
 
-void PlayerController::UpdateFrameInput(Window& window) {
-    int mouseDeltaX = 0;
-    int mouseDeltaY = 0;
-    window.GetMouseDelta(mouseDeltaX, mouseDeltaY);
+void PlayerController::UpdateFrameInput(Window& window, float frameDeltaTime) {
+    float mouseDeltaX = 0;
+    float mouseDeltaY = 0;
+    window.GetLookDelta(mouseDeltaX, mouseDeltaY);
 
     // Not scaled by deltaTime — relative mouse deltas already represent
     // motion since the last poll (see Milestone 2/3's Camera for the full
@@ -165,8 +165,8 @@ void PlayerController::UpdateFrameInput(Window& window) {
     // right; the previous `+=` had the horizontal look inverted (mouse
     // right turned the camera left), reported during Milestone 7-A human
     // validation. Pitch's sign was already correct and is unchanged.
-    m_yaw -= static_cast<float>(mouseDeltaX) * kMouseSensitivity;
-    m_pitch -= static_cast<float>(mouseDeltaY) * kMouseSensitivity;
+    m_yaw -= (static_cast<float>(mouseDeltaX) + window.InputAxis("look_stick_x")*240.f*frameDeltaTime) * kMouseSensitivity;
+    m_pitch -= (static_cast<float>(mouseDeltaY) + window.InputAxis("look_stick_y")*240.f*frameDeltaTime) * kMouseSensitivity;
     m_pitch = std::clamp(m_pitch, -kMaxPitchDegrees, kMaxPitchDegrees);
 
     // Latch the jump request until a fixed step consumes it, so a short
@@ -234,12 +234,10 @@ glm::vec3 PlayerController::ComputeInputDirection(const Window& window,
     const glm::vec3 right = glm::normalize(glm::cross(forward, localUp));
 
     glm::vec3 direction(0.0f);
-    if (window.IsActionActive(Action::MoveForward)) direction += forward;
-    if (window.IsActionActive(Action::MoveBackward)) direction -= forward;
-    if (window.IsActionActive(Action::StrafeRight)) direction += right;
-    if (window.IsActionActive(Action::StrafeLeft)) direction -= right;
+    direction += forward * window.InputAxis("move_y");
+    direction += right * window.InputAxis("move_x");
 
-    if (glm::length(direction) > 0.0f) {
+    if (glm::length(direction) > 1.0f) {
         direction = glm::normalize(direction);
     }
     return direction;  // normalized, or exactly zero if nothing is held
@@ -255,14 +253,13 @@ glm::vec3 PlayerController::ComputeSwimInputDirection(const Window& window,
     const glm::vec3 right = yawedFrame * glm::vec3(1.0f, 0.0f, 0.0f);
     const glm::vec3 forward = GetLookDirection();
     glm::vec3 direction(0.0f);
-    if (window.IsActionActive(Action::MoveForward)) direction += forward;
-    if (window.IsActionActive(Action::MoveBackward)) direction -= forward;
-    if (window.IsActionActive(Action::StrafeRight)) direction += right;
-    if (window.IsActionActive(Action::StrafeLeft)) direction -= right;
-    if (window.IsActionActive(Action::MoveUp) || m_jumpRequested) direction += localUp;
-    if (window.IsActionActive(Action::MoveDown)) direction -= localUp;
+    direction += forward * window.InputAxis("move_y");
+    direction += right * window.InputAxis("move_x");
+    float vertical=window.InputAxis("move_z");
+    if(m_jumpRequested&&!window.IsActionActive(Action::MoveUp))vertical+=1.f;
+    direction += localUp * vertical;
     const float length = glm::length(direction);
-    return length > 0.0f ? direction / length : glm::vec3(0.0f);
+    return length > 1.0f ? direction / length : direction;
 }
 
 void PlayerController::FixedUpdate(const Window& window, PhysicsWorld& physics,

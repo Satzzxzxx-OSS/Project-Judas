@@ -57,6 +57,7 @@ std::string Project::SerializeToString(const ProjectSettings& s) {
     out += "assets-dir " + Quote(s.assetsDir) + "\n";
     out += "scenes-dir " + Quote(s.scenesDir) + "\n";
     out += "saves-dir " + Quote(s.savesDir) + "\n";
+    out += "input-map " + Quote(s.input.Serialize()) + "\n";
     return out;
 }
 
@@ -116,6 +117,7 @@ bool Project::ParseFromString(const std::string& text, ProjectSettings& outSetti
         else if (key == "assets-dir") s.assetsDir = value;
         else if (key == "scenes-dir") s.scenesDir = value;
         else if (key == "saves-dir") s.savesDir = value;
+        else if (key == "input-map") { if(!InputMap::Parse(value,s.input,outError)) return false; }
         else {
             outError = "project file has unknown key '" + key + "'";
             return false;
@@ -155,6 +157,7 @@ bool Project::Load(const std::string& projectFilePath, std::string& outError) {
 }
 
 bool Project::Save(std::string& outError) const {
+    if(!m_settings.input.Validate(outError))return false;
     if (m_projectFile.empty()) {
         outError = "project has no file path";
         return false;
