@@ -1,4 +1,8 @@
 #include "RuntimeWorld.h"
+#include "Prefab.h"
+#include <set>
+#include <sstream>
+#include "SceneSerialization.h"
 
 #include <algorithm>
 #include <cmath>
@@ -185,7 +189,10 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
     return true;
 }
 
-bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::string& outError) {
+bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError) {
+    Scene resolved, scene;
+    if (!ResolvePrefabs(authored, resources ? resources->Assets() : nullptr, resolved, outError) ||
+        !FlattenHierarchy(resolved, scene, outError)) return false;
     int activeAudioListeners=0;
     for(const auto& o:scene.Objects())if(o.audioListener&&o.audioListener->enabled)++activeAudioListeners;
     if(activeAudioListeners>1){outError="more than one enabled audio listener";return false;}
@@ -212,6 +219,7 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
     m_assets = resources;
     m_audioSystem=resources?resources->GetAudioSystem():nullptr;
     m_settings = scene.Settings();
+    if(std::any_of(resolved.Objects().begin(),resolved.Objects().end(),[](const auto& o){return o.parent!=0;}))m_hierarchy=resolved;
     if (!m_physics.Init()) {
         outError = "physics initialization failed";
         return false;
@@ -243,9 +251,15 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
         if (o.playerStart) loadContext.focus = o.transform.position;
     }
 
+    if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
+    m_baselineFingerprint = std::move(fingerprint);
+    return true;
+}
+
+bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
+    const FidelityPolicyContext& loadContext, std::string& outError) {
     const auto fail = [&](const SceneObject& o, const std::string& what) {
         outError = "object " + std::to_string(o.id) + " \"" + o.name + "\": " + what;
-        Destroy();
         return false;
     };
 
@@ -316,7 +330,7 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
                     fidelity = m_policy->Desired(view, loadContext);
                 }
                 std::string entityError;
-                if (!AppendEntitySlot(o, /*authored=*/true, state, fidelity, &entityError)) return fail(o, entityError);
+                if (!AppendEntitySlot(o, /*authored=*/authored, state, fidelity, &entityError)) return fail(o, entityError);
                 bodyHandle = m_dynamicBodies[dynamicIndex].Handle();
             }
         } else if (o.render && (o.render->shape == SceneShape::Compound || o.render->shape == SceneShape::Terrain)) {
@@ -495,6 +509,7 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
     }
 
     for (const Combustible& c : m_combustibles) {
+        if (!scene.Find(c.id)) continue;
         const SceneObject* o = scene.Find(c.id);
         const SceneCombustibleComponent& sc = *o->combustible;
         CombustibleMaterial fuel;
@@ -517,8 +532,7 @@ bool RuntimeWorld::Build(const Scene& scene, ResourceManager* resources, std::st
     if (m_assets && !m_fluidVolumes.empty() && m_assets->GetRenderer()) {
         m_fluidMesh = m_assets->GetRenderer()->CreateMesh(MeshData{});
     }
-    PopulateFluid();
-    m_baselineFingerprint = std::move(fingerprint);
+    if (authored) PopulateFluid();
     return true;
 }
 
@@ -646,6 +660,8 @@ const EntityRecord* RuntimeWorld::FindEntity(EntityId id) const {
     for (const EntityRecord& e : m_entities) {
         if (e.id == id) return &e;
     }
+    for (const auto& e : m_extraEntities) if (e.id == id) return &e;
+    for (auto& e : m_extraEntities) if (e.id == id) return &e;
     return nullptr;
 }
 
@@ -653,6 +669,7 @@ EntityRecord* RuntimeWorld::FindEntity(EntityId id) {
     for (EntityRecord& e : m_entities) {
         if (e.id == id) return &e;
     }
+    for (auto& e : m_extraEntities) if (e.id == id) return &e;
     return nullptr;
 }
 
@@ -670,6 +687,7 @@ EntityId RuntimeWorld::EntityIdOfBody(BodyHandle handle) const {
 bool RuntimeWorld::GetEntityState(EntityId id, EntityPhysicalState& outState) const {
     const EntityRecord* e = FindEntity(id);
     if (!e || e->lifecycle == EntityLifecycle::Destroyed) return false;
+    if (e->slot == std::numeric_limits<std::size_t>::max()) { outState=e->state; return true; }
     if (e->fidelity == SimulationFidelity::Full) {
         const BodyHandle handle = m_dynamicBodies[e->slot].Handle();
         const BodyTransform transform = m_physics.GetTransform(handle);
@@ -687,6 +705,14 @@ bool RuntimeWorld::SetEntityState(EntityId id, const EntityPhysicalState& state)
     EntityRecord* e = FindEntity(id);
     if (!e || e->lifecycle == EntityLifecycle::Destroyed) return false;
     e->state = state;
+    if (e->slot == std::numeric_limits<std::size_t>::max()) {
+        for(auto& r:m_staticRenderables)if(r.id==id){r.position=state.position;r.rotation=state.rotation;}
+        for(auto& b:m_staticBodies)if(b.id==id){m_physics.ResetBody(b.handle,state.position,state.rotation);b.position=state.position;b.rotation=state.rotation;}
+        for(auto& a:m_audioEmitters)if(a.id==id){a.transform.position=state.position;a.transform.rotation=state.rotation;}
+        for(auto& c:m_renderCameras)if(c.id==id){c.transform.position=state.position;c.transform.rotation=state.rotation;}
+        for(auto& l:m_staticLights)if(l.id==id){l.position=state.position;l.direction=state.rotation*glm::vec3(0,0,-1);}
+        return true;
+    }
     e->coarseMotion = glm::length(state.linearVelocity) < kSettledLinearSpeed &&
                               glm::length(state.angularVelocity) < kSettledAngularSpeed
                           ? CoarseMotion::Settled
@@ -772,14 +798,21 @@ bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
     if (!ValidateEntityDestruction(id, error)) { if (outError) *outError = error; return false; }
     EntityRecord* e = FindEntity(id);
     if (e->lifecycle == EntityLifecycle::Destroyed) return true;
-    ReleaseEntityBody(*e);
+    const bool extra=e->slot==std::numeric_limits<std::size_t>::max();
+    if(!extra)ReleaseEntityBody(*e);
+    else {
+        for(auto& b:m_staticBodies)if(b.id==id)m_physics.DestroyBody(b.handle);
+        const auto eraseId=[id](auto& values){values.erase(std::remove_if(values.begin(),values.end(),[id](const auto& v){return v.id==id;}),values.end());};
+        eraseId(m_staticBodies);eraseId(m_staticRenderables);eraseId(m_staticLights);
+    }
     if(m_audioSystem)for(auto& emitter:m_audioEmitters)if(emitter.id==id){m_audioSystem->DestroyVoice(emitter.voice);emitter.voice={};emitter.wantPlay=false;}
     e->lifecycle = EntityLifecycle::Destroyed;
     if (m_cameraRenderer) for (auto& camera : m_renderCameras) {
         if (camera.id == id) { m_cameraRenderer->DestroyRenderTarget(camera.target); camera.target = {}; }
     }
+    m_staticLights.erase(std::remove_if(m_staticLights.begin(),m_staticLights.end(),[id](const auto& light){return light.id==id;}),m_staticLights.end());
     e->fidelity = SimulationFidelity::Dormant;
-    m_dynamicVisuals[e->slot].hasRender = false;
+    if(!extra)m_dynamicVisuals[e->slot].hasRender = false;
     ++m_entityVersion;
     if (e->definition.celestial) RebuildCelestialParticipants();
     return true;
@@ -813,17 +846,17 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
     validation.InsertObject(copy);
     std::string fingerprint;
     if (!ComputeSceneFingerprint(validation, fingerprint, error)) return false;
-    if (!definition.body || definition.body->motion != SceneBodyMotion::Dynamic ||
-        (definition.body->shape != SceneShape::Box && definition.body->shape != SceneShape::Sphere &&
-         definition.body->shape != SceneShape::Compound)) {
-        error = "a runtime-created entity needs a dynamic box, sphere or compound body";
-        return false;
-    }
     if (definition.vehicle || definition.combustible || definition.atmosphere || definition.fluidVolume ||
-        definition.audioEmitter || definition.audioListener || definition.renderCamera || definition.playerStart || definition.door || definition.lightSwitch || definition.gravity || definition.light) {
-        error = "runtime-created entities carry only body/render/celestial components";
+        definition.audioListener || definition.playerStart || definition.door || definition.lightSwitch || definition.gravity ||
+        (definition.body && (definition.body->shape==SceneShape::Terrain || definition.body->shape==SceneShape::Mesh))) {
+        error="runtime creation supports prop bodies/render/light/audio-emitter/render-camera/celestial components; scene-global and gameplay ownership components remain scene-authored";
         return false;
     }
+    std::string block;WriteSceneObjectBlock(copy,block);std::vector<std::string> lines;
+    std::istringstream in(block);std::string line;while(std::getline(in,line))lines.push_back(line);
+    size_t index=0;SceneObject parsed;if(!ParseSceneObjectBlock(lines,index,parsed,error))return false;
+    if (!definition.body) return true;
+    if(definition.body->motion==SceneBodyMotion::Static&&definition.body->shape==SceneShape::Compound){error="static compound creation is unsupported";return false;}
     const auto positive = [](const glm::vec3& v) { return v.x > 0 && v.y > 0 && v.z > 0; };
     const auto& b = *definition.body;
     const float norm = glm::dot(definition.transform.rotation, definition.transform.rotation);
@@ -874,13 +907,88 @@ EntityId RuntimeWorld::CreateEntity(const SceneObject& definitionIn, const Entit
     if (!ValidateEntityCreation(definitionIn, error)) { if (outError) *outError = error; return kInvalidSceneObjectId; }
     SceneObject definition = definitionIn;
     if (definition.id == kInvalidSceneObjectId) definition.id = m_nextRuntimeId;
-    const EntityPhysicalState initial = state ? *state : StateFromDefinition(definition);
-    if (!AppendEntitySlot(definition, /*authored=*/false, initial, SimulationFidelity::Full, outError)) {
-        return kInvalidSceneObjectId;
+    auto local=definition;
+    if(!state&&definition.parent){
+        const auto* parent=m_hierarchy.Find(definition.parent);
+        SceneTransform parentPose;
+        if(parent)parentPose=PresentedTransform(parent->id,parent->transform,1.0f);
+        else {EntityPhysicalState p;if(!GetEntityState(definition.parent,p)){if(outError)*outError="unknown runtime parent";return 0;}parentPose.position=p.position;parentPose.rotation=p.rotation;}
+        definition.transform.position=parentPose.position+parentPose.rotation*(parentPose.scale*local.transform.position);
+        definition.transform.rotation=glm::normalize(parentPose.rotation*local.transform.rotation);definition.transform.scale*=parentPose.scale;
     }
-    m_nextRuntimeId = std::max(m_nextRuntimeId, definition.id + 1);
-    if (definition.celestial) RebuildCelestialParticipants();
+    if(state){definition.transform.position=state->position;definition.transform.rotation=state->rotation;
+        if(definition.body)definition.body->initialLinearVelocity=state->linearVelocity;}
+    Scene batch;batch.Settings()=m_settings;batch.InsertObject(definition);
+    FidelityPolicyContext context;
+    if(!AppendSceneObjects(batch,false,context,error)){if(outError)*outError=error;return 0;}
+    if(!definition.body||definition.body->motion==SceneBodyMotion::Static){
+        EntityRecord e;e.id=definition.id;e.name=definition.name;e.definition=definition;e.authored=false;
+        e.requiresFull=true;e.state=StateFromDefinition(definition);e.slot=std::numeric_limits<std::size_t>::max();
+        m_extraEntities.push_back(e);
+    }
+    FindEntity(definition.id)->definition=local;
+    m_hierarchy.InsertObject(local);
+    if(state)SetEntityState(definition.id,*state);
+    m_nextRuntimeId=std::max(m_nextRuntimeId,definition.id+1);
     return definition.id;
+}
+
+EntityId RuntimeWorld::SpawnPrefab(const AssetId& asset,const SceneTransform& placement,std::string& error) {
+    if(!m_assets||!m_assets->Assets()){error="no project asset database";return 0;}
+    Scene source;if(!LoadPrefab(*m_assets->Assets(),asset,source,error))return 0;
+    Scene instance;instance.SetNextId(m_nextRuntimeId);SceneObjectId root=0;
+    if(!InstantiatePrefab(instance,source,asset,placement,root,error))return 0;
+    Scene flat;if(!FlattenHierarchy(instance,flat,error))return 0;
+    // Complete preflight before creating any member. The resolved hierarchy is
+    // ordinary data; runtime state and saved creations never depend on a live source.
+    for(auto& o:flat.Objects()){
+        o.prefabAsset.clear();o.prefabRoot=o.prefabSource=0;o.prefabIds.clear();o.prefabOverrides.clear();
+        if(!ValidateEntityDefinition(o,error)||!ValidateVisualAssets(o,error))return 0;
+    }
+    std::vector<EntityId> created;
+    std::set<SceneObjectId> pending;
+    for(const auto& o:instance.Objects())pending.insert(o.id);
+    while(!pending.empty()){
+        bool progress=false;
+        for(const auto& original:instance.Objects())if(pending.count(original.id)&&(!original.parent||!pending.count(original.parent))){
+            auto o=original;o.prefabAsset.clear();o.prefabRoot=o.prefabSource=0;o.prefabIds.clear();o.prefabOverrides.clear();
+            if(o.render&&o.render->textureCamera&&pending.count(o.render->textureCamera))continue;
+            auto id=CreateEntity(o,nullptr,&error);
+            if(!id){for(auto prior:created)DestroyEntity(prior);return 0;}
+            pending.erase(id);created.push_back(id);progress=true;
+        }
+        if(!progress){error="cyclic runtime camera/parent creation dependencies";for(auto prior:created)DestroyEntity(prior);return 0;}
+    }
+    return root;
+}
+
+SceneTransform RuntimeWorld::PresentedTransform(SceneObjectId id,const SceneTransform& fallback,float alpha) const {
+    if(const auto* e=FindEntity(id))if(e->slot!=std::numeric_limits<std::size_t>::max()){
+        const auto& body=m_dynamicBodies[e->slot];auto t=fallback;
+        t.position=body.GetPresentedPosition(alpha);t.rotation=body.GetPresentedOrientation(alpha);return t;
+    }
+    // Physical children are independent ordinary bodies; hierarchy is not a
+    // hidden constraint. Body-free visual/audio/light/camera children follow.
+    for(const auto& b:m_staticBodies)if(b.id==id){auto t=fallback;const auto pose=m_physics.GetTransform(b.handle);t.position=pose.position;t.rotation=pose.rotation;return t;}
+    const auto* local=m_hierarchy.Find(id);
+    if(local&&local->parent){
+        const auto* parent=m_hierarchy.Find(local->parent);
+        if(parent){auto p=PresentedTransform(parent->id,parent->transform,alpha);auto t=local->transform;
+            t.position=p.position+p.rotation*(p.scale*t.position);t.rotation=glm::normalize(p.rotation*t.rotation);t.scale=p.scale*t.scale;return t;}
+    }
+    if(const auto* e=FindEntity(id)){auto t=fallback;t.position=e->state.position;t.rotation=e->state.rotation;return t;}
+    return local?local->transform:fallback;
+}
+
+bool RuntimeWorld::DestroyHierarchy(EntityId root,std::string& error) {
+    std::vector<EntityId> ids{root};
+    for(size_t i=0;i<ids.size();++i){
+        for(const auto& e:m_entities)if(e.definition.parent==ids[i])ids.push_back(e.id);
+        for(const auto& e:m_extraEntities)if(e.definition.parent==ids[i])ids.push_back(e.id);
+    }
+    for(auto id:ids)if(!ValidateEntityDestruction(id,error))return false;
+    for(auto it=ids.rbegin();it!=ids.rend();++it)if(!DestroyEntity(*it,&error))return false;
+    return true;
 }
 
 void RuntimeWorld::SetFidelityPolicy(std::unique_ptr<FidelityPolicy> policy) {
@@ -995,6 +1103,8 @@ void RuntimeWorld::Destroy() {
     }
     m_referencedAssets.clear();
     m_assets = nullptr;
+    m_hierarchy.Clear();
+    m_extraEntities.clear();
     m_baselineFingerprint.clear();
     m_built = false;
 }

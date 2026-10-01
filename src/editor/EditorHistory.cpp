@@ -1,6 +1,7 @@
 #include "EditorDocument.h"
 
 #include "SceneSerialization.h"
+#include "Prefab.h"
 
 namespace {
 constexpr std::size_t kMaxHistory = 200;
@@ -53,9 +54,10 @@ void EditorDocument::BeginEdit() {
     m_editInProgress = true;
 }
 
-void EditorDocument::CommitEdit() {
+void EditorDocument::CommitEdit(bool capturePrefab) {
     if (!m_editInProgress) return;
     m_editInProgress = false;
+    if(capturePrefab)CapturePrefabEdits(m_pendingSnapshot,m_scene);
     if (ScenesEqual(m_pendingSnapshot, m_scene)) return;
     m_undo.push_back(std::move(m_pendingSnapshot));
     if (m_undo.size() > kMaxHistory) m_undo.erase(m_undo.begin());

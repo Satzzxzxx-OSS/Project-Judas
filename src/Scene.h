@@ -2,6 +2,7 @@
 #include "AudioTypes.h"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -245,6 +246,13 @@ struct SceneAudioListenerComponent {
 struct SceneObject {
     SceneObjectId id = kInvalidSceneObjectId;
     std::string name;
+    // Authored parent-local transform. No implied rigid constraint.
+    SceneObjectId parent = 0;
+    // Provenance is authored bookkeeping only; components remain ordinary.
+    std::string prefabAsset; // only instance root
+    SceneObjectId prefabRoot = 0, prefabSource = 0;
+    std::map<SceneObjectId, SceneObjectId> prefabIds; // only root: source -> scene IDs
+    std::map<std::string, std::string> prefabOverrides;
     SceneTransform transform;
     std::optional<SceneRenderComponent> render;
     std::optional<SceneRenderCameraComponent> renderCamera;

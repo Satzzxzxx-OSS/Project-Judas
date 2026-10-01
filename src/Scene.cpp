@@ -21,7 +21,9 @@ bool Scene::DestroyObject(SceneObjectId id) {
     const auto it = std::find_if(m_objects.begin(), m_objects.end(),
                                  [id](const SceneObject& o) { return o.id == id; });
     if (it == m_objects.end()) return false;
-    m_objects.erase(it);
+    std::vector<SceneObjectId> ids{id};
+    for(size_t i=0;i<ids.size();++i)for(const auto& o:m_objects)if(o.parent==ids[i])ids.push_back(o.id);
+    m_objects.erase(std::remove_if(m_objects.begin(),m_objects.end(),[&](const auto& o){return std::find(ids.begin(),ids.end(),o.id)!=ids.end();}),m_objects.end());
     return true;
 }
 
@@ -81,7 +83,10 @@ bool OptEq(const std::optional<T>& a, const std::optional<T>& b, F&& equal) {
 }  // namespace
 
 bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
-    if (a.id != b.id || a.name != b.name) return false;
+    if (a.id != b.id || a.name != b.name || a.parent != b.parent ||
+        a.prefabAsset != b.prefabAsset || a.prefabRoot != b.prefabRoot ||
+        a.prefabSource != b.prefabSource || a.prefabIds != b.prefabIds ||
+        a.prefabOverrides != b.prefabOverrides) return false;
     if (!Eq(a.transform.position, b.transform.position) ||
         !Eq(a.transform.rotation, b.transform.rotation) ||
         !Eq(a.transform.scale, b.transform.scale)) {

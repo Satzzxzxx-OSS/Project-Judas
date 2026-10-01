@@ -1371,3 +1371,5 @@ MIT — see [`LICENSE`](LICENSE). Do what you like with it.
 
 Named actions/axes, keyboard/mouse/controller input, project bindings and rebinding.
 See [M35 workflow and scope](docs/M35.md). Human input validation is pending.
+
+M36 adds linked prefab assets, stable hierarchy IDs, property overrides and runtime spawning. See [M36](docs/M36.md); demo: `judas assets/scenes/prefab_demo.judas`.

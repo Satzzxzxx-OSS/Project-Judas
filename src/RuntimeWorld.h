@@ -299,6 +299,10 @@ public:
     // velocity when given. Returns the invalid id on failure.
     EntityId CreateEntity(const SceneObject& definition, const EntityPhysicalState* state,
                           std::string* outError = nullptr);
+    SceneTransform PresentedTransform(SceneObjectId id, const SceneTransform& fallback, float alpha) const;
+    EntityId SpawnPrefab(const AssetId& asset, const SceneTransform& placement, std::string& error);
+    bool DestroyHierarchy(EntityId root, std::string& error);
+    const std::vector<EntityRecord>& AdditionalEntities() const { return m_extraEntities; }
     EntityId AllocateRuntimeEntityId();
     void SetNextRuntimeEntityId(EntityId next);
     EntityId NextRuntimeEntityId() const { return m_nextRuntimeId; }
@@ -350,6 +354,9 @@ private:
 
     bool m_built = false;
     PhysicsWorld m_physics;
+    bool AppendSceneObjects(const Scene& scene, bool authored, const FidelityPolicyContext& context, std::string& error);
+    Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
+    std::vector<EntityRecord> m_extraEntities; // normal non-dynamic runtime components
     SceneSettings m_settings;
     std::string m_baselineFingerprint;
     ResourceManager* m_assets = nullptr;

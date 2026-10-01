@@ -8654,3 +8654,15 @@ owns the named InputMap; editor Play and standalone use the same map. Logical
 queries are non-consuming; fixed-step edge snapshots latch zero-step-frame input.
 Compatibility Action/Consume adapters now resolve named data rather than physical
 key switches. Scene fingerprint schema remains unchanged. See `docs/M35.md`.
+
+## Milestone 36: prefabs
+
+Prefab assets reuse scene object blocks and stable AssetIds. Scene parent transforms
+are local; RuntimeWorld resolves linked source data, explicit overrides and world
+poses before ordinary component construction. Runtime spawning reuses that same
+construction loop. Provenance stays in authored/persistence bookkeeping, never
+selects a physical law. Body-free children follow parent presentation; bodies
+remain independent unless explicitly attached. Canonical fingerprint schema 5
+includes effective source-derived components and hierarchy/link metadata. Older
+saved fingerprints are rejected. See `docs/M36.md` for authoring, runtime creation
+capabilities and limitations.

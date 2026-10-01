@@ -7,10 +7,12 @@ class Scene;
 
 // Persisted compatibility scheme. Bump this whenever canonical field coverage,
 // ordering or meaning changes. The save format records this independently.
-constexpr int kSceneFingerprintVersion = 4;
+constexpr int kSceneFingerprintVersion = 5;
 
 // SHA-256 over canonical authored data, never runtime state or file paths.
-// Schema 4 adds audio emitter/listener metadata.
+// Schema 5 adds stable hierarchy and prefab provenance/override metadata.
+// RuntimeWorld fingerprints the resolved effective scene, including source components.
+// Schema 4 added audio emitter/listener metadata.
 // Schema 3 added render cameras and stable generated-texture references.
 // Schema 2 added explicit fluid cavities, update/drag settings, and player fluid
 // response parameters, including their defaults. Older saved fingerprints are

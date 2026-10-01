@@ -1,4 +1,6 @@
 #include "AssetDatabase.h"
+#include "Prefab.h"
+#include "SceneSerialization.h"
 
 #include <algorithm>
 #include <chrono>
@@ -84,12 +86,14 @@ const char* AssetTypeName(AssetType type) {
         case AssetType::Texture: return "texture";
         case AssetType::Font: return "font";
         case AssetType::Audio: return "audio";
+        case AssetType::Prefab: return "prefab";
     }
     return "mesh";
 }
 
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
+    if (e == ".judasprefab") { outType = AssetType::Prefab; return true; }
     if (e == ".obj") { outType = AssetType::Mesh; return true; }
     if (e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".bmp" || e == ".tga") { outType = AssetType::Texture; return true; }
     if (e == ".wav" || e == ".mp3" || e == ".flac") { outType = AssetType::Audio; return true; }
@@ -130,6 +134,7 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
             TextureData data;
             return LoadTextureFromFile(path, data, outError);
         }
+        case AssetType::Prefab: { Scene scene; return LoadSceneFromFile(path,scene,outError) && ValidatePrefab(scene,outError); }
         case AssetType::Audio: { AudioData data;return LoadAudioFromFile(path,data,outError); }
         case AssetType::Font: {
             std::ifstream file(path, std::ios::binary);
@@ -190,7 +195,8 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
             else if (tokens[1].first == "texture") outType = AssetType::Texture;
             else if (tokens[1].first == "font") outType = AssetType::Font;
             else if (tokens[1].first == "audio") outType = AssetType::Audio;
-            else return fail("type must be mesh, texture, font or audio");
+            else if (tokens[1].first == "prefab") outType = AssetType::Prefab;
+            else return fail("type must be mesh, texture, font, audio or prefab");
             typeSeen = true;
         } else if (key == "source") {
             if (sourceSeen) return fail("duplicate source");

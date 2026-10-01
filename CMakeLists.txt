@@ -101,6 +101,7 @@ add_library(judas_engine STATIC
     src/CelestialGravity.cpp
     src/AtmosphereField.cpp
     src/AerodynamicDrag.cpp
+    src/Prefab.cpp
     src/Scene.cpp
     src/SceneSerialization.cpp
     src/SceneFingerprint.cpp
@@ -862,3 +863,11 @@ target_compile_options(judas_audio_tests PRIVATE -Wall -Wextra)
 add_executable(judas_input_tests tests/InputTests.cpp)
 target_link_libraries(judas_input_tests PRIVATE judas_engine)
 target_compile_options(judas_input_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_prefab_tests tests/PrefabTests.cpp src/editor/EditorHistory.cpp)
+target_link_libraries(judas_prefab_tests PRIVATE judas_engine)
+target_compile_options(judas_prefab_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_prefab_application_tests tests/PrefabApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_prefab_application_tests PRIVATE judas_engine)
+target_compile_options(judas_prefab_application_tests PRIVATE -Wall -Wextra)

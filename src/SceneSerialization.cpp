@@ -1,4 +1,5 @@
 #include "SceneSerialization.h"
+#include "Prefab.h"
 #include "AssetDatabase.h"
 
 #include <cmath>
@@ -76,6 +77,16 @@ private:
 
 void WriteObject(Writer& w, const SceneObject& o) {
     w.Raw("object " + std::to_string(o.id) + " " + Quote(o.name) + "\n");
+    if (o.parent) w.Line("parent", std::to_string(o.parent));
+    if (o.prefabRoot) {
+        w.Line("prefab.asset", Quote(o.prefabAsset));
+        w.Line("prefab.root", std::to_string(o.prefabRoot));
+        w.Line("prefab.source", std::to_string(o.prefabSource));
+        PrefabProperties ids;
+        for (const auto& pair : o.prefabIds) ids[std::to_string(pair.first)] = std::to_string(pair.second);
+        w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
+        w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
+    }
     w.Line("position", V(o.transform.position));
     w.Line("rotation", Q(o.transform.rotation));
     w.Line("scale", V(o.transform.scale));
@@ -522,6 +533,23 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     o.name = header[2].text;
 
     ObjectParser p(reader, block);
+    if (p.Has("parent") && !p.Id("parent", o.parent)) return false;
+    if (p.Has("prefab.root")) {
+        std::string ids, overrides;
+        if (!p.Id("prefab.root", o.prefabRoot) || !p.Id("prefab.source", o.prefabSource) ||
+            !p.String("prefab.asset", o.prefabAsset) || !p.String("prefab.ids", ids) ||
+            !p.String("prefab.overrides", overrides)) return false;
+        PrefabProperties mapping;
+        std::string error;
+        if (!DecodePrefabOverrides(ids, mapping, error) ||
+            !DecodePrefabOverrides(overrides, o.prefabOverrides, error)) return reader.Fail(error);
+        for (const auto& pair : mapping) {
+            try { size_t a, b; auto src=std::stoull(pair.first,&a), dst=std::stoull(pair.second,&b);
+                if (!src || !dst || a!=pair.first.size() || b!=pair.second.size()) return reader.Fail("invalid prefab ID mapping");
+                o.prefabIds[src]=dst;
+            } catch (...) { return reader.Fail("invalid prefab ID mapping"); }
+        }
+    }
     if (!p.Vec3("position", o.transform.position)) return false;
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
@@ -949,6 +977,7 @@ bool LoadSceneFromString(const std::string& text, Scene& outScene, std::string& 
             o.render->shape != SceneShape::Sphere && o.render->shape != SceneShape::Mesh))
             return reader.Fail("camera texture requires a box, sphere or mesh and no disk texture");
     }
+    if (!ValidateHierarchy(scene, outError)) return false;
     outScene = std::move(scene);
     return true;
 }

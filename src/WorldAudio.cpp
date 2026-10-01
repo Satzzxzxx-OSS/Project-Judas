@@ -8,11 +8,12 @@ bool Pose(const RuntimeWorld& world,SceneObjectId id,const SceneTransform& autho
     position=authored.position;rotation=glm::normalize(authored.rotation);
     if(const auto* entity=world.FindEntity(id)){
         if(entity->lifecycle!=EntityLifecycle::Active)return false;
-        const auto& dynamic=world.DynamicBodies()[entity->slot];
-        position=dynamic.GetPresentedPosition(alpha);rotation=dynamic.GetPresentedOrientation(alpha);
+        const auto t=world.PresentedTransform(id,authored,alpha);position=t.position;rotation=t.rotation;
     }else if(body.IsValid()){
         const auto transform=world.Physics().GetTransform(body);position=transform.position;rotation=transform.rotation;
     }
+    const auto t=world.PresentedTransform(id,SceneTransform{position,rotation,authored.scale},alpha);
+    position=t.position;rotation=t.rotation;
     return true;
 }
 }

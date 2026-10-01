@@ -1,4 +1,5 @@
 #include "WorldState.h"
+#include <map>
 
 #include <algorithm>
 #include <charconv>
@@ -186,7 +187,9 @@ WorldState CaptureWorldState(const RuntimeWorld& world) {
     out.baselineName = world.Settings().name;
     out.compatibility.baselineFingerprint = world.BaselineFingerprint();
     out.nextRuntimeId = world.NextRuntimeEntityId();
-    for (const EntityRecord& e : world.Entities()) {
+    auto persistent=world.Entities();
+    persistent.insert(persistent.end(),world.AdditionalEntities().begin(),world.AdditionalEntities().end());
+    for (const EntityRecord& e : persistent) {
         WorldStateEntityChange change;
         change.id = e.id;
         if (e.lifecycle == EntityLifecycle::Destroyed) {
@@ -259,6 +262,18 @@ bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& 
                 return false;
             }
         }
+    }
+    // Created hierarchy references are checked as a complete batch before any
+    // mutation. Forward references are legal; dangling parents and cycles are not.
+    std::map<EntityId,EntityId> createdParents;
+    for(const auto& change:state.entities)if(change.created)createdParents[change.id]=change.definition.parent;
+    for(const auto& pair:createdParents){
+        std::set<EntityId> path;auto id=pair.first;
+        while(id&&createdParents.count(id)){
+            if(!path.insert(id).second){outError="cyclic created-entity hierarchy";return false;}
+            id=createdParents.at(id);
+        }
+        if(id&&!world.FindEntity(id)){outError="created entity references an unknown parent";return false;}
     }
     for (const auto& change : state.interactables) {
         const bool known = change.isDoor ? world.FindDoor(change.id) != nullptr : world.FindLightSwitch(change.id) != nullptr;

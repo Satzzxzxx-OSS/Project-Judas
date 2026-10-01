@@ -84,7 +84,8 @@ void DrawRenderable(Renderer& r, ResourceManager* resources, const SceneRenderCo
 void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession* session,
                        float alpha, const WorldDrawOptions& options) {
     for (const RuntimeWorld::StaticRenderable& s : world.StaticRenderables()) {
-        DrawRenderable(r, world.Resources(), s.render, s.position, s.rotation, s.scale, 1.0f, world.CameraTexture(s.render.textureCamera));
+        const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,s.rotation,s.scale},alpha);
+        DrawRenderable(r, world.Resources(), s.render, t.position, t.rotation, t.scale, 1.0f, world.CameraTexture(s.render.textureCamera));
     }
     if (options.includeTerrain) {
         for (const RuntimeWorld::Terrain& t : world.Terrains()) {
@@ -279,8 +280,10 @@ std::vector<DynamicLight> BuildWorldLights(const RuntimeWorld& world, const Game
     for (const RuntimeWorld::StaticLight& s : world.StaticLights()) {
         DynamicLight light;
         light.kind = s.light.kind == SceneLightKind::Spot ? LightKind::Spot : LightKind::Point;
-        light.position = s.position;
-        light.direction = s.direction;
+        const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,glm::quat(1,0,0,0),glm::vec3(1)},alpha);
+        light.position = t.position;
+        light.direction = t.rotation*glm::vec3(0,0,-1);
+        if(t.rotation==glm::quat(1,0,0,0))light.direction=s.direction;
         light.color = s.light.color;
         light.range = s.light.range;
         light.innerConeDegrees = s.light.innerConeDegrees;
@@ -355,13 +358,15 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
                     renderer.DestroyRenderTarget(camera.target); camera.target = {}; continue;
                 }
                 if (entity->lifecycle != EntityLifecycle::Active) continue;
-                const auto& body = world.DynamicBodies()[entity->slot];
-                position = body.GetPresentedPosition(alpha); rotation = body.GetPresentedOrientation(alpha);
+                const auto t=world.PresentedTransform(camera.id,camera.transform,alpha);
+                position=t.position;rotation=t.rotation;
             }
             if (camera.staticBody.IsValid()) {
                 const auto pose = world.Physics().GetTransform(camera.staticBody);
                 position = pose.position; rotation = pose.rotation;
             }
+            const auto presented=world.PresentedTransform(camera.id,SceneTransform{position,rotation,camera.transform.scale},alpha);
+            position=presented.position;rotation=presented.rotation;
             const auto& c = camera.settings;
             if (c.width != camera.attemptedWidth || c.height != camera.attemptedHeight) camera.allocationAttempted = false;
             if (!camera.allocationAttempted) {

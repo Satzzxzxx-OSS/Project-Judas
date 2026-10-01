@@ -73,8 +73,8 @@ void InvalidCanonical(const Scene& source, const std::string& label,
 }
 }
 int main() {
-    Check(kSceneFingerprintVersion == 4 && kSceneFormatVersion == 3,
-          "explicit canonical schema 4; authored scene grammar stays version 3");
+    Check(kSceneFingerprintVersion == 5 && kSceneFormatVersion == 3,
+          "explicit canonical schema 5; authored scene grammar stays version 3");
     const Scene authored = Fixture(true);
     std::string text, error;
     Check(SaveSceneToString(authored, text), "serialize cavity and fluid parameters");

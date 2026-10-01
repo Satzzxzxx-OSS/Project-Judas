@@ -35,7 +35,7 @@ public:
     // it. CancelEdit discards the snapshot (a widget activated but its
     // value never changed).
     void BeginEdit();
-    void CommitEdit();
+    void CommitEdit(bool capturePrefab = true);
     void CancelEdit();
     bool EditInProgress() const { return m_editInProgress; }
 

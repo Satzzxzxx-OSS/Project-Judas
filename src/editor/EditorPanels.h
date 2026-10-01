@@ -118,6 +118,7 @@ struct EditorPanelState {
     std::string importDestinationInput;
     std::string moveAssetInput;
     AssetId browserSelection;
+    SceneObjectId lastPrefabSpawn = 0;
     // Hierarchy inline rename.
     SceneObjectId renamingId = kInvalidSceneObjectId;
     std::string renameBuffer;

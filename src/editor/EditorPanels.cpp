@@ -1,4 +1,7 @@
 #include "EditorPanels.h"
+#include "Prefab.h"
+#include "SceneSerialization.h"
+#include <filesystem>
 
 #include <algorithm>
 #include <cstring>
@@ -251,6 +254,61 @@ void DrawInspectorPanel(EditorDocument& doc, EditorPanelState& state) {
         ImGui::End();
         return;
     }
+    if(o->prefabRoot){
+        const auto* root=doc.GetScene().Find(o->prefabRoot);
+        ImGui::Text("Prefab member %llu / instance %llu",(unsigned long long)o->prefabSource,(unsigned long long)o->prefabRoot);
+        if(root)ImGui::TextWrapped("Source asset: %s",root->prefabAsset.c_str());
+        ImGui::Text("Property overrides: %zu",o->prefabOverrides.size());
+        if(state.mode==EditorMode::Edit&&state.assets){
+            std::string revert;
+            for(const auto& pair:o->prefabOverrides){
+                ImGui::PushID(pair.first.c_str());ImGui::TextWrapped("%s = %s",pair.first.c_str(),pair.second.c_str());
+                if(ImGui::SmallButton("Revert property"))revert=pair.first;
+                ImGui::PopID();
+            }
+            if(!revert.empty()){
+                doc.BeginEdit();std::string error;
+                if(!RevertPrefabProperty(doc.GetScene(),o->id,revert,*state.assets,error))state.status=error;
+                doc.CommitEdit(false);o=doc.SelectedObject();root=doc.GetScene().Find(o->prefabRoot);
+            }
+            if(root&&o->id==o->prefabRoot&&ImGui::Button("Apply this hierarchy to prefab source")){
+                const auto id=o->id;doc.BeginEdit();std::string error;
+                if(!ApplyPrefabSource(doc.GetScene(),id,*state.assets,error))state.status=error;
+                else state.status="Saved prefab source; non-overridden instances refreshed";
+                doc.CommitEdit(false);o=doc.SelectedObject();root=doc.GetScene().Find(o->prefabRoot);
+            }
+            if(ImGui::Button("Reload prefab sources")){
+                Scene resolved;std::string error;doc.BeginEdit();
+                if(ResolvePrefabs(doc.GetScene(),state.assets,resolved,error)){doc.GetScene()=std::move(resolved);state.status="Reloaded prefab sources";}else state.status=error;
+                doc.CommitEdit(false);o=doc.SelectedObject();root=doc.GetScene().Find(o->prefabRoot);
+            }
+        }
+        if(state.mode==EditorMode::Play&&state.runtime&&root&&o->id==o->prefabRoot){
+            if(ImGui::Button("Spawn independent prefab")){
+                std::string error;auto placement=o->transform;placement.position+=glm::vec3(0,2,3);
+                const auto id=state.runtime->SpawnPrefab(root->prefabAsset,placement,error);
+                state.lastPrefabSpawn=id;
+                state.status=id?"Spawned root "+std::to_string(id):error;
+            }
+            if(state.lastPrefabSpawn&&ImGui::Button("Destroy last spawned hierarchy")){
+                std::string error;
+                state.status=state.runtime->DestroyHierarchy(state.lastPrefabSpawn,error)?"Destroyed spawned hierarchy":error;
+                state.lastPrefabSpawn=0;
+            }
+        }
+    }
+    if(state.mode==EditorMode::Edit&&state.project&&state.assets&&ImGui::Button("Create prefab from hierarchy")){
+        Scene source;std::string error;
+        if(CreatePrefab(doc.GetScene(),o->id,source,error)){
+            auto path=std::filesystem::path(state.project->AssetsDir())/"prefabs"/("prefab-"+MintAssetId()+".judasprefab");
+            std::filesystem::create_directories(path.parent_path());
+            if(SaveSceneToFile(source,path.string(),error)){
+                auto* db=const_cast<AssetDatabase*>(state.assets);AssetRecord record;
+                if(db->Track(path.string(),record,error))state.status="Created prefab asset "+record.id;
+            }
+        }
+        if(!error.empty())state.status=error;
+    }
     if (state.mode == EditorMode::Play && state.runtime) {
         // Milestone 29: the runtime entity behind the selected object.
         if (ImGui::CollapsingHeader("Runtime entity (M29)", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -296,6 +354,17 @@ void DrawInspectorPanel(EditorDocument& doc, EditorPanelState& state) {
     }
     ImGui::Text("id %llu   components: %s", static_cast<unsigned long long>(o->id), ComponentIndicators(*o).c_str());
     TextField(doc, "Name", o->name);
+    if(!o->prefabRoot){
+        const auto* parent=doc.GetScene().Find(o->parent);
+        if(ImGui::BeginCombo("Parent (local transform)",parent?parent->name.c_str():"None")){
+            if(ImGui::Selectable("None",!o->parent)){doc.BeginEdit();o->parent=0;doc.CommitEdit();}
+            for(const auto& candidate:doc.GetScene().Objects())if(candidate.id!=o->id&&ImGui::Selectable(candidate.name.c_str(),candidate.id==o->parent)){
+                const auto old=o->parent;doc.BeginEdit();o->parent=candidate.id;std::string error;
+                if(!ValidateHierarchy(doc.GetScene(),error)){o->parent=old;state.status=error;}doc.CommitEdit();
+            }
+            ImGui::EndCombo();
+        }
+    }
     DrawTransformEditor(doc, *o);
     for (const ComponentEditor& editor : ComponentEditorRegistry()) {
         if (!editor.has(*o)) continue;
@@ -435,6 +504,15 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
         if (const AssetRecord* record = db.Find(state.browserSelection)) {
             ImGui::Separator();
             ImGui::Text("Selected: %s", record->relativePath.c_str());
+            if(record->type==AssetType::Prefab&&state.mode==EditorMode::Edit&&ImGui::Button("Place prefab instance")){
+                Scene source;std::string error;SceneObjectId root=0;
+                if(LoadPrefab(db,record->id,source,error)){
+                    doc.BeginEdit();
+                    if(InstantiatePrefab(doc.GetScene(),source,record->id,SceneTransform{},root,error))doc.Select(root);
+                    doc.CommitEdit(false);
+                }
+                state.status=error.empty()?"Placed linked prefab instance":error;
+            }
             char moveTo[256];
             CopyToBuffer(state.moveAssetInput, moveTo, sizeof(moveTo));
             if (ImGui::InputText("Rename / move to (in assets)", moveTo, sizeof(moveTo))) state.moveAssetInput = moveTo;
@@ -670,6 +748,24 @@ SceneObjectId DuplicateObject(EditorDocument& doc, SceneObjectId id) {
     Scene& scene = doc.GetScene();
     const SceneObject* source = scene.Find(id);
     if (!source) return kInvalidSceneObjectId;
+    if(source->prefabRoot){
+        if(source->prefabRoot!=id)return kInvalidSceneObjectId;
+        const auto asset=source->prefabAsset;const auto placement=source->transform;
+        Scene prefab;std::string error;
+        if(!CreatePrefab(scene,id,prefab,error))return kInvalidSceneObjectId;
+        auto ids=source->prefabIds;std::map<SceneObjectId,SceneObjectId> reverse;
+        for(const auto& pair:ids)reverse[pair.second]=pair.first;
+        for(auto& o:prefab.Objects()){
+            o.id=reverse.at(o.id);if(o.parent)o.parent=reverse.at(o.parent);
+            if(o.render&&o.render->textureCamera)o.render->textureCamera=reverse.at(o.render->textureCamera);
+        }
+        prefab.SetNextId(1);doc.BeginEdit();SceneObjectId root=0;
+        if(!InstantiatePrefab(scene,prefab,asset,placement,root,error)){doc.CancelEdit();return 0;}
+        // The duplicate remains linked and carries only the same explicit overrides.
+        for(auto& o:scene.Objects())if(o.prefabRoot==root){auto old=ids.find(o.prefabSource);
+            if(old!=ids.end())o.prefabOverrides=scene.Find(old->second)->prefabOverrides;}
+        doc.CommitEdit(false);doc.Select(root);return root;
+    }
     doc.BeginEdit();
     SceneObject copy = *source;  // by value: CreateObject may reallocate
     SceneObject& created = scene.CreateObject(copy.name + " copy");

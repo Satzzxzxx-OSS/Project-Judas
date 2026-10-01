@@ -9,6 +9,7 @@
 #include <string>
 
 #include "Scene.h"
+#include "Prefab.h"
 #include "AssetDatabase.h"
 #include "SceneSerialization.h"
 
@@ -96,6 +97,9 @@ void WriteObject(CanonicalWriter& w, const SceneObject& o) {
     const std::string object = "object " + std::to_string(o.id);
     w.Context(object + " transform");
     w.U64(o.id); w.Text(o.name);
+    w.U64(o.parent); w.Text(o.prefabAsset); w.U64(o.prefabRoot); w.U64(o.prefabSource);
+    w.U64(o.prefabIds.size());for(const auto& pair:o.prefabIds){w.U64(pair.first);w.U64(pair.second);}
+    w.Text(EncodePrefabOverrides(o.prefabOverrides));
     w.Vector(o.transform.position); w.Quaternion(o.transform.rotation); w.Vector(o.transform.scale);
     w.Boolean(o.render.has_value());
     if (o.render) {

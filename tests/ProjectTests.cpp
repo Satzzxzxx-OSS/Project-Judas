@@ -321,7 +321,9 @@ void SectionTechDemoProject() {
           "it points at the existing assets tree and starts on the terrain scene");
     AssetDatabase db;
     db.Scan(project.RootDir(), project.AssetsDir());
-    Check(db.Problems().empty() && db.Untracked().empty() && db.Records().size() == 7, "every shipped asset is tracked, none untracked, no problems");
+    Check(db.Problems().empty() && db.Untracked().empty() && db.Records().size() == 8, "every shipped asset is tracked, none untracked, no problems");
+    const auto* prefab=db.Find("36363636363636363636363636363636");
+    Check(prefab&&prefab->type==AssetType::Prefab&&!prefab->missing,"shipped prefab resolves through ordinary project asset identity");
     const AssetRecord* audio = db.Find("34000000000000000000000000000001");
     Check(audio && audio->type == AssetType::Audio && !audio->missing, "shipped audio resolves through ordinary project assets");
     const AssetRecord* beacon = db.Find("0b3ac0e5c8b04d1e9f7a2c6d5e4f3a21");

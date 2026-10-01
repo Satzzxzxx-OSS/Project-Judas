@@ -1,4 +1,5 @@
 #include "EditorApplication.h"
+#include "Prefab.h"
 
 #include <SDL2/SDL.h>
 
@@ -411,7 +412,10 @@ std::string EditorApplication::WorldStatePathFor(const std::string& scenePath) c
 
 bool EditorApplication::OpenScene(const std::string& path, std::string& outError) {
     const std::string resolved = ResolveScenePath(path);
+    Scene authored, resolvedPrefabs;
+    if(!LoadSceneFromFile(resolved,authored,outError)||!ResolvePrefabs(authored,&m_host->Assets(),resolvedPrefabs,outError))return false;
     if (!m_document.Load(resolved, outError)) return false;
+    m_document.GetScene()=std::move(resolvedPrefabs);
     m_panels.pathInput = m_project.IsLoaded() ? m_project.MakeRelative(resolved) : resolved;
     if (const SceneObject* first = m_document.GetScene().Objects().empty() ? nullptr : &m_document.GetScene().Objects().front()) {
         m_camera.LookAt(first->transform.position, 40.0f);
@@ -677,7 +681,9 @@ void EditorApplication::PickAtPixel(int x, int y) {
     m_camera.PixelRay(x, y, m_host->GetWindow().Width(), m_host->GetWindow().Height(), origin, direction);
     SceneObjectId best = kInvalidSceneObjectId;
     float bestDistance = 1.0e30f;
-    for (const SceneObject& o : m_document.GetScene().Objects()) {
+    Scene pickScene;std::string error;
+    if(!FlattenHierarchy(m_document.GetScene(),pickScene,error))return;
+    for (const SceneObject& o : pickScene.Objects()) {
         float distance = 0.0f;
         if (RaySphere(origin, direction, o.transform.position, PickRadius(o), distance) && distance < bestDistance) {
             bestDistance = distance;
@@ -700,25 +706,32 @@ void EditorApplication::UpdateGizmo(bool allowInteraction) {
     window.GetMousePosition(mx, my);
     glm::vec3 rayOrigin, rayDirection;
     m_camera.PixelRay(mx, my, window.Width(), window.Height(), rayOrigin, rayDirection);
-    const glm::vec3 origin = selected->transform.position;
+    Scene flattened;std::string error;
+    if(!FlattenHierarchy(m_document.GetScene(),flattened,error))return;
+    const auto presented=flattened.Find(selected->id)->transform;
+    const glm::vec3 origin = presented.position;
     // Handles keep a roughly constant on-screen size.
     m_gizmoHandleLength = std::max(0.2f, glm::length(origin - m_camera.Position()) * 0.14f);
     const bool snap = m_panels.gizmoSnap || ImGui::GetIO().KeyCtrl;
 
     if (m_drag.Active()) {
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-            selected->transform = UpdateGizmoDrag(m_drag, rayOrigin, rayDirection, snap);
+            auto value=UpdateGizmoDrag(m_drag, rayOrigin, rayDirection, snap);
+            if(selected->parent){const auto& parent=flattened.Find(selected->parent)->transform;
+                value.position=(glm::inverse(parent.rotation)*(value.position-parent.position))/parent.scale;
+                value.rotation=glm::inverse(parent.rotation)*value.rotation;value.scale/=parent.scale;}
+            selected->transform=value;
         } else {
             // Release: one undo step for the whole drag.
             m_document.CommitEdit();
             m_drag = GizmoDrag{};
         }
     } else if (allowInteraction) {
-        m_hoverAxis = PickGizmoAxis(m_panels.gizmoMode, rayOrigin, rayDirection, origin, glm::normalize(selected->transform.rotation),
+        m_hoverAxis = PickGizmoAxis(m_panels.gizmoMode, rayOrigin, rayDirection, origin, glm::normalize(presented.rotation),
                                     m_panels.gizmoSpace, m_gizmoHandleLength, m_gizmoHandleLength * 0.12f);
         if (m_hoverAxis != GizmoAxis::None && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             GizmoDrag drag;
-            if (BeginGizmoDrag(m_panels.gizmoMode, m_hoverAxis, rayOrigin, rayDirection, selected->transform,
+            if (BeginGizmoDrag(m_panels.gizmoMode, m_hoverAxis, rayOrigin, rayDirection, presented,
                                m_panels.gizmoSpace, m_gizmoHandleLength, drag)) {
                 m_drag = drag;
                 m_document.BeginEdit();
@@ -727,14 +740,14 @@ void EditorApplication::UpdateGizmo(bool allowInteraction) {
     } else {
         m_hoverAxis = GizmoAxis::None;
     }
-    BuildGizmoLines(m_panels.gizmoMode, selected->transform.position, glm::normalize(selected->transform.rotation),
+    BuildGizmoLines(m_panels.gizmoMode, presented.position, glm::normalize(presented.rotation),
                     m_panels.gizmoSpace, m_gizmoHandleLength, m_drag.Active() ? m_drag.axis : m_hoverAxis, m_gizmoLines);
 }
 
 void EditorApplication::DrawEditOverlay(Renderer& renderer, const Scene& scene) {
     m_debugLines.Clear();
     BuildAuthoredDebugLines(scene, m_panels.debug, m_debugLines);
-    if (const SceneObject* selected = m_document.SelectedObject()) BuildSelectionLines(*selected, m_debugLines);
+    if (const SceneObject* selected = scene.Find(m_document.Selected())) BuildSelectionLines(*selected, m_debugLines);
     renderer.DrawDebugLines(m_debugLines.Lines(), /*depthTest=*/true);
     renderer.DrawDebugLines(m_gizmoLines.Lines(), /*depthTest=*/false);
 }
@@ -796,7 +809,8 @@ void EditorApplication::FrameEditMode(float deltaSeconds) {
         m_pendingDropAsset.clear();
     }
 
-    const Scene& scene = m_document.GetScene();
+    Scene scene;std::string hierarchyError;
+    if(!FlattenHierarchy(m_document.GetScene(),scene,hierarchyError)){m_panels.status=hierarchyError;return;}
     RefreshAssetDemand();
     const int height = std::max(window.Height(), 1);
     const float aspect = static_cast<float>(window.Width()) / static_cast<float>(height);
