@@ -734,6 +734,11 @@ void Renderer::TraceResourceOperation(ResourceTracePoint point, unsigned int han
 void Renderer::Shutdown() {
     TraceResourceOperation(ResourceTracePoint::RendererShutdownBegin);
     EndRenderTarget();
+    if(m_particleProgram)glDeleteProgram(m_particleProgram);
+    if(m_particleVbo)glDeleteBuffers(1,&m_particleVbo);
+    if(m_particleVao)glDeleteVertexArrays(1,&m_particleVao);
+    m_particleProgram=m_particleVbo=m_particleVao=0;
+    m_particleVertices.clear();m_particleOrder.clear();
     for (unsigned int i = 0; i < m_targets.size(); ++i) DestroyRenderTarget(RenderTargetHandle{i});
     m_targets.clear();
     for (std::size_t i = 0; i < m_meshes.size(); ++i) {
@@ -819,6 +824,7 @@ void Renderer::BeginFrame(int windowWidth, int windowHeight) {
 void Renderer::SetCamera(const glm::mat4& view, const glm::mat4& projection) {
     m_view = view;
     m_projection = projection;
+    m_frustum=Frustum(projection*view);
 }
 
 void Renderer::SetLighting(const glm::vec3& direction, const glm::vec3& lightColor,
@@ -865,6 +871,7 @@ void Renderer::BeginShadowPass(int shadowSlot, const glm::mat4& lightViewProject
     m_shadowLightSpaceMatrix[shadowSlot] = lightViewProjection;
     m_shadowPassActive = true;
     m_currentShadowSlot = shadowSlot;
+    m_frustum=Frustum(lightViewProjection);
     ++m_stats.shadowPasses;
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFbo[shadowSlot]);
@@ -876,6 +883,7 @@ void Renderer::BeginShadowPass(int shadowSlot, const glm::mat4& lightViewProject
 
 void Renderer::EndShadowPass() {
     m_shadowPassActive = false;
+    m_frustum=Frustum(m_projection*m_view);
     m_currentShadowSlot = -1;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -883,6 +891,7 @@ void Renderer::EndShadowPass() {
 MeshHandle Renderer::CreateMesh(const MeshData& data) {
     GpuMesh mesh;
     mesh.alive = true;
+    for(const auto& v:data.vertices)mesh.bounds.Include(v.position);
     mesh.vertexCount = static_cast<GLsizei>(data.vertices.size());
 
     glGenVertexArrays(1, &mesh.vao);
@@ -935,6 +944,7 @@ bool Renderer::UpdateMeshVertices(MeshHandle handle, const std::vector<MeshVerte
                  vertices.empty() ? nullptr : vertices.data(), GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     mesh->vertexCount = static_cast<GLsizei>(vertices.size());
+    mesh->bounds={};for(const auto& v:vertices)mesh->bounds.Include(v.position);
     return true;
 }
 
@@ -1088,6 +1098,10 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
 
     const glm::mat4 model = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(rotation) *
                              glm::scale(glm::mat4(1.0f), scale);
+
+    ++m_stats.renderablesConsidered;
+    if(!IsVisible(TransformBounds(gpuMesh->bounds,model))){++m_stats.renderablesCulled;return;}
+    ++m_stats.renderablesVisible;
 
     // Milestone 15: while a shadow pass is active (see BeginShadowPass),
     // every DrawMesh call writes depth only, from that light's own view/
@@ -1380,7 +1394,7 @@ void Renderer::EndRenderTarget() {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(m_savedDrawFramebuffer));
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(m_savedReadFramebuffer));
     glViewport(m_savedViewport[0], m_savedViewport[1], m_savedViewport[2], m_savedViewport[3]);
-    m_view = m_savedView; m_projection = m_savedProjection; m_activeTarget = {};
+    SetCamera(m_savedView,m_savedProjection); m_activeTarget = {};
 }
 
 Renderer::TargetDiagnostics Renderer::RenderTargetDiagnostics() const {
@@ -1397,3 +1411,51 @@ glm::ivec2 Renderer::RenderTargetSize(RenderTargetHandle target) const {
     return glm::ivec2(m_targets[target.id].width, m_targets[target.id].height);
 }
 void Renderer::FinishForDiagnostics() const { glFinish(); }
+
+
+void Renderer::DrawParticles(const std::vector<ParticleBillboard>& particles,const VisualBounds& bounds,TextureHandle texture){
+    if(m_shadowPassActive||particles.empty())return;
+    ++m_stats.particleEmittersConsidered;
+    if(!IsVisible(bounds)){++m_stats.particleEmittersCulled;return;}
+    ++m_stats.particleEmittersVisible;
+    if(!m_particleProgram){
+        const char* vs=R"(#version 330 core
+layout(location=0)in vec3 position;layout(location=1)in vec2 uv;layout(location=2)in vec4 color;
+uniform mat4 vp;out vec2 texcoord;out vec4 tint;
+void main(){gl_Position=vp*vec4(position,1);texcoord=uv;tint=color;})";
+        const char* fs=R"(#version 330 core
+in vec2 texcoord;in vec4 tint;uniform sampler2D image;out vec4 result;
+void main(){result=texture(image,texcoord)*tint;})";
+        GLuint v=0,f=0;
+        if(!CompileShader(GL_VERTEX_SHADER,vs,v))return;
+        if(!CompileShader(GL_FRAGMENT_SHADER,fs,f)){glDeleteShader(v);return;}
+        bool ok=LinkProgram(v,f,m_particleProgram);glDeleteShader(v);glDeleteShader(f);if(!ok)return;
+        glGenVertexArrays(1,&m_particleVao);glGenBuffers(1,&m_particleVbo);
+        glBindVertexArray(m_particleVao);glBindBuffer(GL_ARRAY_BUFFER,m_particleVbo);
+        glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,position)));glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,uv)));glEnableVertexAttribArray(1);
+        glVertexAttribPointer(2,4,GL_FLOAT,GL_FALSE,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,color)));glEnableVertexAttribArray(2);
+    }
+    // Per-emitter back-to-front stable ordering, separately for each camera.
+    m_particleOrder.resize(particles.size());for(size_t i=0;i<particles.size();++i)m_particleOrder[i]=i;
+    std::sort(m_particleOrder.begin(),m_particleOrder.end(),[&](size_t a,size_t b){
+        float za=(m_view*glm::vec4(particles[a].position,1)).z,zb=(m_view*glm::vec4(particles[b].position,1)).z;
+        return za==zb?a<b:za<zb;});
+    const auto inverse=glm::inverse(m_view);const auto right=glm::vec3(inverse[0]),up=glm::vec3(inverse[1]);
+    const glm::vec2 corners[4]={{-0.5f,-0.5f},{0.5f,-0.5f},{0.5f,0.5f},{-0.5f,0.5f}};
+    const unsigned indices[6]={0,1,2,0,2,3};m_particleVertices.clear();m_particleVertices.reserve(particles.size()*6);
+    for(size_t i:m_particleOrder){const auto& p=particles[i];for(auto k:indices){auto c=corners[k];m_particleVertices.push_back({p.position+p.size*(right*c.x+up*c.y),c+glm::vec2(0.5f),p.color});}}
+    glUseProgram(m_particleProgram);glUniformMatrix4fv(glGetUniformLocation(m_particleProgram,"vp"),1,GL_FALSE,glm::value_ptr(m_projection*m_view));
+    if(m_activeTarget.IsValid()&&texture.id==RenderTargetTexture(m_activeTarget).id){texture={};++m_stats.feedbackFallbacks;}
+    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,ResolveTexture(texture));glUniform1i(glGetUniformLocation(m_particleProgram,"image"),0);
+    glBindVertexArray(m_particleVao);glBindBuffer(GL_ARRAY_BUFFER,m_particleVbo);
+    glBufferData(GL_ARRAY_BUFFER,static_cast<GLsizeiptr>(m_particleVertices.size()*sizeof(ParticleVertex)),m_particleVertices.data(),GL_STREAM_DRAW);
+    // Restore exactly the state touched by this presentation pass.
+    GLboolean depthMask,cull=glIsEnabled(GL_CULL_FACE),blend=glIsEnabled(GL_BLEND);glGetBooleanv(GL_DEPTH_WRITEMASK,&depthMask);
+    GLint srcRgb,dstRgb,srcAlpha,dstAlpha;glGetIntegerv(GL_BLEND_SRC_RGB,&srcRgb);glGetIntegerv(GL_BLEND_DST_RGB,&dstRgb);glGetIntegerv(GL_BLEND_SRC_ALPHA,&srcAlpha);glGetIntegerv(GL_BLEND_DST_ALPHA,&dstAlpha);
+    glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);
+    glDrawArrays(GL_TRIANGLES,0,static_cast<GLsizei>(m_particleVertices.size()));
+    glDepthMask(depthMask);if(cull)glEnable(GL_CULL_FACE);if(!blend)glDisable(GL_BLEND);glBlendFuncSeparate(srcRgb,dstRgb,srcAlpha,dstAlpha);
+    glBindVertexArray(0);glBindBuffer(GL_ARRAY_BUFFER,0);
+    ++m_stats.drawCalls;m_stats.triangles+=static_cast<unsigned>(particles.size()*2);m_stats.particlesSubmitted+=static_cast<unsigned>(particles.size());
+}

@@ -379,6 +379,14 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
             m_gravityRegions.push_back(GravityRegion{o.id, g, position, rotation});
         }
 
+        if(o.particleEmitter){
+            ParticleEmitter e;e.id=o.id;e.transform=o.transform;e.pool=VisualParticlePool(*o.particleEmitter);
+            m_particleEmitters.push_back(std::move(e));
+            if(m_assets&&!o.particleEmitter->textureAsset.empty()){
+                m_assets->AddRef(o.particleEmitter->textureAsset);m_referencedAssets.push_back(o.particleEmitter->textureAsset);
+                m_assets->RequestTexture(o.particleEmitter->textureAsset,JobPriority::High);
+            }
+        }
         if(o.audioEmitter){
             AudioEmitter emitter;emitter.id=o.id;emitter.transform=o.transform;emitter.settings=*o.audioEmitter;
             emitter.wantPlay=emitter.settings.playOnStart;
@@ -805,6 +813,7 @@ bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
         const auto eraseId=[id](auto& values){values.erase(std::remove_if(values.begin(),values.end(),[id](const auto& v){return v.id==id;}),values.end());};
         eraseId(m_staticBodies);eraseId(m_staticRenderables);eraseId(m_staticLights);
     }
+    m_particleEmitters.erase(std::remove_if(m_particleEmitters.begin(),m_particleEmitters.end(),[&](const auto& e){return e.id==id;}),m_particleEmitters.end());
     if(m_audioSystem)for(auto& emitter:m_audioEmitters)if(emitter.id==id){m_audioSystem->DestroyVoice(emitter.voice);emitter.voice={};emitter.wantPlay=false;}
     e->lifecycle = EntityLifecycle::Destroyed;
     if (m_cameraRenderer) for (auto& camera : m_renderCameras) {
@@ -1046,6 +1055,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 
 void RuntimeWorld::Destroy() {
     EndAudio();
+    m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;
     if (!m_built) return;
     if (m_cameraRenderer) for (const auto& camera : m_renderCameras) m_cameraRenderer->DestroyRenderTarget(camera.target);
@@ -1114,4 +1124,17 @@ TextureHandle RuntimeWorld::CameraTexture(SceneObjectId id) const {
     if (const auto* entity = FindEntity(id)) if (entity->lifecycle == EntityLifecycle::Destroyed) return {};
     for (const auto& c : m_renderCameras) if (c.id == id) return m_cameraRenderer->RenderTargetTexture(c.target);
     return {};
+}
+
+
+void RuntimeWorld::UpdateVisualParticles(float dt){
+    for(auto& e:m_particleEmitters){
+        if(const auto* entity=FindEntity(e.id))if(entity->lifecycle==EntityLifecycle::Destroyed)continue;
+        const auto t=PresentedTransform(e.id,e.transform,1);
+        e.pool.Update(dt,t.position,t.rotation,t.scale,Gravity());
+    }
+}
+bool RuntimeWorld::EmitParticleBurst(SceneObjectId id,unsigned count){
+    for(auto& e:m_particleEmitters)if(e.id==id){const auto t=PresentedTransform(e.id,e.transform,1);e.pool.Burst(count,t.position,t.rotation,t.scale);return true;}
+    return false;
 }

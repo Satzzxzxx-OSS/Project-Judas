@@ -72,6 +72,12 @@ public:
         MeshHandle mesh;
         glm::vec3 color{0.5f};
     };
+    struct ParticleEmitter {
+        SceneObjectId id=0;SceneTransform transform;VisualParticlePool pool;
+    };
+    void UpdateVisualParticles(float dt);
+    bool EmitParticleBurst(SceneObjectId id,unsigned count);
+    std::vector<ParticleEmitter>& VisualEmitters()const{return m_particleEmitters;}
     struct AudioEmitter {
         SceneObjectId id=0;SceneTransform transform;BodyHandle staticBody;
         SceneAudioEmitterComponent settings;AudioVoiceHandle voice;
@@ -371,6 +377,7 @@ private:
     std::vector<StaticRenderable> m_staticRenderables;
     AudioSystem* m_audioSystem=nullptr;
     bool m_audioRunning=false;
+    mutable std::vector<ParticleEmitter> m_particleEmitters;
     std::vector<AudioEmitter> m_audioEmitters;
     std::optional<AudioListener> m_audioListener;
     mutable std::vector<RenderCamera> m_renderCameras;

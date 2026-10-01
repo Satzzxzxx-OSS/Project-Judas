@@ -1373,3 +1373,6 @@ Named actions/axes, keyboard/mouse/controller input, project bindings and rebind
 See [M35 workflow and scope](docs/M35.md). Human input validation is pending.
 
 M36 adds linked prefab assets, stable hierarchy IDs, property overrides and runtime spawning. See [M36](docs/M36.md); demo: `judas assets/scenes/prefab_demo.judas`.
+
+M37 adds per-camera frustum culling and authored visual particle emitters. See
+[docs/M37.md](docs/M37.md); demo: `./build/judas assets/scenes/particle_demo.judas`.

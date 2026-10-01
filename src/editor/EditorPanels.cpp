@@ -635,6 +635,8 @@ void DrawProfilerPanel(EditorPanelState& state) {
     ImGui::Separator();
     ImGui::Text("Draw calls: %u  (incl. shadow passes)", p.drawCalls);
     ImGui::Text("Triangles submitted: %u", p.triangles);
+    ImGui::Text("Visibility (all passes): %u visible / %u culled meshes",p.meshesVisible,p.meshesCulled);
+    ImGui::Text("Emitters: %u visible / %u culled; particles submitted: %u",p.emittersVisible,p.emittersCulled,p.particlesSubmitted);
     ImGui::Text("Shadow passes: %u   Dynamic lights: %u", p.shadowPasses, p.dynamicLights);
     ImGui::Text("Debug lines: %u", p.debugLines);
     ImGui::Text("Scene submission: %.2f ms", p.sceneMilliseconds);

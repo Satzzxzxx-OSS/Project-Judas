@@ -1,4 +1,5 @@
 #include "ComponentEditors.h"
+#include <algorithm>
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -55,6 +56,22 @@ void AssetField(EditorDocument& doc, const char* label, std::string& assetId, As
     } else {
         ImGui::TextDisabled("  id %s", assetId.c_str());
     }
+}
+
+void DrawParticleEmitter(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
+    auto& e=*o.particleEmitter;
+    Checkbox(doc,"Enabled",e.enabled);Checkbox(doc,"Continuous/loop",e.loop);
+    Checkbox(doc,"Local space",e.localSpace);Checkbox(doc,"Sample Judas gravity",e.useGravity);
+    DragScalar(doc,"Rate / second",e.rate,1,0,100000);DragScalar(doc,"Lifetime seconds",e.lifetime,0.05f,0.01f,3600);
+    DragScalar(doc,"Start size",e.size,0.01f,0,1000);DragScalar(doc,"End size",e.endSize,0.01f,0,1000);
+    auto integer=[&](const char* name,int& v,int lo,int hi){int next=v;if(ImGui::DragInt(name,&next,1,lo,hi)){doc.BeginEdit();v=std::clamp(next,lo,hi);doc.CommitEdit();}};
+    integer("Capacity",e.maxParticles,1,100000);integer("Startup burst",e.burst,0,e.maxParticles);
+    DragVec3(doc,"Position spread",e.spread,0.01f);DragVec3(doc,"Initial velocity",e.velocity,0.05f);
+    DragVec3(doc,"Velocity variation",e.velocityVariation,0.05f);DragVec3(doc,"Acceleration",e.acceleration,0.05f);
+    auto color=[&](const char* label,glm::vec4& v){auto next=v;if(ImGui::ColorEdit4(label,&next.x)){doc.BeginEdit();v=next;doc.CommitEdit();}};
+    color("Start color/alpha",e.color);color("End color/alpha",e.endColor);
+    unsigned seed=e.seed;if(ImGui::InputScalar("Seed",ImGuiDataType_U32,&seed)){doc.BeginEdit();e.seed=seed;doc.CommitEdit();}
+    AssetField(doc,"Particle texture",e.textureAsset,AssetType::Texture,true,state);
 }
 
 void DrawAudioEmitter(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
@@ -307,6 +324,7 @@ ComponentEditor Make(const char* name, char indicator, std::optional<T> SceneObj
 
 const std::vector<ComponentEditor>& ComponentEditorRegistry() {
     static const std::vector<ComponentEditor> registry = {
+        Make<ParticleEmitterSettings>("Particle emitter", 'E', &SceneObject::particleEmitter, DrawParticleEmitter),
         Make<SceneAudioEmitterComponent>("Audio emitter", 'U', &SceneObject::audioEmitter, DrawAudioEmitter),
         Make<SceneAudioListenerComponent>("Audio listener", 'N', &SceneObject::audioListener, DrawAudioListener),
         Make<SceneRenderCameraComponent>("Render camera", 'K', &SceneObject::renderCamera, DrawRenderCamera),

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include "VisualParticles.h"
 #include <string>
 #include <vector>
 
@@ -257,6 +258,7 @@ struct SceneObject {
     std::optional<SceneRenderComponent> render;
     std::optional<SceneRenderCameraComponent> renderCamera;
     std::optional<SceneAudioEmitterComponent> audioEmitter;
+    std::optional<ParticleEmitterSettings> particleEmitter;
     std::optional<SceneAudioListenerComponent> audioListener;
     std::optional<SceneBodyComponent> body;
     std::optional<SceneGravityComponent> gravity;

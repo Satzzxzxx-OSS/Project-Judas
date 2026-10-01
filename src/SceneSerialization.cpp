@@ -103,6 +103,26 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("render.texture-asset", Quote(r.textureAsset));
         if (r.textureCamera) w.Line("render.texture-camera", std::to_string(r.textureCamera));
     }
+    if(o.particleEmitter){const auto& e=*o.particleEmitter;w.Line("particle-emitter", "");
+        w.Line("particle.enabled",B(e.enabled));
+        w.Line("particle.loop",B(e.loop));
+        w.Line("particle.local-space",B(e.localSpace));
+        w.Line("particle.gravity",B(e.useGravity));
+        w.Line("particle.rate",F(e.rate));
+        w.Line("particle.lifetime",F(e.lifetime));
+        w.Line("particle.size",F(e.size));
+        w.Line("particle.end-size",F(e.endSize));
+        w.Line("particle.burst",std::to_string(e.burst));
+        w.Line("particle.capacity",std::to_string(e.maxParticles));
+        w.Line("particle.spread",V(e.spread));
+        w.Line("particle.velocity",V(e.velocity));
+        w.Line("particle.variation",V(e.velocityVariation));
+        w.Line("particle.acceleration",V(e.acceleration));
+        w.Line("particle.texture",Quote(e.textureAsset));
+        w.Line("particle.color",V(glm::vec3(e.color)));w.Line("particle.alpha",F(e.color.a));
+        w.Line("particle.end-color",V(glm::vec3(e.endColor)));w.Line("particle.end-alpha",F(e.endColor.a));
+        w.Line("particle.seed",std::to_string(e.seed));
+    }
     if (o.audioEmitter) {
         const auto& a=*o.audioEmitter;w.Line("audio-emitter", "");
         w.Line("audio.asset",Quote(a.asset));w.Line("audio.enabled",B(a.enabled));w.Line("audio.play-on-start",B(a.playOnStart));
@@ -569,6 +589,31 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         if (!p.String("render.texture-asset", r.textureAsset)) return false;
         if (p.Has("render.texture-camera") && !p.Id("render.texture-camera", r.textureCamera)) return false;
         o.render = r;
+    }
+    if(p.Has("particle-emitter")){ParticleEmitterSettings e;
+        if(!p.Header("particle-emitter",0,0))return false;
+        if(!p.Bool("particle.enabled",e.enabled))return false;
+        if(!p.Bool("particle.loop",e.loop))return false;
+        if(!p.Bool("particle.local-space",e.localSpace))return false;
+        if(!p.Bool("particle.gravity",e.useGravity))return false;
+        if(!p.Float("particle.rate",e.rate))return false;
+        if(!p.Float("particle.lifetime",e.lifetime))return false;
+        if(!p.Float("particle.size",e.size))return false;
+        if(!p.Float("particle.end-size",e.endSize))return false;
+        if(!p.Int("particle.burst",e.burst))return false;
+        if(!p.Int("particle.capacity",e.maxParticles))return false;
+        if(!p.Vec3("particle.spread",e.spread))return false;
+        if(!p.Vec3("particle.velocity",e.velocity))return false;
+        if(!p.Vec3("particle.variation",e.velocityVariation))return false;
+        if(!p.Vec3("particle.acceleration",e.acceleration))return false;
+        if(!p.String("particle.texture",e.textureAsset))return false;
+        glm::vec3 color,endColor;SceneObjectId seed;
+        if(!p.Vec3("particle.color",color)||!p.Float("particle.alpha",e.color.a)||!p.Vec3("particle.end-color",endColor)||!p.Float("particle.end-alpha",e.endColor.a)||!p.Id("particle.seed",seed))return false;
+        e.color=glm::vec4(color,e.color.a);e.endColor=glm::vec4(endColor,e.endColor.a);
+        if(seed>0xffffffffu)return reader.Fail("particle seed exceeds uint32");
+        e.seed=static_cast<std::uint32_t>(seed);
+        if(!ValidParticleSettings(e)||(!e.textureAsset.empty()&&!IsValidAssetId(e.textureAsset)))return reader.Fail("invalid particle emitter settings");
+        o.particleEmitter=e;
     }
     if(p.Has("audio-emitter")) {
         SceneAudioEmitterComponent a;

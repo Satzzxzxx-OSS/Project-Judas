@@ -158,6 +158,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     AdvancePlayerForPiloting(vehicleControl, session.Attachment(), player, physics, window, gravity,
                              fixedDeltaTime);
     SyncDynamicBodiesFromPhysics(world.DynamicBodies(), physics);
+    world.UpdateVisualParticles(fixedDeltaTime);
     world.AdvanceSimulationTime(fixedDeltaTime);
 
     // Milestone 29: the scene's fidelity policy runs last, over the settled

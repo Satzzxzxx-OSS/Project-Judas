@@ -321,7 +321,7 @@ void SectionTechDemoProject() {
           "it points at the existing assets tree and starts on the terrain scene");
     AssetDatabase db;
     db.Scan(project.RootDir(), project.AssetsDir());
-    Check(db.Problems().empty() && db.Untracked().empty() && db.Records().size() == 8, "every shipped asset is tracked, none untracked, no problems");
+    Check(db.Problems().empty() && db.Untracked().empty() && db.Records().size() == 9, "every shipped asset is tracked, none untracked, no problems");
     const auto* prefab=db.Find("36363636363636363636363636363636");
     Check(prefab&&prefab->type==AssetType::Prefab&&!prefab->missing,"shipped prefab resolves through ordinary project asset identity");
     const AssetRecord* audio = db.Find("34000000000000000000000000000001");

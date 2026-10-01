@@ -850,6 +850,8 @@ void EditorApplication::CollectProfilerData(float frameDeltaSeconds) {
     p.frameMilliseconds = m_frameAverageMilliseconds;
     p.framesPerSecond = m_frameAverageMilliseconds > 0.0f ? 1000.0f / m_frameAverageMilliseconds : 0.0f;
     const RenderStats& stats = m_host->GetRenderer().Stats();
+    p.meshesVisible=stats.renderablesVisible;p.meshesCulled=stats.renderablesCulled;
+    p.emittersVisible=stats.particleEmittersVisible;p.emittersCulled=stats.particleEmittersCulled;p.particlesSubmitted=stats.particlesSubmitted;
     p.drawCalls = stats.drawCalls;
     p.triangles = stats.triangles;
     p.shadowPasses = stats.shadowPasses;

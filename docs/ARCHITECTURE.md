@@ -8666,3 +8666,15 @@ remain independent unless explicitly attached. Canonical fingerprint schema 5
 includes effective source-derived components and hierarchy/link metadata. Older
 saved fingerprints are rejected. See `docs/M36.md` for authoring, runtime creation
 capabilities and limitations.
+
+## M37 visibility and visual emitters
+
+Renderer caches mesh-local bounds and tests their transformed world AABBs
+against the actual per-pass clip frustum. Ordinary mesh draws and visual
+billboard emitter draws share `VisualBounds`/`Frustum`; camera, shadow and
+render-target passes own independent visibility. Culling never changes simulation.
+RuntimeWorld owns deterministic bounded visual particle pools updated once by
+Simulation, not once per camera. Renderer lazily owns billboard GPU resources.
+Particle components reuse scene/prefab authoring and an optional tagged canonical
+fingerprint extension; particle-free baseline fingerprints remain unchanged.
+See `docs/M37.md` for transparency, timing, persistence and scope limits.

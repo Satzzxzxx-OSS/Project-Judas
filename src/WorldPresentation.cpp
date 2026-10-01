@@ -211,6 +211,16 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
         r.EndTransparentPass();
     }
 
+    // Runtime visual state is updated once in Simulation, never per camera.
+    for(auto& emitter:world.VisualEmitters()){
+        if(!emitter.pool.settings.enabled)continue;
+        if(const auto* entity=world.FindEntity(emitter.id))if(entity->lifecycle==EntityLifecycle::Destroyed)continue;
+        const auto t=world.PresentedTransform(emitter.id,emitter.transform,alpha);
+        const auto& particles=emitter.pool.Presentation(t.position,t.rotation,t.scale);
+        const auto texture=world.Resources()?world.Resources()->TryGetTexture(emitter.pool.settings.textureAsset):TextureHandle{};
+        r.DrawParticles(particles,emitter.pool.Bounds(),texture);
+    }
+
     if (session && session->IgniterPowered()) {
         glm::vec3 eye, look;
         session->Player().GetTorchTransform(alpha, eye, look);

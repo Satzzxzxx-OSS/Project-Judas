@@ -288,6 +288,20 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
         if (o.id >= scene.NextId()) w.Fail("stable ID must precede NextId");
         WriteObject(w, o);
     }
+    // Optional tagged extension: old scenes retain identical schema-5 bytes.
+    // No pre-M37 baseline could contain this component; new configurations are
+    // covered completely without invalidating unrelated existing saves.
+    size_t emitterCount=0;for(const auto& o:scene.Objects())if(o.particleEmitter)++emitterCount;
+    if(emitterCount){w.Text("Judas.VisualParticleEmitters.1");w.U64(emitterCount);
+        for(const auto& o:scene.Objects())if(o.particleEmitter){const auto& e=*o.particleEmitter;w.U64(o.id);w.Context("particle emitter");
+            if(!ValidParticleSettings(e))w.Fail("invalid particle emitter settings");
+            w.Boolean(e.enabled);w.Boolean(e.loop);w.Boolean(e.localSpace);w.Boolean(e.useGravity);
+            w.Number(e.rate);w.Number(e.lifetime);w.Number(e.size);w.Number(e.endSize);w.U32(e.burst);w.U32(e.maxParticles);
+            w.Vector(e.spread);w.Vector(e.velocity);w.Vector(e.velocityVariation);w.Vector(e.acceleration);
+            w.Vector(glm::vec3(e.color));w.Number(e.color.a);w.Vector(glm::vec3(e.endColor));w.Number(e.endColor.a);
+            w.Text(e.textureAsset);w.U32(e.seed);
+        }
+    }
     if (!w.Error().empty()) { outError = w.Error(); return false; }
     outFingerprint = SceneFingerprintSha256(w.Bytes());
     return true;

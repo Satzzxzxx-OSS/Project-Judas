@@ -12,6 +12,8 @@
 #include "DebugDraw.h"
 #include "TextureData.h"
 #include "ResourceTrace.h"
+#include "Visibility.h"
+#include "VisualParticles.h"
 #include <glad/gl.h>
 
 // Opaque handles into Renderer's own GPU resource tables — the same
@@ -42,6 +44,8 @@ struct TextureHandle {
 // counts line segments, which are not triangles.
 struct RenderStats {
     unsigned int drawCalls = 0;
+    unsigned int renderablesConsidered=0,renderablesVisible=0,renderablesCulled=0;
+    unsigned int particleEmittersConsidered=0,particleEmittersVisible=0,particleEmittersCulled=0,particlesSubmitted=0;
     unsigned int triangles = 0;
     unsigned int shadowPasses = 0;
     unsigned int dynamicLights = 0;  // as last set by SetDynamicLights (after truncation)
@@ -86,6 +90,9 @@ public:
     // reacting to a resize event) is what keeps the projection's aspect
     // ratio correct across window resizes.
     void SetCamera(const glm::mat4& view, const glm::mat4& projection);
+    void SetCullingEnabled(bool enabled){m_cullingEnabled=enabled;}
+    bool IsVisible(const VisualBounds& bounds)const{return !m_cullingEnabled || m_frustum.IsVisible(bounds);}
+    void DrawParticles(const std::vector<ParticleBillboard>& particles,const VisualBounds& bounds,TextureHandle texture={});
 
     // Milestone 9: the demo's one directional light, plus a small constant
     // ambient term. `direction` points FROM a lit surface TOWARD the light
@@ -303,6 +310,7 @@ private:
         GLsizei vertexCount = 0;  // used when ebo == 0 (glDrawArrays)
         GLsizei indexCount = 0;   // used when ebo != 0 (glDrawElements)
         bool alive = false;
+        VisualBounds bounds;
     };
     struct GpuTarget { GLuint framebuffer = 0, depth = 0; TextureHandle color; int width = 0, height = 0; };
     std::vector<GpuTarget> m_targets;
@@ -364,6 +372,12 @@ private:
     // shadow factor.
     GLint m_uDynamicLightShadowIndex[kMaxDynamicLights];
 
+    Frustum m_frustum;
+    bool m_cullingEnabled=true;
+    GLuint m_particleProgram=0,m_particleVao=0,m_particleVbo=0;
+    struct ParticleVertex {glm::vec3 position;glm::vec2 uv;glm::vec4 color;};
+    std::vector<ParticleVertex> m_particleVertices;
+    std::vector<std::size_t> m_particleOrder;
     glm::mat4 m_view{1.0f};
     glm::mat4 m_projection{1.0f};
 

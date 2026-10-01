@@ -75,6 +75,7 @@ struct ProfilerData {
     std::size_t contacts = 0;            // last step's resolved contact points
     std::size_t entitiesFull = 0, entitiesCoarse = 0, entitiesDormant = 0, entitiesDestroyed = 0;
     unsigned int drawCalls = 0, triangles = 0, shadowPasses = 0, dynamicLights = 0, debugLines = 0;
+    unsigned int meshesVisible=0,meshesCulled=0,emittersVisible=0,emittersCulled=0,particlesSubmitted=0;
     std::size_t fluidParticles = 0;
     float fluidMilliseconds = 0.0f;      // fluid solve inside the last step (0 when not measured)
     float surfaceMilliseconds = 0.0f;    // fluid surface rebuild (presentation)

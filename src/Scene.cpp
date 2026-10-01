@@ -87,6 +87,7 @@ bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
         a.prefabAsset != b.prefabAsset || a.prefabRoot != b.prefabRoot ||
         a.prefabSource != b.prefabSource || a.prefabIds != b.prefabIds ||
         a.prefabOverrides != b.prefabOverrides) return false;
+    if(!OptEq(a.particleEmitter,b.particleEmitter,ParticleSettingsEqual))return false;
     if (!Eq(a.transform.position, b.transform.position) ||
         !Eq(a.transform.rotation, b.transform.rotation) ||
         !Eq(a.transform.scale, b.transform.scale)) {
