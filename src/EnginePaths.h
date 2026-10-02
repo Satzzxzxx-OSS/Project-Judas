@@ -12,6 +12,8 @@
 //      (a build tree beside the repository root)
 //   3. <working directory>/<path>
 //
+// Packaged executables exclusively use <executable dir>/engine/<path>,
+// ignoring development overrides/current working directory.
 // Returns the first existing candidate, or the last candidate tried so the
 // caller's error names a concrete path.
 std::string ResolveEngineDataPath(const std::string& relativePath);

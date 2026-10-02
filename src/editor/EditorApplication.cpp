@@ -23,6 +23,7 @@ extern char** environ;
 
 #include "EngineHost.h"
 #include "EnginePaths.h"
+#include "ProjectExporter.h"
 #include "InteractivePlay.h"
 #include "RuntimeWorld.h"
 #include "Scene.h"
@@ -535,6 +536,14 @@ void EditorApplication::HandleRequests(EditorRequests& r) {
     if (r.newProject) ImGui::OpenPopup("New project");
     if (r.openProject) ImGui::OpenPopup("Open project");
     if (r.saveProject) m_panels.status = m_project.Save(error) ? "Saved project " + m_project.ProjectFile() : "Project save failed: " + error;
+    if (r.exportProject) {
+        ProjectExportOptions options; options.destination = m_panels.exportDestination;
+        ProjectExportResult result;
+        const bool exported = m_project.Save(error) && ExportProject(m_project, options, result, error);
+        m_panels.runProjectInfo = exported ? "Exported " + result.packageDirectory + " (" +
+            std::to_string(result.assetCount) + " assets)" : error;
+        m_panels.status = m_panels.runProjectInfo;
+    }
     if (r.runProject) {
         std::string message;
         RunProject(message);
@@ -1060,7 +1069,17 @@ int EditorApplication::Run(int argc, char** argv) {
         if (deferredRequests.play) requests.play = true;
         if (deferredRequests.stop) requests.stop = true;
         deferredRequests = EditorRequests{};
+        // Export automation submits the same UI request during an active ImGui
+        // frame. HandleRequests also owns modal UI and cannot run after Render.
+        const char* exportDestination = std::getenv("JUDAS_EDITOR_AUTOTEST_EXPORT");
+        const bool automatedExport = autotest && autotestFrame == 14 && exportDestination;
+        if (automatedExport) {
+            m_panels.exportDestination = exportDestination;
+            requests.exportProject = true;
+        }
         HandleRequests(requests);
+        if (automatedExport)
+            std::fprintf(stderr, "[editor autotest] export project: %s\n", m_panels.runProjectInfo.c_str());
         AdvanceStabilizationAutomation();
 
         ImGui::Render();

@@ -19,6 +19,11 @@ SDL-created context; generation and license provenance are recorded in
 
 ## JUDAS STATUS: READY FOR NEW FEATURE DEVELOPMENT
 
+**M38 standalone export candidate:** Project settings can export a movable Linux
+Release game package with its project input, scenes and registered runtime assets.
+See [export workflow and platform requirements](docs/M38.md). Operator validation
+is pending.
+
 **M33 feature candidate:** authored cameras can render into generated textures
 consumed by ordinary scene materials. See [camera authoring and demo](docs/M33.md).
 Operator visual acceptance/checkpointing is pending; portals are not implemented.

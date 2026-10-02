@@ -74,6 +74,9 @@ public:
     // Where a scene's M29 world-state delta lives: <saves-dir>/<stem>.judasstate.
     std::string WorldStatePathForScene(const std::string& scenePath) const;
 
+    // Runtime-only save root; never serialized into authored project data.
+    void SetRuntimeSaveDirectory(const std::string& path) { m_runtimeSaveDirectory = path; }
+
     static bool ParseFromString(const std::string& text, ProjectSettings& outSettings, std::string& outError);
     static std::string SerializeToString(const ProjectSettings& settings);
 
@@ -81,4 +84,5 @@ private:
     std::string m_projectFile;
     std::string m_rootDir;
     ProjectSettings m_settings;
+    std::string m_runtimeSaveDirectory;
 };

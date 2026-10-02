@@ -5,6 +5,9 @@
 #include <cstdlib>
 
 #include "WorldState.h"
+#include "GamePackage.h"
+#include "EnginePaths.h"
+#include <filesystem>
 
 namespace {
 bool EnvSet(const char* name) {
@@ -48,6 +51,10 @@ bool ParseRuntimeOptions(int argc, char** argv, RuntimeOptions& out, std::string
     if (const char* script = std::getenv("JUDAS_TEST_SCRIPT")) out.testScriptPath = script;
 
     // --- Milestone 30: which project, which scene ---
+    GamePackage package;
+    const std::string packageRoot = EngineExecutableDir();
+    const bool packaged = std::filesystem::exists(std::filesystem::path(packageRoot) / kGamePackageMarker);
+    if (packaged && !ReadGamePackage(packageRoot, package, outError)) return false;
     std::string explicitScene;
     std::string projectFile;
     if (argc == 2) {
@@ -62,7 +69,8 @@ bool ParseRuntimeOptions(int argc, char** argv, RuntimeOptions& out, std::string
             return false;
         }
     } else {
-        projectFile = Project::FindProjectFileFor(".");
+        projectFile = packaged ? (std::filesystem::path(packageRoot) / package.projectFile).string()
+                               : Project::FindProjectFileFor(".");
     }
     if (!projectFile.empty() && !out.project.Load(projectFile, outError)) return false;
 
@@ -74,7 +82,7 @@ bool ParseRuntimeOptions(int argc, char** argv, RuntimeOptions& out, std::string
     // The legacy environment switches select demonstration scenes only
     // when no argument was given (the pre-M30 command line); an explicit
     // project launch always starts the project's startup scene.
-    const bool legacySelection = argc == 1;
+    const bool legacySelection = argc == 1 && !packaged;
     if (!explicitScene.empty()) {
         out.scenePath = explicitScene;
     } else if (legacySelection && out.IsTestRun()) {
@@ -114,6 +122,11 @@ bool ParseRuntimeOptions(int argc, char** argv, RuntimeOptions& out, std::string
         out.worldOriginOverride = offset;
     }
     if (const char* path = std::getenv("JUDAS_TERRAIN_SCREENSHOT")) out.terrainScreenshotPath = path;
+    if (packaged && out.project.IsLoaded()) {
+        std::string saves;
+        if (!PackageSaveDirectory(package, saves, outError)) return false;
+        out.project.SetRuntimeSaveDirectory(saves);
+    }
     out.worldStatePath = out.project.IsLoaded() ? out.project.WorldStatePathForScene(out.scenePath)
                                                 : DefaultWorldStatePath(out.scenePath);
     if (const char* state = std::getenv("JUDAS_WORLD_STATE")) {

@@ -1,4 +1,5 @@
 #include "EnginePaths.h"
+#include "GamePackage.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -23,6 +24,9 @@ std::string EngineExecutableDir() {
 }
 
 std::string ResolveEngineDataPath(const std::string& relativePath) {
+    const fs::path packagedRoot = EngineExecutableDir();
+    if (fs::exists(packagedRoot / kGamePackageMarker))
+        return (packagedRoot / "engine" / relativePath).lexically_normal().generic_string();
     std::vector<fs::path> candidates;
     if (const char* root = std::getenv("JUDAS_ENGINE_ROOT")) {
         if (*root) candidates.push_back(fs::path(root) / relativePath);

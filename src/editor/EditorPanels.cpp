@@ -572,6 +572,11 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
     if (ImGui::Button("Save project")) requests.saveProject = true;
     ImGui::SameLine();
     if (ImGui::Button("Run project")) requests.runProject = true;
+    char destination[4096];
+    CopyToBuffer(state.exportDestination, destination, sizeof(destination));
+    if (ImGui::InputText("Package directory", destination, sizeof(destination))) state.exportDestination = destination;
+    ImGui::TextWrapped("Export uses saved scenes and all registered assets. Save scene edits first. Choose a directory outside the project.");
+    if (ImGui::Button("Export project (Release)")) requests.exportProject = true;
     ImGui::Separator();
     if(ImGui::CollapsingHeader("Input actions and axes")){
         static char newName[128]="";static bool newAxis=false;

@@ -8678,3 +8678,17 @@ Simulation, not once per camera. Renderer lazily owns billboard GPU resources.
 Particle components reuse scene/prefab authoring and an optional tagged canonical
 fingerprint extension; particle-free baseline fingerprints remain unchanged.
 See `docs/M37.md` for transparency, timing, persistence and scope limits.
+
+## M38 standalone export
+
+`ProjectExporter` is shared by the editor Project settings Export command and
+`judas_export`. It validates normal project assets/scenes/prefabs, copies the
+Release standalone executable and registered runtime content into sibling staging,
+then replaces a complete package. AssetDatabase remains the runtime manifest;
+`GamePackage` version 1 records only the relative startup project and save namespace.
+Packaged startup/engine data resolution is executable-relative and independent of
+CWD/development overrides. The runtime-only Project save-directory override points
+at Linux user data; authored serialization and baseline fingerprints are unchanged.
+All registered assets are included to support runtime ID loading, with no editor
+runtime dependency. System SDL2/graphics/audio/C++ libraries remain platform
+requirements. See `docs/M38.md` for layout, replacement guarantees and limits.

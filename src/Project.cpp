@@ -151,6 +151,7 @@ bool Project::Load(const std::string& projectFilePath, std::string& outError) {
         return false;
     }
     m_settings = settings;
+    m_runtimeSaveDirectory.clear();
     m_projectFile = Generic(fs::absolute(projectFilePath).lexically_normal());
     m_rootDir = Generic(fs::path(m_projectFile).parent_path());
     return true;
@@ -234,7 +235,7 @@ std::string Project::Resolve(const std::string& projectRelative) const {
 
 std::string Project::AssetsDir() const { return Resolve(m_settings.assetsDir); }
 std::string Project::ScenesDir() const { return Resolve(m_settings.scenesDir); }
-std::string Project::SavesDir() const { return Resolve(m_settings.savesDir); }
+std::string Project::SavesDir() const { return m_runtimeSaveDirectory.empty() ? Resolve(m_settings.savesDir) : m_runtimeSaveDirectory; }
 std::string Project::StartupScenePath() const {
     return m_settings.startupScene.empty() ? std::string() : Resolve(m_settings.startupScene);
 }

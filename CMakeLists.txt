@@ -57,6 +57,8 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
+    src/GamePackage.cpp
+    src/ProjectExporter.cpp
     src/AudioData.cpp
     src/AudioSystem.cpp
     src/WorldAudio.cpp
@@ -148,6 +150,7 @@ add_executable(judas
     src/TestHarness.cpp
 )
 target_link_libraries(judas PRIVATE judas_engine)
+target_compile_definitions(judas PRIVATE JUDAS_RUNTIME_BUILD_CONFIG="$<CONFIG>")
 target_compile_options(judas PRIVATE -Wall -Wextra)
 
 # Milestone 28: the editor. Dear ImGui (third_party/imgui, MIT — see its
@@ -879,3 +882,14 @@ target_compile_options(judas_visual_particle_tests PRIVATE -Wall -Wextra)
 add_executable(judas_particle_application_tests tests/ParticleApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_particle_application_tests PRIVATE judas_engine)
 target_compile_options(judas_particle_application_tests PRIVATE -Wall -Wextra)
+
+# M38 standalone export uses the same project/export implementation as editor.
+add_executable(judas_export src/ExportMain.cpp)
+target_link_libraries(judas_export PRIVATE judas_engine)
+target_compile_options(judas_export PRIVATE -Wall -Wextra)
+add_executable(judas_export_tests tests/ExportTests.cpp)
+target_link_libraries(judas_export_tests PRIVATE judas_engine)
+target_compile_options(judas_export_tests PRIVATE -Wall -Wextra)
+add_executable(judas_package_application_tests tests/PackageApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_package_application_tests PRIVATE judas_engine)
+target_compile_options(judas_package_application_tests PRIVATE -Wall -Wextra)

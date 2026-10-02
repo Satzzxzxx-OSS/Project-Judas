@@ -42,6 +42,7 @@ struct EditorRequests {
     bool newProject = false;
     bool openProject = false;
     bool saveProject = false;
+    bool exportProject = false;
     bool runProject = false;
     bool rescanAssets = false;
     std::string openSceneRelative;  // open this project-relative scene
@@ -113,6 +114,7 @@ struct EditorPanelState {
     bool showProjectSettings = false;
     bool showAssetBrowser = true;
     ProfilerData profiler;
+    std::string exportDestination;
     std::string runProjectInfo;  // last Run Project outcome
     // Asset Browser text fields.
     std::string importSourceInput;

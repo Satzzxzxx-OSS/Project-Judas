@@ -1,0 +1,4 @@
+JudasAssetMeta 1
+id "34000000000000000000000000000002"
+type audio
+source "Assets/audio/one_shot.wav"
