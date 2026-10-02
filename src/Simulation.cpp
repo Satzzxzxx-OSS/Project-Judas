@@ -160,6 +160,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
                              fixedDeltaTime);
     SyncDynamicBodiesFromPhysics(world.DynamicBodies(), physics);
     world.UpdateAnimations(fixedDeltaTime);
+    world.UpdateRagdolls(fixedDeltaTime);
     world.UpdateVisualParticles(fixedDeltaTime);
     world.AdvanceSimulationTime(fixedDeltaTime);
 

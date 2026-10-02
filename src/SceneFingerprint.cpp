@@ -336,6 +336,13 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
         if(!o.render||o.render->shape!=SceneShape::Mesh||!std::isfinite(a.speed)||!std::isfinite(a.time)||a.time<0)w.Fail("invalid animation component");
         w.U64(o.id);w.Boolean(a.enabled);w.Boolean(a.playOnStart);w.Boolean(a.loop);w.Text(a.clip);w.Number(a.speed);w.Number(a.time);
     }}
+    bool layered=false;for(const auto& o:scene.Objects())layered|=o.animation&&!o.animation->layers.empty();
+    size_t ragdolls=0;for(const auto& o:scene.Objects())ragdolls+=o.ragdoll.has_value();
+    if(ragdolls){w.Text("Judas.Ragdoll.1");w.U64(ragdolls);for(const auto& o:scene.Objects())if(o.ragdoll){const auto& r=*o.ragdoll;std::string error;if(!ValidRagdollDefinition(r,error))w.Fail(error);if(!o.animation||!o.render||o.body)w.Fail("ragdoll needs an animated renderable without root collider");
+        w.U64(o.id);w.Boolean(r.enabled);w.Boolean(r.playOnStart);w.Boolean(r.selfCollision);w.U64(r.bones.size());
+        for(const auto& b:r.bones){w.Text(b.joint);w.Text(b.parent);w.Enum(b.shape,1,"ragdoll shape");w.Vector(b.offset);w.Quaternion(b.orientation);w.Vector(b.halfExtents);w.Number(b.radius);w.Number(b.mass);w.Number(b.friction);w.Number(b.restitution);w.U32(b.collisionLayer);w.U64(b.collisionMask);w.Boolean(b.suppressParentCollision);w.Boolean(b.autoAnchors);const auto& c=b.constraint;w.Enum(c.type,3,"ragdoll constraint");w.Boolean(c.enabled);w.Vector(c.anchorA);w.Vector(c.anchorB);w.Quaternion(c.frameA);w.Quaternion(c.frameB);w.Boolean(c.limits);w.Number(c.lower);w.Number(c.upper);}
+    }}
+    if(layered){w.Text("Judas.PoseLayers.1");for(const auto& o:scene.Objects())if(o.animation){std::string error;if(!ValidAnimationLayers(o.animation->layers,error))w.Fail(error);w.U64(o.id);w.U64(o.animation->layers.size());for(const auto& l:o.animation->layers){w.Text(l.id);w.Text(l.clip);w.Boolean(l.enabled);w.Boolean(l.additive);w.Number(l.weight);w.Number(l.speed);w.Number(l.time);w.Text(l.referenceClip);w.Number(l.referenceTime);w.U64(l.mask.size());for(const auto& key:l.mask)w.Text(key);}}}
     size_t joints=0;for(const auto& o:scene.Objects())if(o.joint)++joints;
     if(joints){w.Text("Judas.RigidJoints.1");w.U64(joints);for(const auto& o:scene.Objects())if(o.joint){const auto& j=*o.joint;const auto& s=j.settings;
         if(!ValidJointSettings(s))w.Fail("invalid joint settings");

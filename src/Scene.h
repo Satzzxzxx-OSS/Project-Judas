@@ -2,6 +2,8 @@
 #include "Classification.h"
 #include "AudioTypes.h"
 #include "JointTypes.h"
+#include "PoseComposition.h"
+#include "Ragdoll.h"
 
 #include <cstdint>
 #include <map>
@@ -268,11 +270,12 @@ struct SceneScriptSlot {
     }
 };
 
-struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std::string clip;float speed=1,time=0;};
+struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std::string clip;float speed=1,time=0;std::vector<AnimationLayerSettings> layers;};
 
 struct SceneJointComponent {SceneObjectId bodyA=0,bodyB=0;JointSettings settings;};
 
 struct SceneObject {
+    std::optional<RagdollDefinition> ragdoll;
     std::optional<SceneJointComponent> joint;
     std::optional<SceneAnimationComponent> animation;
     std::vector<SceneScriptSlot> scripts;

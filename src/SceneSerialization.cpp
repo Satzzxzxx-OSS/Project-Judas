@@ -88,7 +88,16 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
-    if(o.animation){const auto& a=*o.animation;w.Line("animation.enabled",B(a.enabled));w.Line("animation.play-on-start",B(a.playOnStart));w.Line("animation.loop",B(a.loop));w.Line("animation.clip",Quote(a.clip));w.Line("animation.speed",F(a.speed));w.Line("animation.time",F(a.time));}
+    if(o.animation){const auto& a=*o.animation;w.Line("animation.enabled",B(a.enabled));w.Line("animation.play-on-start",B(a.playOnStart));w.Line("animation.loop",B(a.loop));w.Line("animation.clip",Quote(a.clip));w.Line("animation.speed",F(a.speed));w.Line("animation.time",F(a.time));
+        if(!a.layers.empty()){w.Line("animation.layers",std::to_string(a.layers.size()));for(size_t i=0;i<a.layers.size();++i){const auto& l=a.layers[i];auto key="animation.layer."+std::to_string(i)+".";
+            w.Line(key+"id",Quote(l.id));w.Line(key+"clip",Quote(l.clip));w.Line(key+"enabled",B(l.enabled));w.Line(key+"additive",B(l.additive));w.Line(key+"weight",F(l.weight));w.Line(key+"speed",F(l.speed));w.Line(key+"time",F(l.time));w.Line(key+"reference-clip",Quote(l.referenceClip));w.Line(key+"reference-time",F(l.referenceTime));w.Line(key+"mask-count",std::to_string(l.mask.size()));for(size_t n=0;n<l.mask.size();++n)w.Line(key+"mask."+std::to_string(n),Quote(l.mask[n]));}}
+    }
+    if(o.ragdoll){const auto& r=*o.ragdoll;w.Line("ragdoll.enabled",B(r.enabled));w.Line("ragdoll.play-on-start",B(r.playOnStart));w.Line("ragdoll.self-collision",B(r.selfCollision));w.Line("ragdoll.bones",std::to_string(r.bones.size()));
+        for(size_t i=0;i<r.bones.size();++i){const auto& b=r.bones[i];const auto& c=b.constraint;auto k="ragdoll.bone."+std::to_string(i)+".";
+            w.Line(k+"joint",Quote(b.joint));w.Line(k+"parent",Quote(b.parent));w.Line(k+"shape",std::to_string(int(b.shape)));w.Line(k+"offset",V(b.offset));w.Line(k+"orientation",Q(b.orientation));w.Line(k+"half-extents",V(b.halfExtents));w.Line(k+"radius",F(b.radius));w.Line(k+"mass",F(b.mass));w.Line(k+"friction",F(b.friction));w.Line(k+"restitution",F(b.restitution));w.Line(k+"layer",std::to_string(b.collisionLayer));w.Line(k+"mask",std::to_string(b.collisionMask));w.Line(k+"suppress-parent",B(b.suppressParentCollision));w.Line(k+"auto-anchors",B(b.autoAnchors));
+            w.Line(k+"constraint",std::to_string(int(c.type)));w.Line(k+"enabled",B(c.enabled));w.Line(k+"anchor-a",V(c.anchorA));w.Line(k+"anchor-b",V(c.anchorB));w.Line(k+"frame-a",Q(c.frameA));w.Line(k+"frame-b",Q(c.frameB));w.Line(k+"limits",B(c.limits));w.Line(k+"lower",F(c.lower));w.Line(k+"upper",F(c.upper));
+        }
+    }
     if(o.joint){const auto& j=*o.joint;const auto& s=j.settings;
         w.Line("joint",std::to_string(int(s.type)));w.Line("joint.body-a",std::to_string(j.bodyA));w.Line("joint.body-b",std::to_string(j.bodyB));
         w.Line("joint.anchor-a",V(s.anchorA));w.Line("joint.anchor-b",V(s.anchorB));w.Line("joint.frame-a",Q(s.frameA));w.Line("joint.frame-b",Q(s.frameB));
@@ -618,7 +627,18 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
 
     if(p.Has("animation.enabled")){SceneAnimationComponent a;
         if(!p.Bool("animation.enabled",a.enabled)||!p.Bool("animation.play-on-start",a.playOnStart)||!p.Bool("animation.loop",a.loop)||!p.String("animation.clip",a.clip)||!p.Float("animation.speed",a.speed)||!p.Float("animation.time",a.time)||a.time<0)return false;
+        if(p.Has("animation.layers")){int count=0;if(!p.Int("animation.layers",count)||count<0||count>16)return reader.Fail("invalid layer count");for(int i=0;i<count;++i){AnimationLayerSettings l;auto key="animation.layer."+std::to_string(i)+".";int masks=0;
+            if(!p.String(key+"id",l.id)||!p.String(key+"clip",l.clip)||!p.Bool(key+"enabled",l.enabled)||!p.Bool(key+"additive",l.additive)||!p.Float(key+"weight",l.weight)||!p.Float(key+"speed",l.speed)||!p.Float(key+"time",l.time)||!p.String(key+"reference-clip",l.referenceClip)||!p.Float(key+"reference-time",l.referenceTime)||!p.Int(key+"mask-count",masks)||masks<0||masks>128)return false;
+            for(int n=0;n<masks;++n){std::string joint;if(!p.String(key+"mask."+std::to_string(n),joint))return false;l.mask.push_back(joint);}a.layers.push_back(std::move(l));}
+        }std::string layerError;if(!ValidAnimationLayers(a.layers,layerError))return reader.Fail(layerError);
         o.animation=a;
+    }
+    if(p.Has("ragdoll.enabled")){RagdollDefinition r;int count=0;
+        if(!p.Bool("ragdoll.enabled",r.enabled)||!p.Bool("ragdoll.play-on-start",r.playOnStart)||!p.Bool("ragdoll.self-collision",r.selfCollision)||!p.Int("ragdoll.bones",count)||count<1||count>32)return reader.Fail("invalid ragdoll definition");
+        for(int i=0;i<count;++i){RagdollBone b;auto& c=b.constraint;auto k="ragdoll.bone."+std::to_string(i)+".";int shape=0,type=0;
+            if(!p.String(k+"joint",b.joint)||!p.String(k+"parent",b.parent)||!p.Int(k+"shape",shape)||!p.Vec3(k+"offset",b.offset)||!p.Quat(k+"orientation",b.orientation)||!p.Vec3(k+"half-extents",b.halfExtents)||!p.Float(k+"radius",b.radius)||!p.Float(k+"mass",b.mass)||!p.Float(k+"friction",b.friction)||!p.Float(k+"restitution",b.restitution)||!p.Layer(k+"layer",b.collisionLayer)||!p.Mask(k+"mask",b.collisionMask)||!p.Bool(k+"suppress-parent",b.suppressParentCollision)||!p.Bool(k+"auto-anchors",b.autoAnchors)||!p.Int(k+"constraint",type)||!p.Bool(k+"enabled",c.enabled)||!p.Vec3(k+"anchor-a",c.anchorA)||!p.Vec3(k+"anchor-b",c.anchorB)||!p.Quat(k+"frame-a",c.frameA)||!p.Quat(k+"frame-b",c.frameB)||!p.Bool(k+"limits",c.limits)||!p.Float(k+"lower",c.lower)||!p.Float(k+"upper",c.upper))return false;
+            b.shape=RagdollShape(shape);c.type=JointType(type);r.bones.push_back(std::move(b));
+        }std::string why;if(!ValidRagdollDefinition(r,why))return reader.Fail(why);o.ragdoll=std::move(r);
     }
     if(p.Has("joint")){SceneJointComponent j;auto& s=j.settings;int type=0;
         if(!p.Int("joint",type)||type<0||type>3||!p.Id("joint.body-a",j.bodyA)||!p.Id("joint.body-b",j.bodyB)||

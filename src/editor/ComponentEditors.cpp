@@ -186,8 +186,35 @@ void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
 void DrawAnimation(EditorDocument& doc,SceneObject& object,EditorPanelState&){
     auto& a=*object.animation;Checkbox(doc,"Animation enabled",a.enabled);Checkbox(doc,"Play on start",a.playOnStart);Checkbox(doc,"Loop clip",a.loop);
     TextField(doc,"Clip name (empty = first)",a.clip);DragScalar(doc,"Playback speed",a.speed);DragScalar(doc,"Start time (seconds)",a.time,.05f,0,100000);
+    if(ImGui::Button("Add pose layer")&&a.layers.size()<16){doc.BeginEdit();AnimationLayerSettings l;l.id="Layer "+std::to_string(a.layers.size()+1);a.layers.push_back(l);doc.CommitEdit();}
+    for(size_t i=0;i<a.layers.size();++i){ImGui::PushID(int(i));auto& l=a.layers[i];if(ImGui::TreeNode(l.id.c_str())){
+        TextField(doc,"Layer ID",l.id);TextField(doc,"Clip",l.clip);Checkbox(doc,"Enabled",l.enabled);Checkbox(doc,"Additive",l.additive);DragScalar(doc,"Weight",l.weight,.01f,0,1);DragScalar(doc,"Speed",l.speed);DragScalar(doc,"Time",l.time,.05f,0,100000);TextField(doc,"Reference clip (empty = rest)",l.referenceClip);DragScalar(doc,"Reference time",l.referenceTime,.05f,0,100000);
+        if(ImGui::Button("Add masked joint")){doc.BeginEdit();l.mask.push_back("Root");doc.CommitEdit();}for(size_t n=0;n<l.mask.size();++n){ImGui::PushID(int(n));TextField(doc,"Joint path/name",l.mask[n]);ImGui::SameLine();if(ImGui::Button("Remove")){doc.BeginEdit();l.mask.erase(l.mask.begin()+n);doc.CommitEdit();ImGui::PopID();break;}ImGui::PopID();}
+        if(ImGui::Button("Remove layer")){doc.BeginEdit();a.layers.erase(a.layers.begin()+i);doc.CommitEdit();ImGui::TreePop();ImGui::PopID();break;}ImGui::TreePop();}ImGui::PopID();}
+    ImGui::TextDisabled("Layers are resolved in list order; empty mask affects all joints.");
     ImGui::TextDisabled("Use a self-contained GLB/glTF mesh. Pose is independent of playback.");
     if(!object.render||object.render->shape!=SceneShape::Mesh)ImGui::TextColored(ImVec4(1,.3f,.2f,1),"Requires a mesh Render component");
+}
+
+void DrawRagdoll(EditorDocument& doc,SceneObject& object,EditorPanelState& state){
+    auto frame=[&](const char* label,glm::quat& q){auto degrees=glm::degrees(glm::eulerAngles(glm::normalize(q)));if(ImGui::DragFloat3(label,&degrees.x,.5f))q=glm::normalize(glm::quat(glm::radians(degrees)));TrackEdit(doc);};
+    auto& r=*object.ragdoll;Checkbox(doc,"Ragdoll enabled",r.enabled);Checkbox(doc,"Start in ragdoll",r.playOnStart);Checkbox(doc,"Self collision",r.selfCollision);
+    ImGui::TextWrapped("Joint keys are imported hierarchy paths or unique names. Parent mapping must precede children. Bodies use normal physics; no pose motors. Positive uniform scales only.");
+    if(ImGui::Button("Add mapped bone")&&r.bones.size()<32){doc.BeginEdit();RagdollBone b;b.joint="Root";r.bones.push_back(b);doc.CommitEdit();}
+    size_t remove=r.bones.size();
+    for(size_t i=0;i<r.bones.size();++i){auto& b=r.bones[i];ImGui::PushID(int(i));if(ImGui::TreeNode("Mapped bone","%s",b.joint.c_str())){
+        TextField(doc,"Skeleton joint",b.joint);TextField(doc,"Physical parent key",b.parent);const char* shapes[]={"Box","Sphere"};Combo(doc,"Shape",b.shape,shapes,2);
+        DragVec3(doc,"Shape offset",b.offset,.01f);frame("Shape orientation",b.orientation);DragVec3(doc,"Half extents",b.halfExtents,.01f);DragScalar(doc,"Radius",b.radius,.01f);DragScalar(doc,"Mass",b.mass,.1f);DragScalar(doc,"Friction",b.friction,.01f);DragScalar(doc,"Restitution",b.restitution,.01f);
+        if(state.project){DrawCategoryLayer(doc,"Collision layer",b.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",b.collisionMask,state.project->Settings().classification.collision);}
+        Checkbox(doc,"Suppress parent collision",b.suppressParentCollision);Checkbox(doc,"Capture anchors from current pose",b.autoAnchors);
+        const char* types[]={"Fixed","Hinge","Ball","Slider"};Combo(doc,"Constraint",b.constraint.type,types,4);Checkbox(doc,"Constraint enabled",b.constraint.enabled);Checkbox(doc,"Limits",b.constraint.limits);DragScalar(doc,"Lower",b.constraint.lower,.01f);DragScalar(doc,"Upper",b.constraint.upper,.01f);
+        if(!b.autoAnchors){DragVec3(doc,"Child anchor",b.constraint.anchorA,.01f);DragVec3(doc,"Parent anchor",b.constraint.anchorB,.01f);}
+        frame("Child frame",b.constraint.frameA);frame("Parent frame",b.constraint.frameB);
+        if(ImGui::Button("Remove mapping"))remove=i;
+        ImGui::TreePop();}ImGui::PopID();
+    }
+    if(remove<r.bones.size()){doc.BeginEdit();r.bones.erase(r.bones.begin()+remove);doc.CommitEdit();}
+    std::string error;if(!ValidRagdollDefinition(r,error))ImGui::TextColored(ImVec4(1,.3f,.2f,1),"%s",error.c_str());
 }
 
 void DrawJoint(EditorDocument& doc, SceneObject& object, EditorPanelState&) {
@@ -413,6 +440,7 @@ const std::vector<ComponentEditor>& ComponentEditorRegistry() {
         Make<SceneRenderCameraComponent>("Render camera", 'K', &SceneObject::renderCamera, DrawRenderCamera),
         Make<SceneRenderComponent>("Render", 'R', &SceneObject::render, DrawRender),
         Make<SceneAnimationComponent>("Animation",'A',&SceneObject::animation,DrawAnimation),
+        Make<RagdollDefinition>("Ragdoll",'R',&SceneObject::ragdoll,DrawRagdoll),
         Make<SceneJointComponent>("Joint",'J',&SceneObject::joint,DrawJoint),
         Make<SceneBodyComponent>("Body", 'B', &SceneObject::body, DrawBody),
         Make<SceneGravityComponent>("Gravity region", 'G', &SceneObject::gravity, DrawGravity),

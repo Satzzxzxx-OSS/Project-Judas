@@ -76,6 +76,7 @@ struct EntityRecord {
     // definition: what the entity IS. Its transform/initial velocity are
     // the baseline state the R reset and the world-state delta compare to.
     SceneObject definition;
+    bool transient = false; // owned runtime articulation internals, not independent save entities
     bool authored = true;   // from the baseline scene (else created at runtime)
     bool managed = false;   // the scene's policy may change its fidelity
     bool requiresFull = false;  // capability: this entity has no reduced form

@@ -104,3 +104,11 @@ human visual acceptance.
 - P creates independent animated instances.
 - Reload/Stop leaves no stale animation state.
 - Moved exported standalone matches the demo.
+
+### Later candidate extension
+
+M47 extends the historical single-clip M46 scope with a resolver, crossfades,
+ordered/masked and additive contributions. `SetFinalPose` now submits a validated
+external contribution instead of bypassing resolution. M48 maps passive physical
+articulations into that resolver. See [POSE_COMPOSITION.md](POSE_COMPOSITION.md)
+and [RAGDOLLS.md](RAGDOLLS.md); the import and renderer ownership above are retained.

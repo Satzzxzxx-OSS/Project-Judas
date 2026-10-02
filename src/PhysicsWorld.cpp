@@ -228,6 +228,7 @@ struct PhysicsWorld::Impl {
     mutable std::vector<unsigned int> queryScratch;
     struct JointRecord {JointHandle handle;JointState state;std::array<float,10> warm{};};
     std::vector<JointRecord> joints;
+    std::set<std::pair<unsigned,unsigned>> suppressedPairs;
     JointSolver jointSolver,eventJointSolver;
     RigidBody worldAnchor;
     bool JointActive(const JointRecord& joint) const {
@@ -791,6 +792,8 @@ struct PhysicsWorld::Impl {
     // body, in ascending lexicographic slot order — the same order the
     // pre-M32 all-pairs loop visited them in, restricted to candidates.
     bool CanCollide(unsigned a,unsigned b) const {
+        auto ha=MakeHandle(a).id,hb=MakeHandle(b).id;
+        if(!suppressedPairs.empty()&&suppressedPairs.count(std::minmax(ha,hb)))return false;
         return bodies[a].enabled&&bodies[b].enabled&&CollisionPermitted(bodies[a].collisionLayer,bodies[a].collisionMask,bodies[b].collisionLayer,bodies[b].collisionMask);
     }
     bool CanRespond(unsigned a,unsigned b) const {return CanCollide(a,b)&&!bodies[a].sensor&&!bodies[b].sensor;}
@@ -1049,6 +1052,7 @@ BodyHandle PhysicsWorld::CreateDynamicCompoundBoxes(const glm::vec3& position,
 }
 
 void PhysicsWorld::DestroyBody(BodyHandle handle) {
+    if(m_impl){for(auto it=m_impl->suppressedPairs.begin();it!=m_impl->suppressedPairs.end();){if(it->first==handle.id||it->second==handle.id)it=m_impl->suppressedPairs.erase(it);else ++it;}}
     if(m_impl){auto& joints=m_impl->joints;joints.erase(std::remove_if(joints.begin(),joints.end(),[&](const auto& j){return j.state.settings.bodyA.id==handle.id||j.state.settings.bodyB.id==handle.id;}),joints.end());}
     m_impl->Remove(handle);
 }
@@ -2101,3 +2105,8 @@ JointHandle PhysicsWorld::CreateJoint(const JointSettings& settings) {
 bool PhysicsWorld::DestroyJoint(JointHandle handle){if(!m_impl)return false;auto& joints=m_impl->joints;auto it=std::find_if(joints.begin(),joints.end(),[&](const auto& j){return j.handle.id==handle.id;});if(it==joints.end())return false;joints.erase(it);return true;}
 bool PhysicsWorld::GetJoint(JointHandle handle,JointState& state)const{if(!m_impl)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){if(!m_impl->Get(joint.state.settings.bodyA)||(joint.state.settings.bodyB.IsValid()&&!m_impl->Get(joint.state.settings.bodyB)))return false;state=joint.state;state.active=m_impl->JointActive(joint);return true;}return false;}
 bool PhysicsWorld::SetJoint(JointHandle handle,const JointSettings& settings){JointState previous;if(!GetJoint(handle,previous)||!ValidJointSettings(settings)||settings.bodyA.id!=previous.settings.bodyA.id||settings.bodyB.id!=previous.settings.bodyB.id)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){joint.state.settings=settings;joint.warm.fill(0);return true;}return false;}
+
+bool PhysicsWorld::SetPairCollisionEnabled(BodyHandle a,BodyHandle b,bool enabled){
+    if(!m_impl||a.id==b.id||!m_impl->Get(a)||!m_impl->Get(b))return false;
+    auto pair=std::minmax(a.id,b.id);if(enabled)m_impl->suppressedPairs.erase(pair);else m_impl->suppressedPairs.insert(pair);return true;
+}

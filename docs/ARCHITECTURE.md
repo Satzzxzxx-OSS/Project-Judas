@@ -8826,3 +8826,26 @@ Scene animation settings, generic prefab overrides, editor controls and
 Tagged animation settings extend canonical fingerprint schema 5; scenes with
 no animation retain their existing fingerprint. See [ANIMATION.md](ANIMATION.md)
 for supported import limits and the focused demo.
+
+## M47 — resolved pose composition (candidate)
+
+M46's single-player scope is extended by per-instance clip mixing, interrupted
+crossfades, ordered masked layers and additive local TRS contributions relative
+to an explicit rest/sample reference. Shared immutable assets and independent
+samplers remain unchanged. RuntimeWorld owns separate source/final poses; copied,
+validated external contributions participate in the same deterministic resolver.
+No producer owns the final skeleton and Renderer still consumes only its palette.
+See [POSE_COMPOSITION.md](POSE_COMPOSITION.md). No state machine, blend tree or IK.
+
+## M48 — passive articulated skeletons (candidate)
+
+An authored joint-key mapping creates ordinary PhysicsWorld bodies and M45 passive
+constraints. Current resolved pose/recent motion initializes entry. Physical
+transforms become an M47 contribution, preserving hierarchy and ordinary skinning.
+The collider-free owner reference follows physical-root translation; its basis is
+fixed and mapped bones carry physical rotation. On exit, captured pose fades to
+animation after physics resources are released. Early generation-keyed pair
+suppression handles authored self-collision policy; query filtering is unchanged.
+Transient internal bodies are not independent save entities. No motors, recovery
+or M49 control is implemented. See [RAGDOLLS.md](RAGDOLLS.md) for scale, lifetime,
+persistence and supported-shape limits. Protected research remains separate.

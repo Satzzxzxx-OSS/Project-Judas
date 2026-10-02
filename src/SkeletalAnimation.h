@@ -20,8 +20,8 @@ struct AnimationClip {std::string name;float duration=0;std::vector<AnimationTra
 struct SkeletalAsset {Skeleton skeleton;std::vector<AnimationClip> clips;};
 SkeletalPose SampleClip(const Skeleton&,const AnimationClip&,float time);
 std::vector<glm::mat4> ResolveSkinMatrices(const Skeleton&,const SkeletalPose&);
-// Instance playback is one pose producer. Applications may replace/modify finalPose
-// after evaluation; Renderer depends only on the resolved SkeletalPose, not on this player.
+// Instance playback is one pose producer. RuntimeWorld composes copied pose
+// contributions; Renderer depends only on the final resolved pose, not this player.
 struct AnimationPlayback {
  std::string clip;bool playing=true,loop=true,stopped=false;float speed=1,time=0;
  SkeletalPose Evaluate(const SkeletalAsset&,float dt);

@@ -68,6 +68,8 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
     src/WorldAnimation.cpp
+    src/PoseComposition.cpp
+    src/WorldRagdoll.cpp
     src/GltfLoader.cpp
     src/WorldScripts.cpp
     src/RuntimeUI.cpp
@@ -123,6 +125,7 @@ add_library(judas_engine STATIC
     src/VisualParticles.cpp
     src/Prefab.cpp
     src/Scene.cpp
+    src/Ragdoll.cpp
     src/SceneSerialization.cpp
     src/SceneFingerprint.cpp
     src/Project.cpp
@@ -972,3 +975,16 @@ target_compile_options(judas_skeletal_animation_tests PRIVATE -Wall -Wextra)
 add_executable(judas_animation_application_tests tests/AnimationApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_animation_application_tests PRIVATE judas_engine)
 target_compile_options(judas_animation_application_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_pose_composition_tests tests/PoseCompositionTests.cpp)
+target_link_libraries(judas_pose_composition_tests PRIVATE judas_engine)
+target_compile_options(judas_pose_composition_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_pose_composition_application_tests tests/PoseCompositionApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_pose_composition_application_tests PRIVATE judas_engine)
+
+add_executable(judas_ragdoll_tests tests/RagdollTests.cpp)
+target_link_libraries(judas_ragdoll_tests PRIVATE judas_engine)
+
+add_executable(judas_ragdoll_application_tests tests/RagdollApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_ragdoll_application_tests PRIVATE judas_engine)

@@ -229,6 +229,8 @@ public:
 
     std::vector<BodyHandle> QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max, const PhysicsQueryFilter& filter = {}) const;
     bool SetCollisionFilter(BodyHandle,unsigned layer,CategoryMask mask);
+    // Articulations may suppress selected generation-aware pairs without changing query policy.
+    bool SetPairCollisionEnabled(BodyHandle a,BodyHandle b,bool enabled);
     bool GetCollisionFilter(BodyHandle,unsigned& layer,CategoryMask& mask) const;
     bool SetBodyTags(BodyHandle,CategoryMask tags);
     void SetPlayerCollisionFilter(unsigned layer,CategoryMask mask);

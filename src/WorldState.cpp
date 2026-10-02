@@ -196,6 +196,8 @@ WorldState CaptureWorldState(const RuntimeWorld& world) {
     auto persistent=world.Entities();
     persistent.insert(persistent.end(),world.AdditionalEntities().begin(),world.AdditionalEntities().end());
     for (const EntityRecord& e : persistent) {
+        if(e.transient)continue; // articulation bodies belong to their runtime owner
+
         WorldStateEntityChange change;
         change.id = e.id;
         if (e.lifecycle == EntityLifecycle::Destroyed) {

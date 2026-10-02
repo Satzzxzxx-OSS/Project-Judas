@@ -40,6 +40,7 @@ export class Entity {
  removeTag(tag){return call('removeTag',this.id,tag)}
  get classification(){return call('classification',this.id)}
  get animation(){return call('animationExists',this.id)?new Animation(this.id):null}
+ get ragdoll(){return call('ragdollExists',this.id)?new Ragdoll(this.id):null}
  get audio(){return call('audioInfo',this.id)}
  setAudioEnabled(enabled){return call('audioEnabled',this.id,enabled)}
  get camera(){return call('cameraInfo',this.id)}
@@ -65,6 +66,14 @@ export const world={entity,get viewRay(){return call('viewRay')},queryTags:(requ
  overlap:(min,max,filter={})=>call('overlap',min,max,filter).map(entity),
  sweepCapsule:(from,displacement,rotation={w:1,x:0,y:0,z:0},filter={})=>call('sweep',from,displacement,filter,rotation)};
 const cast=(origin,direction,maximum,filter,shape)=>{const hit=call('cast',origin,direction,filter,{...shape,maximum});return hit?{...hit,entity:entity(hit.entityId)}:null};
+export class Ragdoll {
+ constructor(id){this.id=id}
+ get active(){return call('ragdollActive',this.id)}
+ enter(){return call('ragdollEnter',this.id)}
+ leave(seconds=.4){return call('ragdollLeave',this.id,seconds)}
+ set enabled(value){call('ragdollEnabled',this.id,value)}
+ body(joint){return entity(call('ragdollBody',this.id,joint))}
+}
 export class Animation {
  constructor(entityId){this.entityId=entityId}
  get info(){return call('animationInfo',this.entityId)}
@@ -80,6 +89,10 @@ export class Animation {
  resume(){return this.play()}
  stop(){return call('animationStop',this.entityId)}
  seek(time){return call('animationSeek',this.entityId,time)}
+ crossFade(clip,seconds=.3){return call('animationFade',this.entityId,clip,seconds)}
+ get layers(){return this.info.layers}
+ layer(id,settings){return call('animationLayer',this.entityId,id,settings)}
+ removeLayer(id){return call('animationRemoveLayer',this.entityId,id)}
 }
 export class Joint {
  constructor(id){this.id=String(id)}
@@ -372,29 +385,63 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     const auto* definition=world.RuntimeDefinition(id);
     if(op=="valid")return JS_NewBool(c,definition!=nullptr);
     if(!definition)return JS_ThrowReferenceError(c,"stale or invalid entity %llu",(unsigned long long)id);
+    if(op.rfind("ragdoll",0)==0){
+        if(op=="ragdollExists")return JS_NewBool(c,definition->ragdoll.has_value());
+        if(!definition->ragdoll)return JS_ThrowTypeError(c,"entity has no ragdoll mapping");
+        if(op=="ragdollActive")return JS_NewBool(c,world.RagdollActive(id));
+        if(op=="ragdollBody"){if(!JS_IsString(arg(2)))return JS_ThrowTypeError(c,"joint key required");auto body=world.RagdollBody(id,String(c,arg(2)));return JS_NewString(c,std::to_string(body).c_str());}
+        std::string error;bool ok=false;
+        if(op=="ragdollEnter")ok=world.EnterRagdoll(id,error);
+        else if(op=="ragdollLeave"){double seconds=0;if(JS_ToFloat64(c,&seconds,arg(2))!=0||!std::isfinite(seconds)||seconds<0||seconds>3600)return JS_ThrowTypeError(c,"invalid return duration");ok=world.LeaveRagdoll(id,float(seconds),error);}
+        else if(op=="ragdollEnabled"){if(!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"boolean required");ok=world.SetRagdollEnabled(id,JS_ToBool(c,arg(2)),error);}
+        if(!ok)return JS_ThrowTypeError(c,"ragdoll: %s",error.c_str());
+        return JS_TRUE;
+    }
     if(op.rfind("animation",0)==0){
         if(op=="animationExists")return JS_NewBool(c,definition->animation.has_value());
         auto* instance=world.RuntimeAnimation(id);if(!instance)return JS_ThrowTypeError(c,"entity has no animated mesh");
         auto& player=instance->playback;
         if(op=="animationInfo"){
             auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"ready",JS_NewBool(c,bool(instance->asset)));JS_SetPropertyStr(c,result,"playing",JS_NewBool(c,player.playing&&!player.stopped));JS_SetPropertyStr(c,result,"loop",JS_NewBool(c,player.loop));JS_SetPropertyStr(c,result,"speed",JS_NewFloat64(c,player.speed));JS_SetPropertyStr(c,result,"time",JS_NewFloat64(c,player.time));JS_SetPropertyStr(c,result,"clip",JS_NewString(c,player.clip.c_str()));
-            auto clips=JS_NewArray(c);uint32_t i=0;if(instance->asset)for(const auto& clip:instance->asset->clips){auto value=JS_NewObject(c);JS_SetPropertyStr(c,value,"name",JS_NewString(c,clip.name.c_str()));JS_SetPropertyStr(c,value,"duration",JS_NewFloat64(c,clip.duration));JS_SetPropertyUint32(c,clips,i++,value);}JS_SetPropertyStr(c,result,"clips",clips);return result;
+            auto clips=JS_NewArray(c);uint32_t i=0;if(instance->asset)for(const auto& clip:instance->asset->clips){auto value=JS_NewObject(c);JS_SetPropertyStr(c,value,"name",JS_NewString(c,clip.name.c_str()));JS_SetPropertyStr(c,value,"duration",JS_NewFloat64(c,clip.duration));JS_SetPropertyUint32(c,clips,i++,value);}JS_SetPropertyStr(c,result,"clips",clips);
+            JS_SetPropertyStr(c,result,"transitioning",JS_NewBool(c,instance->mixer.Transitioning()));JS_SetPropertyStr(c,result,"transitionFraction",JS_NewFloat64(c,instance->mixer.Fraction()));JS_SetPropertyStr(c,result,"error",JS_NewString(c,instance->error.c_str()));
+            auto joints=JS_NewArray(c);i=0;if(instance->asset)for(size_t node=0;node<instance->asset->skeleton.names.size();++node)JS_SetPropertyUint32(c,joints,i++,JS_NewString(c,SkeletonJointKey(instance->asset->skeleton,int(node)).c_str()));JS_SetPropertyStr(c,result,"joints",joints);
+            auto layers=JS_NewArray(c);i=0;for(const auto& l:instance->layers){auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"id",JS_NewString(c,l.settings.id.c_str()));JS_SetPropertyStr(c,o,"clip",JS_NewString(c,l.settings.clip.c_str()));JS_SetPropertyStr(c,o,"weight",JS_NewFloat64(c,l.settings.weight));JS_SetPropertyStr(c,o,"enabled",JS_NewBool(c,l.settings.enabled));JS_SetPropertyStr(c,o,"additive",JS_NewBool(c,l.settings.additive));JS_SetPropertyUint32(c,layers,i++,o);}JS_SetPropertyStr(c,result,"layers",layers);return result;
         }
         if(op=="animationSet"){
             auto copy=player;auto v=JS_GetPropertyStr(c,arg(2),"speed");bool has=!JS_IsUndefined(v);JS_FreeValue(c,v);if(has&&!Number(c,arg(2),"speed",copy.speed))return JS_ThrowTypeError(c,"invalid playback speed");
             v=JS_GetPropertyStr(c,arg(2),"loop");if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"loop must be boolean");}copy.loop=JS_ToBool(c,v);}JS_FreeValue(c,v);player=copy;return JS_TRUE;
         }
-        if(op=="animationPause"){player.playing=false;return JS_TRUE;}
+        if(op=="animationPause"){player.playing=false;instance->mixer.paused=true;return JS_TRUE;}
         if(!instance->asset)return JS_FALSE; // request remains in the ordinary async resource path
+        if(op=="animationFade"){
+            double seconds;if(!JS_IsString(arg(2))||JS_ToFloat64(c,&seconds,arg(3))!=0||!std::isfinite(seconds)||seconds<0||seconds>3600)return JS_ThrowTypeError(c,"invalid fade");
+            auto clip=String(c,arg(2));if(std::none_of(instance->asset->clips.begin(),instance->asset->clips.end(),[&](const auto& v){return v.name==clip;}))return JS_ThrowTypeError(c,"unknown clip");
+            if(seconds>0&&instance->mixer.outgoing.size()>=16)return JS_ThrowRangeError(c,"too many interrupted fade contributors");
+            instance->mixer.CrossFade(player,clip,float(seconds));world.ResolveAnimationPose(*instance,0);return JS_TRUE;
+        }
+        if(op=="animationLayer"||op=="animationRemoveLayer"){
+            if(!JS_IsString(arg(2)))return JS_ThrowTypeError(c,"layer ID required");
+            AnimationLayerSettings settings;settings.id=String(c,arg(2));
+            for(const auto& l:instance->layers)if(l.settings.id==settings.id)settings=l.settings;
+            if(op=="animationLayer"){
+                if(!JS_IsObject(arg(3)))return JS_ThrowTypeError(c,"layer settings required");
+                for(auto field:{"clip","referenceClip"}){auto v=JS_GetPropertyStr(c,arg(3),field);if(!JS_IsUndefined(v)){if(!JS_IsString(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"invalid layer string");}(std::string(field)=="clip"?settings.clip:settings.referenceClip)=String(c,v);}JS_FreeValue(c,v);}
+                for(auto item:{std::pair<const char*,float*>{"weight",&settings.weight},{"speed",&settings.speed},{"time",&settings.time},{"referenceTime",&settings.referenceTime}}){auto v=JS_GetPropertyStr(c,arg(3),item.first);bool present=!JS_IsUndefined(v);JS_FreeValue(c,v);if(present&&!Number(c,arg(3),item.first,*item.second))return JS_ThrowTypeError(c,"invalid layer number");}
+                for(auto item:{std::pair<const char*,bool*>{"enabled",&settings.enabled},{"additive",&settings.additive}}){auto v=JS_GetPropertyStr(c,arg(3),item.first);if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"invalid layer flag");}*item.second=JS_ToBool(c,v);}JS_FreeValue(c,v);}
+                auto mask=JS_GetPropertyStr(c,arg(3),"mask");if(!JS_IsUndefined(mask)){if(!JS_IsArray(mask)){JS_FreeValue(c,mask);return JS_ThrowTypeError(c,"mask must be an array of joint keys");}auto len=JS_GetPropertyStr(c,mask,"length");uint32_t n=0;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);if(n>128){JS_FreeValue(c,mask);return JS_ThrowRangeError(c,"too many joints");}settings.mask.clear();for(uint32_t i=0;i<n;++i){auto v=JS_GetPropertyUint32(c,mask,i);if(!JS_IsString(v)){JS_FreeValue(c,v);JS_FreeValue(c,mask);return JS_ThrowTypeError(c,"joint key must be a string");}settings.mask.push_back(String(c,v));JS_FreeValue(c,v);}}JS_FreeValue(c,mask);
+            }
+            std::string error;if(!world.SetAnimationLayer(id,settings,op=="animationRemoveLayer",error))return JS_ThrowTypeError(c,"layer: %s",error.c_str());return JS_TRUE;
+        }
         if(op=="animationPlay"){
             if(!JS_IsString(arg(2)))return JS_ThrowTypeError(c,"clip name must be a string");
             auto clip=String(c,arg(2));
-            if(!clip.empty()){if(std::none_of(instance->asset->clips.begin(),instance->asset->clips.end(),[&](const auto& v){return v.name==clip;}))return JS_ThrowTypeError(c,"unknown animation clip");player.time=0;player.clip=clip;}
-            player.playing=true;player.stopped=false;instance->finalPose=player.Evaluate(*instance->asset,0);
-        }else if(op=="animationStop")instance->finalPose=player.Stop(*instance->asset);
-        else if(op=="animationSeek"){double seconds;if(JS_ToFloat64(c,&seconds,arg(2))!=0||!std::isfinite(seconds)||seconds<0||seconds>1e20)return JS_ThrowTypeError(c,"invalid animation seek");instance->finalPose=player.Seek(*instance->asset,float(seconds));}
+            if(!clip.empty()){if(std::none_of(instance->asset->clips.begin(),instance->asset->clips.end(),[&](const auto& v){return v.name==clip;}))return JS_ThrowTypeError(c,"unknown animation clip");player.time=0;player.clip=clip;instance->mixer.Clear();}
+            player.playing=true;player.stopped=false;instance->mixer.paused=false;
+        }else if(op=="animationStop"){player.Stop(*instance->asset);instance->mixer.Clear();instance->mixer.paused=true;}
+        else if(op=="animationSeek"){double seconds;if(JS_ToFloat64(c,&seconds,arg(2))!=0||!std::isfinite(seconds)||seconds<0||seconds>1e20)return JS_ThrowTypeError(c,"invalid animation seek");player.Seek(*instance->asset,float(seconds));}
         else return JS_ThrowTypeError(c,"unknown animation operation");
-        instance->skin=ResolveSkinMatrices(instance->asset->skeleton,instance->finalPose);return JS_TRUE;
+        world.ResolveAnimationPose(*instance,0);return JS_TRUE;
     }
     if(op=="colliderEnabled"){if(!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.SetColliderEnabled(id,JS_ToBool(c,arg(2))));}
     if(op=="scriptState"){auto slot=String(c,arg(2));uint64_t slotId=0;try{slotId=std::stoull(slot);}catch(...){return JS_ThrowTypeError(c,"invalid slot");}

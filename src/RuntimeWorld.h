@@ -279,11 +279,26 @@ public:
     bool SetRuntimeTransform(EntityId id,const SceneTransform& transform);
     BodyHandle RuntimeBody(EntityId id) const;
     JointHandle RuntimeJoint(EntityId owner);
-    struct AnimationInstance {std::shared_ptr<const SkeletalAsset> asset;AnimationPlayback playback;SkeletalPose finalPose;std::vector<glm::mat4> skin;};
+    struct AnimationLayer {AnimationLayerSettings settings;AnimationPlayback playback;std::vector<int> mask;SkeletalPose reference;};
+    struct AnimationInstance {std::shared_ptr<const SkeletalAsset> asset;AnimationPlayback playback;PoseMixer mixer;SkeletalPose sourcePose,finalPose;std::vector<glm::mat4> skin;std::vector<AnimationLayer> layers;std::map<std::string,PoseContribution> external;std::string error;std::vector<glm::mat4> previousWorld,recentWorld;float motionDt=0;};
     AnimationInstance* RuntimeAnimation(EntityId);
     const std::vector<glm::mat4>* AnimationSkin(EntityId) const;
     void UpdateAnimations(float dt);
     bool SetFinalPose(EntityId,const SkeletalPose&,std::string& error);
+    bool SetPoseContribution(EntityId,const std::string&,const PoseContribution&,std::string& error);
+    void RemovePoseContribution(EntityId,const std::string&);
+    bool SetAnimationLayer(EntityId,const AnimationLayerSettings&,bool remove,std::string& error);
+    void ResolveAnimationPose(AnimationInstance&,float dt);
+
+    struct RagdollMappedBody {int node=-1,parent=-1;EntityId entity=0;BodyHandle body;glm::vec3 offset{0},scale{1};glm::quat orientation{1,0,0,0};};
+    struct RagdollInstance {std::shared_ptr<const SkeletalAsset> asset;std::vector<RagdollMappedBody> bodies;std::vector<JointHandle> joints;SceneTransform reference;glm::vec3 rootLocalPosition{0};};
+    bool EnterRagdoll(EntityId,std::string& error);
+    bool LeaveRagdoll(EntityId,float fadeSeconds,std::string& error);
+    bool SetRagdollEnabled(EntityId,bool enabled,std::string& error);
+    bool RagdollActive(EntityId)const;
+    EntityId RagdollBody(EntityId,const std::string& key)const;
+    void UpdateRagdolls(float dt);
+    bool IsTransientEntity(EntityId id)const {const auto* e=FindEntity(id);return e&&e->transient;}
 
     void SynchronizeJoints();
     bool EmitFluidParticle();
@@ -408,6 +423,10 @@ private:
     bool m_hasScripts=false;
     std::set<EntityId> m_animationOwners;
     std::map<EntityId,AnimationInstance> m_animationInstances;
+    std::map<EntityId,RagdollInstance> m_ragdolls;
+    struct RagdollReturn {float elapsed=0,duration=0;};
+    std::map<EntityId,RagdollReturn> m_ragdollReturns;
+    std::set<EntityId> m_ragdollAutostarted;
     std::set<EntityId> m_jointOwners,m_jointParticipants;
     std::map<EntityId,JointHandle> m_runtimeJoints;
     std::unique_ptr<ScriptSystem> m_scripts;
