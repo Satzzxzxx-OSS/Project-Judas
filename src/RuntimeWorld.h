@@ -26,6 +26,7 @@
 #include "Renderer.h"
 #include "Scene.h"
 #include "AudioSystem.h"
+#include "ScriptSystem.h"
 
 class RadialTerrain;
 class ResourceManager;
@@ -256,6 +257,15 @@ public:
     bool HasFluid() const { return !m_fluidVolumes.empty(); }
     // The M25 held-key water source: adds one particle at the next emitter
     // slot if any emitter has capacity. Returns false when none does.
+    void UpdateScripts(const InputSystem* input,float dt);
+    void FixedScripts(const InputSystem* input,float dt);
+    bool RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error);
+    void EndScripts(){m_scripts.reset();}
+    ScriptSystem* Scripts() const {return m_scripts.get();}
+    std::vector<SceneObject> ScriptObjects() const;
+    const SceneObject* RuntimeDefinition(EntityId id) const;
+    bool SetRuntimeTransform(EntityId id,const SceneTransform& transform);
+    BodyHandle RuntimeBody(EntityId id) const;
     bool EmitFluidParticle();
     std::size_t EmittedFluidParticles() const { return m_emittedParticles; }
 
@@ -373,6 +383,9 @@ private:
     PhysicsWorld m_physics;
     bool AppendSceneObjects(const Scene& scene, bool authored, const FidelityPolicyContext& context, std::string& error);
     Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
+    bool m_hasScripts=false;
+    std::unique_ptr<ScriptSystem> m_scripts;
+    std::map<EntityId,SceneObject> m_scriptDefinitions;
     std::vector<EntityRecord> m_extraEntities; // normal non-dynamic runtime components
     SceneSettings m_settings;
     std::string m_baselineFingerprint;

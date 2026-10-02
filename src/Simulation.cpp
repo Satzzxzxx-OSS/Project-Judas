@@ -23,6 +23,7 @@ double MillisecondsSince(Clock::time_point start) {
 void StepPlayedWorld(GameSession& session, const Window& window, float fixedDeltaTime,
                      FixedStepMeasurements* measurements) {
     RuntimeWorld& world = session.World();
+    world.FixedScripts(&window.Input(),fixedDeltaTime);
     PhysicsWorld& physics = world.Physics();
     const GravityField& gravity = world.Gravity();
     FlyingPrimitiveControl& vehicleControl = session.VehicleControl();

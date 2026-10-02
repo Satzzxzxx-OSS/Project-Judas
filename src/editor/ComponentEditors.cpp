@@ -1,5 +1,7 @@
 #include "ComponentEditors.h"
 #include <algorithm>
+#include <filesystem>
+#include "ScriptSystem.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -57,6 +59,37 @@ void AssetField(EditorDocument& doc, const char* label, std::string& assetId, As
     } else {
         ImGui::TextDisabled("  id %s", assetId.c_str());
     }
+}
+
+void DrawScripts(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
+    size_t remove=o.scripts.size();
+    for(size_t i=0;i<o.scripts.size();++i){auto& slot=o.scripts[i];ImGui::PushID(static_cast<int>(i));
+        ImGui::Text("Behaviour %zu (slot %llu)",i+1,static_cast<unsigned long long>(slot.id));
+        AssetField(doc,"Script asset",slot.asset,AssetType::Script,false,state);Checkbox(doc,"Enabled",slot.enabled);
+        if(state.assets&&!slot.asset.empty()){
+            struct Metadata {std::filesystem::file_time_type time;std::string schema,error;};
+            static std::map<std::string,Metadata> cache;
+            const auto* record=state.assets->Find(slot.asset);
+            if(record&&!record->missing){std::error_code ec;auto stamp=std::filesystem::last_write_time(record->path,ec);
+                auto it=cache.find(record->path);if(it==cache.end()||it->second.time!=stamp){Metadata m;m.time=stamp;
+                    ScriptSystem::Inspect(*state.assets,slot.asset,m.schema,m.error);it=cache.insert_or_assign(record->path,std::move(m)).first;}
+                auto& metadata=it->second;std::vector<ScriptProperty> fields;std::string error=metadata.error;
+                if(error.empty()&&ScriptSystem::ReadProperties(metadata.schema,slot.properties,fields,error)){
+                    for(auto& f:fields){bool changed=false;
+                        if(f.type=="boolean")changed=ImGui::Checkbox(f.name.c_str(),&f.boolean);
+                        else if(f.type=="number")changed=ImGui::InputDouble(f.name.c_str(),&f.number);
+                        else {char value[1024];std::snprintf(value,sizeof(value),"%s",f.text.c_str());changed=ImGui::InputText(f.name.c_str(),value,sizeof(value));if(changed)f.text=value;}
+                        if(changed){doc.BeginEdit();slot.properties=ScriptSystem::WriteProperties(fields);doc.CommitEdit();}
+                    }
+                }
+                if(!error.empty())ImGui::TextWrapped("Script metadata: %s",error.c_str());
+            }
+        }
+        if(ImGui::Button("Remove behaviour"))remove=i;
+        ImGui::PopID();
+    }
+    if(remove<o.scripts.size()){doc.BeginEdit();o.scripts.erase(o.scripts.begin()+remove);doc.CommitEdit();}
+    if(ImGui::Button("Add behaviour")){doc.BeginEdit();uint64_t id=1;for(const auto& slot:o.scripts)id=std::max(id,slot.id+1);o.scripts.push_back({id,"",true,"{}"});doc.CommitEdit();}
 }
 
 void DrawParticleEmitter(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
@@ -329,6 +362,7 @@ ComponentEditor Make(const char* name, char indicator, std::optional<T> SceneObj
 
 const std::vector<ComponentEditor>& ComponentEditorRegistry() {
     static const std::vector<ComponentEditor> registry = {
+        {"Scripts",'J',[](const SceneObject& o){return !o.scripts.empty();},[](SceneObject& o){o.scripts.push_back({1,"",true,"{}"});},[](SceneObject& o){o.scripts.clear();},DrawScripts},
         Make<ParticleEmitterSettings>("Particle emitter", 'E', &SceneObject::particleEmitter, DrawParticleEmitter),
         Make<SceneAudioEmitterComponent>("Audio emitter", 'U', &SceneObject::audioEmitter, DrawAudioEmitter),
         Make<SceneAudioListenerComponent>("Audio listener", 'N', &SceneObject::audioListener, DrawAudioListener),

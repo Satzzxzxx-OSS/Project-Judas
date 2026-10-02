@@ -29,7 +29,7 @@
 // This is not an entity/component framework. A SceneObject is a plain
 // struct with a fixed, small set of optional component structs — exactly
 // the engine capabilities that exist today, no registry, no dynamic
-// component types, no scripting. Names inside this file are engine
+// component types. Script slots contain authored data only. Names here are engine
 // concepts (a body, a light, a gravity region); nothing here knows that a
 // particular sphere is "Planet A" or a particular box is "the plank" —
 // those are scene content, authored in a scene file.
@@ -252,7 +252,19 @@ struct SceneAudioListenerComponent {
     bool followActiveView=false;
 };
 
+struct SceneScriptSlot {
+    std::uint64_t id = 1;
+    std::string asset;
+    bool enabled = true;
+    // Bounded JSON object, not arbitrary VM state. Properties are authored.
+    std::string properties = "{}";
+    bool operator==(const SceneScriptSlot& b) const {
+        return id==b.id && asset==b.asset && enabled==b.enabled && properties==b.properties;
+    }
+};
+
 struct SceneObject {
+    std::vector<SceneScriptSlot> scripts;
     CategoryMask tags = 0;
     unsigned renderLayer = 0;
     SceneObjectId id = kInvalidSceneObjectId;

@@ -44,7 +44,7 @@ RuntimeWorld::~RuntimeWorld() {
 }
 
 bool RuntimeWorld::EntityRequiresFull(const SceneObject& o) {
-    if (o.vehicle || o.combustible) return true;
+    if (o.vehicle || o.combustible || !o.scripts.empty()) return true;
     if (o.body && o.body->shape == SceneShape::Compound) return true;
     return false;
 }
@@ -220,6 +220,11 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     }
     std::string fingerprint;
     if (!ComputeSceneFingerprint(scene, fingerprint, outError)) return false;
+    if(std::any_of(scene.Objects().begin(),scene.Objects().end(),[](const auto& o){return !o.scripts.empty();})){
+        if(!resources||!resources->Assets()){outError="scripted scene requires a project asset database";return false;}
+        std::string scripts;if(!ScriptSystem::SourceFingerprint(*resources->Assets(),scene,scripts,outError,false))return false;
+        fingerprint=SceneFingerprintSha256(fingerprint+scripts);
+    }
     Destroy();
     m_categories=selected;
     m_assets = resources;
@@ -258,6 +263,12 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     }
 
     if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
+    for(const auto& o:scene.Objects())if(m_hasScripts&&!FindEntity(o.id)){
+        std::string unsupported;
+        if(o.scripts.empty()&&!ValidateEntityDefinition(o,unsupported))continue;
+        EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
+        e.state=StateFromDefinition(o);e.slot=std::numeric_limits<std::size_t>::max();m_extraEntities.push_back(e);
+    }
     m_baselineFingerprint = std::move(fingerprint);
     return true;
 }
@@ -270,6 +281,8 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     };
 
     for (const SceneObject& o : scene.Objects()) {
+        m_hasScripts|=!o.scripts.empty();
+        m_scriptDefinitions[o.id]=o;
         m_entityCategories[o.id]={o.tags,o.tags,o.renderLayer,{}};
         const glm::vec3 position = o.transform.position;
         const glm::quat rotation = glm::normalize(o.transform.rotation);
@@ -638,6 +651,7 @@ bool RuntimeWorld::EmitFluidParticle() {
 }
 
 void RuntimeWorld::RestoreAuthoredState() {
+    m_scripts.reset();
     if (!m_built) return;
     for(auto& [id,info]:m_entityCategories){(void)id;info.tags=info.authoredTags;m_physics.SetBodyTags(info.body,info.tags);}
     // Every surviving entity returns to its definition's state at Full
@@ -663,6 +677,21 @@ void RuntimeWorld::RestoreAuthoredState() {
             e.lifecycle = EntityLifecycle::Active;
             e.dormantSinceSeconds = -1.0;
             ++e.reconstructions;
+        }
+    }
+    if(m_hasScripts){
+        for(auto& e:m_extraEntities)if(e.authored&&e.lifecycle!=EntityLifecycle::Destroyed){
+            SetEntityState(e.id,StateFromDefinition(e.definition));SetRuntimeTransform(e.id,e.definition.transform);
+        }
+        // Restore parent-local data independently of entity ordering. Physical
+        // records hold the flattened authored baseline; no game rule is involved.
+        for(auto& o:m_hierarchy.Objects())if(const auto* e=FindEntity(o.id))if(e->authored){
+            auto local=e->definition.transform;
+            if(o.parent){const auto* parent=RuntimeDefinition(o.parent);const auto* record=FindEntity(o.parent);
+                if(parent){const auto p=record&&record->authored?record->definition.transform:parent->transform;
+                    local.position=glm::inverse(p.rotation)*(local.position-p.position)/p.scale;
+                    local.rotation=glm::inverse(p.rotation)*local.rotation;local.scale/=p.scale;}}
+            o.transform=local;
         }
     }
     ++m_entityVersion;
@@ -704,6 +733,14 @@ EntityId RuntimeWorld::EntityIdOfBody(BodyHandle handle) const {
             m_dynamicBodies[e.slot].Handle().id == handle.id) {
             return e.id;
         }
+    }
+    for(const auto& entry:m_entityCategories){
+        // Dynamic entries retain authored category data while unloaded. Their
+        // cached handle is not a live incarnation; only the loop above may
+        // resolve them. This fallback supplies ordinary static bodies.
+        const auto* entity=FindEntity(entry.first);
+        if(entity && entity->slot!=std::numeric_limits<std::size_t>::max())continue;
+        if(entry.second.body.id==handle.id && RuntimeDefinition(entry.first))return entry.first;
     }
     return kInvalidSceneObjectId;
 }
@@ -810,7 +847,10 @@ bool RuntimeWorld::ValidateEntityDestruction(EntityId id, std::string& error) co
         return false;
     }
     if (e->lifecycle == EntityLifecycle::Destroyed) return true;
-    if (e->definition.vehicle || e->definition.combustible) {
+    const bool ownedComponent = e->slot == std::numeric_limits<std::size_t>::max() &&
+        (e->definition.door || e->definition.lightSwitch || e->definition.gravity || e->definition.atmosphere ||
+         e->definition.fluidVolume || e->definition.playerStart || e->definition.audioListener);
+    if (e->definition.vehicle || e->definition.combustible || ownedComponent) {
         error = "entity " + std::to_string(id) + " (" + e->name + ") cannot be destroyed at runtime";
         return false;
     }
@@ -1075,6 +1115,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
+    m_scripts.reset();m_scriptDefinitions.clear();m_hasScripts=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;

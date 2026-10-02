@@ -1,4 +1,5 @@
 #include "ProjectExporter.h"
+#include "ScriptSystem.h"
 #include "AssetDatabase.h"
 #include "EnginePaths.h"
 #include "GamePackage.h"
@@ -62,18 +63,21 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
             check(object.render->meshAsset, AssetType::Mesh);
             check(object.render->textureAsset, AssetType::Texture);
         }
+        for(const auto& slot:object.scripts)check(slot.asset,AssetType::Script);
         if (object.audioEmitter) check(object.audioEmitter->asset, AssetType::Audio);
         if (object.particleEmitter) check(object.particleEmitter->textureAsset, AssetType::Texture);
     }
     Scene resolved; std::string error;
     Require(ResolvePrefabs(scene, &assets, resolved, error), "Prefab resolution: " + error);
     Require(ValidateSceneClassification(resolved,categories,error),"Classification: "+error);
+    std::string scripts;Require(ScriptSystem::SourceFingerprint(assets,resolved,scripts,error),"Scripts: "+error);
     // Overrides/source content must be validated too, not just placeholders.
     for (const auto& object : resolved.Objects()) {
         if (object.render) {
             check(object.render->meshAsset, AssetType::Mesh);
             check(object.render->textureAsset, AssetType::Texture);
         }
+        for(const auto& slot:object.scripts)check(slot.asset,AssetType::Script);
         if (object.audioEmitter) check(object.audioEmitter->asset, AssetType::Audio);
         if (object.particleEmitter) check(object.particleEmitter->textureAsset, AssetType::Texture);
     }

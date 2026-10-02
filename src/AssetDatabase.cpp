@@ -87,12 +87,14 @@ const char* AssetTypeName(AssetType type) {
         case AssetType::Font: return "font";
         case AssetType::Audio: return "audio";
         case AssetType::Prefab: return "prefab";
+        case AssetType::Script: return "script";
     }
     return "mesh";
 }
 
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
+    if (e == ".js") { outType = AssetType::Script; return true; }
     if (e == ".judasprefab") { outType = AssetType::Prefab; return true; }
     if (e == ".obj") { outType = AssetType::Mesh; return true; }
     if (e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".bmp" || e == ".tga") { outType = AssetType::Texture; return true; }
@@ -134,6 +136,7 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
             TextureData data;
             return LoadTextureFromFile(path, data, outError);
         }
+        case AssetType::Script: { std::ifstream input(path);if(!input){outError="Cannot read script";return false;}return true;}
         case AssetType::Prefab: { Scene scene; return LoadSceneFromFile(path,scene,outError) && ValidatePrefab(scene,outError); }
         case AssetType::Audio: { AudioData data;return LoadAudioFromFile(path,data,outError); }
         case AssetType::Font: {
@@ -195,6 +198,7 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
             else if (tokens[1].first == "texture") outType = AssetType::Texture;
             else if (tokens[1].first == "font") outType = AssetType::Font;
             else if (tokens[1].first == "audio") outType = AssetType::Audio;
+            else if (tokens[1].first == "script") outType = AssetType::Script;
             else if (tokens[1].first == "prefab") outType = AssetType::Prefab;
             else return fail("type must be mesh, texture, font, audio or prefab");
             typeSeen = true;

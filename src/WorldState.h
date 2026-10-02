@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "EntityLifecycle.h"
+#include "ScriptSystem.h"
 #include "SceneFingerprint.h"
 
 class RuntimeWorld;
@@ -64,9 +65,10 @@ struct WorldState {
     WorldStateCompatibility compatibility;
     std::string baselineName;
     EntityId nextRuntimeId = kRuntimeEntityIdBase;
+    std::vector<ScriptStateRecord> scripts;
     std::vector<WorldStateEntityChange> entities;
     std::vector<WorldStateInteractableChange> interactables;
-    bool Empty() const { return entities.empty() && interactables.empty(); }
+    bool Empty() const { return entities.empty() && interactables.empty() && scripts.empty(); }
 };
 
 // Captures every difference between the running world and its baseline.

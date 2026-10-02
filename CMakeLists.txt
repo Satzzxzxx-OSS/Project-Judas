@@ -48,6 +48,14 @@ set(JUDAS_PHYSICS_SOURCES
     src/Narrowphase.cpp
 )
 
+# Pinned QuickJS-NG core; intentionally excludes libc (filesystem/process modules).
+add_library(judas_quickjs STATIC third_party/quickjs/quickjs.c third_party/quickjs/dtoa.c
+    third_party/quickjs/libregexp.c third_party/quickjs/libunicode.c)
+set_target_properties(judas_quickjs PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
+target_compile_definitions(judas_quickjs PRIVATE _GNU_SOURCE QUICKJS_NG_BUILD)
+target_include_directories(judas_quickjs SYSTEM PUBLIC third_party/quickjs)
+target_link_libraries(judas_quickjs PUBLIC m Threads::Threads ${CMAKE_DL_LIBS})
+
 # GLAD 2 loader generated for precisely OpenGL 3.3 Core, no extensions.
 add_library(judas_glad STATIC third_party/glad/src/gl.c)
 target_include_directories(judas_glad PUBLIC third_party/glad/include)
@@ -57,6 +65,8 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
+    src/WorldScripts.cpp
+    src/ScriptSystem.cpp
     src/Classification.cpp
     src/GamePackage.cpp
     src/ProjectExporter.cpp
@@ -899,3 +909,11 @@ target_compile_options(judas_package_application_tests PRIVATE -Wall -Wextra)
 add_executable(judas_classification_tests tests/ClassificationTests.cpp src/editor/EditorHistory.cpp)
 target_link_libraries(judas_classification_tests PRIVATE judas_engine)
 target_compile_options(judas_classification_tests PRIVATE -Wall -Wextra)
+
+target_link_libraries(judas_engine PUBLIC judas_quickjs)
+add_executable(judas_script_tests tests/ScriptTests.cpp)
+target_link_libraries(judas_script_tests PRIVATE judas_engine)
+target_compile_options(judas_script_tests PRIVATE -Wall -Wextra)
+add_executable(judas_script_application_tests tests/ScriptApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_script_application_tests PRIVATE judas_engine)
+target_compile_options(judas_script_application_tests PRIVATE -Wall -Wextra)

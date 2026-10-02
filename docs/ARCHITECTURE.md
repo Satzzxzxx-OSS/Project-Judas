@@ -8702,3 +8702,22 @@ Renderer applies each camera's mask before its M37 frustum; simulation is unchan
 Normal scene/prefab property serialization carries assignments and the optional
 canonical fingerprint extension covers nondefault effective authored values.
 Default legacy behaviour is preserved. See `docs/M39.md` for APIs and limits.
+
+## M40 — project JavaScript behaviours
+
+`RuntimeWorld` owns one main-thread `ScriptSystem`/QuickJS-NG session. Ordered
+scene script slots reference normal registered assets; defaults and authored
+properties are separate from bounded runtime JSON state. Both editor Play and
+standalone use the existing frame/fixed boundaries. Native wrappers resolve
+stable string IDs afresh, and use the current generation-checked body handle.
+No Renderer/PhysicsWorld/SDL object crosses the JavaScript boundary. Ordinary
+prefab creation, resource/audio, query and particle paths remain authoritative.
+Game rules in `projects/script_demo/Assets/scripts` are JavaScript content.
+
+The inspector uses an execution-budgeted no-world metadata context. Exceptions
+fault only one instance. Scripts are trusted project code, not a malicious-code
+sandbox or hard realtime scheduling system. No Node/browser/OS modules are added.
+M29 gains an optional versioned script-state extension; script-free fingerprints
+and saves retain their previous bytes. Scripted baselines strictly include all
+registered project JavaScript content. See [SCRIPTING.md](SCRIPTING.md) for APIs,
+limits, scheduling, persistence and the operator demo.

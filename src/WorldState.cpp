@@ -150,6 +150,11 @@ bool ValidateStructure(const WorldState& state, std::string& error) {
         error = "invalid baseline name or next-runtime-id";
         return false;
     }
+    std::set<std::pair<EntityId,uint64_t>> slots;
+    if(state.scripts.size()>4096){error="too many script state records";return false;}
+    for(const auto& r:state.scripts){if(!r.entity||!r.slot||!slots.insert({r.entity,r.slot}).second||!ScriptSystem::ValidateJson(r.json,error)){
+        if(error.empty())error="invalid/duplicate script state reference";
+        return false;}}
     std::set<EntityId> seen;
     for (const auto& change : state.entities) {
         if (change.id == 0 || !seen.insert(change.id).second || (change.created && change.destroyed)) {
@@ -187,6 +192,7 @@ WorldState CaptureWorldState(const RuntimeWorld& world) {
     out.baselineName = world.Settings().name;
     out.compatibility.baselineFingerprint = world.BaselineFingerprint();
     out.nextRuntimeId = world.NextRuntimeEntityId();
+    if(world.Scripts())out.scripts=world.Scripts()->Capture();
     auto persistent=world.Entities();
     persistent.insert(persistent.end(),world.AdditionalEntities().begin(),world.AdditionalEntities().end());
     for (const EntityRecord& e : persistent) {
@@ -283,6 +289,12 @@ bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& 
         }
     }
 
+    // Complete script-reference/state preflight before any live mutation or JS evaluation.
+    for(const auto& r:state.scripts){const SceneObject* definition=world.RuntimeDefinition(r.entity);
+        for(const auto& change:state.entities)if(change.id==r.entity){if(change.destroyed){outError="script state references destroyed entity";return false;}if(change.created)definition=&change.definition;}
+        if(!definition||std::none_of(definition->scripts.begin(),definition->scripts.end(),[&](const auto& slot){return slot.id==r.slot&&slot.enabled;})){
+            outError="unknown or disabled script slot";return false;}
+    }
     // --- Apply.
     for (const WorldStateEntityChange& change : state.entities) {
         std::string error;
@@ -303,6 +315,7 @@ bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& 
         if (change.isDoor) world.FindDoor(change.id)->SetOpen(change.on);
         else world.FindLightSwitch(change.id)->SetLampOn(change.on);
     }
+    if(!world.RestoreScriptState(state.scripts,outError))return false;
     world.SetNextRuntimeEntityId(state.nextRuntimeId);
     return true;
 }
@@ -342,6 +355,9 @@ bool SaveWorldStateToString(const WorldState& state, std::string& outText) {
         out += std::string(change.isDoor ? "door " : "light-switch ") + std::to_string(change.id) + " " +
                (change.on ? "true" : "false") + "\n";
     }
+    // Versioned optional extension preserves script-free version-2 saves.
+    if(!state.scripts.empty()){out+="script-state-schema 1\n";for(const auto& r:state.scripts)
+        out+="script-state "+std::to_string(r.entity)+" "+std::to_string(r.slot)+" "+Quote(r.json)+"\n";}
     outText = out;
     return true;
 }
@@ -419,7 +435,7 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
                         (version == 1 ? "; legacy saves have no verifiable baseline fingerprint; preserve/archive the file explicitly" : ""));
         return false;
     }
-    bool baselineSeen = false, nextIdSeen = false, compatibilitySeen = false;
+    bool baselineSeen = false, nextIdSeen = false, compatibilitySeen = false, scriptsSeen=false;
     std::set<EntityId> seen;
     while (next(lineNumber)) {
         const std::string& key = tokens[0].text;
@@ -507,6 +523,11 @@ bool LoadWorldStateFromString(const std::string& text, WorldState& outState, std
                 return false;
             }
             state.entities.push_back(change);
+        } else if(key=="script-state-schema"){
+            if(scriptsSeen||tokens.size()!=2||tokens[1].text!="1"||tokens[1].quoted){outError=Fail(lineNumber,"unsupported/duplicate script state schema");return false;}scriptsSeen=true;
+        } else if(key=="script-state"){
+            unsigned long long id=0,slot=0;if(!scriptsSeen||tokens.size()!=4||!ParseU64(tokens[1],id)||!ParseU64(tokens[2],slot)||!tokens[3].quoted){outError=Fail(lineNumber,"invalid script-state record");return false;}
+            state.scripts.push_back({id,slot,tokens[3].text});
         } else if (key == "door" || key == "light-switch") {
             unsigned long long id = 0;
             if (tokens.size() != 3 || tokens[2].quoted || !ParseU64(tokens[1], id) || (tokens[2].text != "true" && tokens[2].text != "false")) {

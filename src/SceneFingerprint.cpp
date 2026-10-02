@@ -1,4 +1,5 @@
 #include "SceneFingerprint.h"
+#include "ScriptSystem.h"
 
 #include <array>
 #include <cmath>
@@ -301,6 +302,14 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
             w.Vector(glm::vec3(e.color));w.Number(e.color.a);w.Vector(glm::vec3(e.endColor));w.Number(e.endColor.a);
             w.Text(e.textureAsset);w.U32(e.seed);
         }
+    }
+    size_t scriptCount=0;for(const auto& o:scene.Objects())scriptCount+=o.scripts.size();
+    if(scriptCount){w.Text("Judas.ScriptComponents.1");w.U64(scriptCount);
+        for(const auto& o:scene.Objects()){std::set<uint64_t> slots;
+            if(o.scripts.size()>64)w.Fail("too many script slots");
+            for(const auto& slot:o.scripts){std::string error;
+                if(!slot.id||!slots.insert(slot.id).second||!IsValidAssetId(slot.asset)||!ScriptSystem::ValidateJson(slot.properties,error))w.Fail("invalid script slot/properties: "+error);
+                w.U64(o.id);w.U64(slot.id);w.Text(slot.asset);w.Boolean(slot.enabled);w.Text(slot.properties);}}
     }
     bool classified=s.mainCameraRenderMask!=kAllCategories;
     for(const auto& o:scene.Objects()) classified|=o.tags||o.renderLayer||

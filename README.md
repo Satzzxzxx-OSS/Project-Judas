@@ -1385,3 +1385,11 @@ M37 adds per-camera frustum culling and authored visual particle emitters. See
 M39 adds project-defined tags, collision layers/masks, independent query filters
 and per-camera render masks. See [docs/M39.md](docs/M39.md). Demo:
 `./build/judas_editor projects/classification_demo/Classification_and_filtering.judasproj`.
+
+### M40 scripting candidate
+
+Projects can author ordered JavaScript behaviours, typed inspector properties,
+controlled saved state, and normal prefab-spawned instances. The embedded
+QuickJS-NG runtime exposes engine primitives instead of game-specific C++ rules.
+See [scripting](docs/SCRIPTING.md) and `projects/script_demo/script_demo.judasproj`.
+Human gameplay/visual/listening validation is pending operator review.

@@ -88,6 +88,13 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    if(!o.scripts.empty()) {
+        w.Line("scripts",std::to_string(o.scripts.size()));
+        for(size_t i=0;i<o.scripts.size();++i){const auto& slot=o.scripts[i];auto key="script."+std::to_string(i)+".";
+            w.Line(key+"id",std::to_string(slot.id));w.Line(key+"asset",Quote(slot.asset));
+            w.Line(key+"enabled",B(slot.enabled));w.Line(key+"properties",Quote(slot.properties));
+        }
+    }
     if(o.tags) w.Line("tags", std::to_string(o.tags));
     if(o.renderLayer) w.Line("render-layer", std::to_string(o.renderLayer));
     w.Line("position", V(o.transform.position));
@@ -598,6 +605,15 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    if(p.Has("scripts")) {
+        int count=0;if(!p.Int("scripts",count)||count<0||count>64)return reader.Fail("invalid script slot count");
+        std::set<SceneObjectId> ids;
+        for(int i=0;i<count;++i){SceneScriptSlot slot;auto key="script."+std::to_string(i)+".";
+            if(!p.Id(key+"id",slot.id)||!p.String(key+"asset",slot.asset)||!p.Bool(key+"enabled",slot.enabled)||!p.String(key+"properties",slot.properties))return false;
+            if(!slot.id||!ids.insert(slot.id).second||!IsValidAssetId(slot.asset)||slot.properties.size()>65536)return reader.Fail("invalid script slot");
+            o.scripts.push_back(std::move(slot));
+        }
+    }
     if (p.Has("render")) {
         SceneRenderComponent r;
         const std::vector<Token>* h = p.Header("render", 1, 1);

@@ -35,7 +35,7 @@ bool InteractivePlay::Begin(RuntimeWorld& world, const WorldCoordinates& worldCo
 }
 
 void InteractivePlay::End() {
-    if(m_session.IsActive()) m_session.World().EndAudio();
+    if(m_session.IsActive()){m_session.World().EndScripts();m_session.World().EndAudio();}
     m_session.End();
 }
 
