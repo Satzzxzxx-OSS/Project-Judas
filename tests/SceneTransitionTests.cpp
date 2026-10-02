@@ -1,0 +1,69 @@
+#include "Application.h"
+#include "EngineHost.h"
+#include "InteractivePlay.h"
+#include "RuntimeWorld.h"
+#include "SceneSession.h"
+#include "ProjectExporter.h"
+#include <SDL2/SDL.h>
+#include <filesystem>
+#include <fstream>
+#include <cstdio>
+int checks=0,failures=0;
+void Check(bool ok,const char* name){++checks;failures+=!ok;std::printf("%s %s\n",ok?"PASS":"FAIL",name);}
+int main(int argc,char** argv){
+ namespace fs=std::filesystem;
+ fs::path out=argc==3?argv[2]:"build/m43-tests";fs::create_directories(out);
+ std::string project="projects/scene_demo/scene_demo.judasproj";
+ if(argc==5&&std::string(argv[3])=="--project")project=argv[4];
+ // Malformed-candidate test edits only a disposable copy of ordinary content.
+ fs::path fixture=out/"project";fs::remove_all(fixture);
+ fs::copy(fs::path(project).parent_path(),fixture,fs::copy_options::recursive);
+ project=(fixture/"scene_demo.judasproj").string();
+ ApplicationControl control;control.hidden=true;control.frameSeconds=[](float){return 1.f/60;};
+ control.hostReady=[](EngineHost& host){std::string error;host.Audio().Init(error,true);};
+ int frame=0,phase=0;EntityId spawned=0;const RuntimeWorld* preservedWorld=nullptr;std::shared_ptr<SceneSession> session;
+ control.afterFrame=[&](EngineHost& host,RuntimeWorld& world,InteractivePlay& play){
+  ++frame;auto s=world.SceneControl();std::string error;
+  if(phase==0){session=s;Check(s&&s->Current()=="Scenes/a.judas","initial registered scene A");
+   Check(!s->Request("/etc/passwd",error)&&!s->Pending(),"absolute/unregistered request rejected without queuing");
+   Check(!s->Set("bad","[1e999]",error),"nonfinite session data rejected");
+   Check(s->Set("nested","{\"a\":[true,3,\"ok\",null]}",error),"bounded JSON session state accepted");
+   SceneTransform t;t.position={0,1,0};spawned=world.SpawnPrefab("42424242424242424242424242424203",t,error);
+   Check(spawned!=0,"ordinary runtime prefab triggers real sensor");phase=1;
+  }else if(phase==1&&s->Current()=="Scenes/b.judas"){
+   Check(s==session&&s->Get("callbackCompleted")=="true"&&s->Get("hasKey")=="true","M42 callback finished before A to B; session survives");
+   Check(!world.FindEntity(spawned),"old runtime spawned hierarchy destroyed");
+   Check(world.Scripts()&&world.Scripts()->Diagnostics().empty()&&world.UI().Find("game_ui"),"fresh scripts and scene UI start without faults");
+   world.UI().Document(world.UI().Find("game_ui"))->modal=true;phase=2;
+  }else if(phase==2&&s->Current()=="Scenes/b.judas"){
+   Check(play.IsPaused()&&!host.GetWindow().IsMouseCaptured(),"outgoing modal UI owns the cursor");
+   Check(s->Request("Scenes/a.judas",error)&&s->Request("Scenes/b.judas",error),"multiple valid requests accepted deterministically");
+  }else if(phase==2&&s->Current()=="Scenes/a.judas"){
+   Check(true,"B to A; first request wins");
+   Check(!play.IsPaused()&&host.GetWindow().IsMouseCaptured(),"new unpaused scene recaptures cursor after modal scene");
+   auto t=world.RuntimeDefinition(4)->transform;t.position.x=22;world.SetRuntimeTransform(4,t);
+   SceneTransform spawn;spawn.position={-10,1,4};spawned=world.SpawnPrefab("42424242424242424242424242424203",spawn,error);
+   Check(s->Reload(error),"reload queued");phase=3;
+  }else if(phase==3){
+   Check(!world.FindEntity(spawned),"reload removes spawned entities");
+   Check(world.PresentedTransform(4,world.RuntimeDefinition(4)->transform,1).position.x<0,"reload restores authored transform");
+   Check(s->Get("nested")=="{\"a\":[true,3,\"ok\",null]}"&&s->Get("visits")=="1","reload retains session but not trigger history");
+   // A registered but malformed candidate must leave the live world untouched.
+   Check(!s->Request("Scenes/missing.judas",error),"missing scene fails safely");
+   Check(world.Scripts()->Diagnostics().empty(),"all JS lifecycle callbacks valid");
+   auto h=world.UI().Find("game_ui");world.UI().Element(h,"counter")->text="LIVE WORLD MARKER";
+   preservedWorld=&world;
+   std::ofstream(fixture/"Scenes/b.judas")<<"INVALID SCENE";
+   Check(s->Request("Scenes/b.judas",error),"registered malformed scene request deferred");phase=4;
+  }else if(phase==4){
+   Check(s->Current()=="Scenes/a.judas"&&!s->Pending(),"malformed candidate consumed without changing current scene");
+   Check(&world==preservedWorld&&world.Scripts()&&!world.FindEntity(spawned)&&s->Get("hasKey")=="true","failed transition retains live systems and session");
+   phase=5;SDL_Event e{};e.type=SDL_QUIT;SDL_PushEvent(&e);
+  }
+  if(frame>60){Check(false,"transition progress");SDL_Event e{};e.type=SDL_QUIT;SDL_PushEvent(&e);}
+ };
+ char name[]="judas";char* args[]={name,project.data()};Application app;
+ Check(app.Run(2,args,&control)==0&&phase==5,"ordinary Application transitions and shutdown");
+ Check(session.use_count()==1,"no runtime world retained by project/session state");session.reset();
+ std::printf("SUMMARY %d checks %d failures\n",checks,failures);return failures?1:0;
+}

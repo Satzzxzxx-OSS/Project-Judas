@@ -26,6 +26,7 @@ extern char** environ;
 #include "ProjectExporter.h"
 #include "InteractivePlay.h"
 #include "RuntimeWorld.h"
+#include "SceneSession.h"
 #include "Scene.h"
 #include "SceneSerialization.h"
 #include "ScreenshotWriter.h"
@@ -470,6 +471,7 @@ bool EditorApplication::StartPlay(std::string& outError) {
         m_world.reset();
         return false;
     }
+    m_world->SetSceneControl(std::make_shared<SceneSession>(m_project,m_document.Path()));
     // Milestone 29: a saved world-state delta for this scene file layers
     // over the freshly instantiated baseline, exactly as the runtime does.
     m_panels.worldStatePath = WorldStatePathFor(m_document.Path());
@@ -1031,6 +1033,11 @@ int EditorApplication::Run(int argc, char** argv) {
             // The identical frame the runtime runs. Escape opens the M13
             // pause menu, which releases the mouse for the editor panels.
             m_play->Frame(window, renderer, deltaSeconds, /*drawHud=*/true);
+            if(auto scenes=m_world->SceneControl()) {
+                if(!scenes->Apply(m_world,*m_play,host.Resources(),error))std::fprintf(stderr,"Scene transition: %s\n",error.c_str());
+                m_panels.runtime=m_world.get();
+                m_panels.worldStatePath=m_play->WorldStatePath();
+            }
             m_panels.playPaused = m_play->IsPaused();
             if (m_play->QuitRequested()) requests.stop = true;
             const GameSession& session = m_play->Session();

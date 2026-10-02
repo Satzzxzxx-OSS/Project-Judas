@@ -128,6 +128,7 @@ add_library(judas_engine STATIC
     src/EnginePaths.cpp
     src/DebugDraw.cpp
     src/WorldDebugView.cpp
+    src/SceneSession.cpp
     src/RuntimeWorld.cpp
     src/GameSession.cpp
     src/Simulation.cpp
@@ -932,3 +933,8 @@ target_compile_options(judas_touch_event_tests PRIVATE -Wall -Wextra)
 add_executable(judas_touch_application_tests tests/TouchApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_touch_application_tests PRIVATE judas_engine)
 target_compile_options(judas_touch_application_tests PRIVATE -Wall -Wextra)
+
+# M43: normal Application loop, actual M42 callbacks and fresh world lifetimes.
+add_executable(judas_scene_transition_tests tests/SceneTransitionTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_scene_transition_tests PRIVATE judas_engine)
+target_compile_options(judas_scene_transition_tests PRIVATE -Wall -Wextra)

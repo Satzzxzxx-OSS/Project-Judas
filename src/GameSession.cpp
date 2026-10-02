@@ -3,6 +3,7 @@
 #include "InteractionSystem.h"
 #include "PilotControl.h"
 #include "RuntimeWorld.h"
+#include "SceneSession.h"
 #include "Window.h"
 
 GameSession::~GameSession() {
@@ -209,7 +210,10 @@ void GameSession::HandleFrameInput(Window& window, bool torchToggleRequested, bo
     // independent of how many fixed physics steps run this frame.
     m_player->UpdateFrameInput(window,frameDeltaTime);
 
-    if (window.ConsumeResetRequest()) ResetToAuthoredState();
+    if (window.ConsumeResetRequest()) {
+        if(auto scenes=m_world->SceneControl()){std::string error;if(!scenes->Reload(error))SetLastLifecycleMessage(error);}
+        else ResetToAuthoredState(); // direct non-project reference harness
+    }
     if (window.ConsumeSpawnEntityRequest()) SpawnPersistentEntity();
     if (window.ConsumeDestroyEntityRequest() && !IsPiloting()) DestroyTargetedEntity();
 

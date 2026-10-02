@@ -3,6 +3,7 @@
 #include "InputSystem.h"
 #include "SceneFingerprint.h"
 #include "RuntimeWorld.h"
+#include "SceneSession.h"
 #include "ResourceManager.h"
 #include "quickjs.h"
 #include <algorithm>
@@ -62,6 +63,8 @@ export const world={entity,queryTags:(required=[],excluded=[])=>call('queryTags'
  spawnPrefab:(asset,transform)=>entity(call('spawn',asset,transform)),
  overlap:(min,max,filter={})=>call('overlap',min,max,filter).map(entity),
  sweepCapsule:(from,displacement,rotation={w:1,x:0,y:0,z:0},filter={})=>call('sweep',from,displacement,filter,rotation)};
+export const scenes={get current(){return call('sceneCurrent')},get registered(){return call('sceneList')},load:name=>call('sceneLoad',name),reload:()=>call('sceneReload')};
+export const session={get:key=>call('sessionGet',key),set:(key,value)=>call('sessionSet',key,value),delete:key=>call('sessionDelete',key)};
 export const input={held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
 export const time={get elapsed(){return call('elapsed')},get delta(){return call('delta')},get fixed(){return call('fixed')}};
 export const console={log:(...args)=>call('log',args.map(String).join(' '))};
@@ -202,6 +205,22 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
 
+    if(op=="sceneCurrent"||op=="sceneList"||op=="sceneLoad"||op=="sceneReload"||op=="sessionGet"||op=="sessionSet"||op=="sessionDelete") {
+        auto scenes=world.SceneControl();if(!scenes)return JS_ThrowTypeError(c,"No project scene session is active");
+        if(op=="sceneCurrent")return JS_NewString(c,scenes->Current().c_str());
+        if(op=="sceneList"){auto a=JS_NewArray(c);uint32_t i=0;for(auto& name:scenes->Scenes())JS_SetPropertyUint32(c,a,i++,JS_NewString(c,name.c_str()));return a;}
+        std::string error;
+        if(op=="sceneLoad"||op=="sceneReload"){
+            bool ok=op=="sceneLoad"?scenes->Request(String(c,arg(1)),error):scenes->Reload(error);
+            return ok?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());
+        }
+        if(!JS_IsString(arg(1)))return JS_ThrowTypeError(c,"Session key must be a string");
+        auto key=String(c,arg(1));
+        if(op=="sessionGet"){auto json=scenes->Get(key);return JS_ParseJSON(c,json.c_str(),json.size(),"session");}
+        if(op=="sessionDelete"){scenes->Erase(key);return JS_UNDEFINED;}
+        std::string json;if(!s->Json(arg(2),json,error)||!scenes->Set(key,json,error))return JS_ThrowTypeError(c,"%s",error.c_str());
+        return JS_UNDEFINED;
+    }
     if(op=="uiDiagnostics"){if(argc>1){if(!JS_IsBool(arg(1)))return JS_ThrowTypeError(c,"debug visibility requires boolean");world.UI().debugOverlayVisible=JS_ToBool(c,arg(1));}return JS_NewBool(c,world.UI().debugOverlayVisible);}
     if(op=="uiFind")return JS_NewUint32(c,world.UI().Find(String(c,arg(1))));
     if(op=="uiQuit"){world.UI().RequestQuit();return JS_UNDEFINED;}
@@ -347,7 +366,7 @@ std::vector<ScriptStateRecord> ScriptSystem::Capture()const{m->CheckThread();std
     return result;}
 bool ScriptSystem::Restore(const std::vector<ScriptStateRecord>& records,std::string& error){m->CheckThread();for(const auto& r:records)if(!ValidateJson(r.json,error))return false;
     for(const auto& r:records){auto key=std::make_pair(r.entity,r.slot);m->restored[key]=r.json;if(auto it=m->instances.find(key);it!=m->instances.end())JS_SetPropertyStr(m->ctx,it->second.value,"state",JS_ParseJSON(m->ctx,r.json.data(),r.json.size(),"saved state"));}return true;}
-bool ScriptSystem::ValidateJson(const std::string& text,std::string& error){if(text.size()>65536){error="JSON exceeds 64KiB";return false;}Impl vm(nullptr,nullptr);vm.polls=0;auto value=JS_ParseJSON(vm.ctx,text.data(),text.size(),"JSON");if(JS_IsException(value)){error=Exception(vm.ctx);return false;}std::string canonical;bool ok=JS_IsObject(value)&&vm.Json(value,canonical,error);if(!ok&&error.empty())error="JSON root must be object";JS_FreeValue(vm.ctx,value);return ok;}
+bool ScriptSystem::ValidateJson(const std::string& text,std::string& error,bool requireObject){error.clear();if(text.size()>65536){error="JSON exceeds 64KiB";return false;}Impl vm(nullptr,nullptr);vm.polls=0;auto value=JS_ParseJSON(vm.ctx,text.data(),text.size(),"JSON");if(JS_IsException(value)){error=Exception(vm.ctx);return false;}std::string canonical;bool ok=(!requireObject||JS_IsObject(value))&&vm.Json(value,canonical,error);if(!ok&&error.empty())error="JSON root must be object";JS_FreeValue(vm.ctx,value);return ok;}
 bool ScriptSystem::Inspect(const AssetDatabase& assets,const std::string& asset,std::string& schema,std::string& error){Impl vm(nullptr,&assets);vm.polls=0;auto ns=vm.Namespace(asset);if(JS_IsException(ns)){error=Exception(vm.ctx);return false;}auto value=JS_GetPropertyStr(vm.ctx,ns,"properties");JS_FreeValue(vm.ctx,ns);if(JS_IsUndefined(value)){JS_FreeValue(vm.ctx,value);schema="{}";return true;}bool ok=vm.Json(value,schema,error);JS_FreeValue(vm.ctx,value);return ok;}
 bool ScriptSystem::ReadProperties(const std::string& schema,const std::string& values,std::vector<ScriptProperty>& out,std::string& error){
     if(!ValidateJson(schema,error)||!ValidateJson(values,error))return false;

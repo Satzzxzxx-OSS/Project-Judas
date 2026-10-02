@@ -29,6 +29,7 @@
 #include "ScriptSystem.h"
 #include "RuntimeUI.h"
 
+class SceneSession;
 class RadialTerrain;
 class ResourceManager;
 class ProductionFluidCoupling;
@@ -55,6 +56,8 @@ class ProductionFluidCoupling;
 // the loop that runs it.
 class RuntimeWorld {
 public:
+    void SetSceneControl(std::shared_ptr<SceneSession> control) { m_sceneControl=std::move(control); }
+    std::shared_ptr<SceneSession> SceneControl() const { return m_sceneControl; }
     struct StaticBody {
         SceneObjectId id = kInvalidSceneObjectId;
         BodyHandle handle;
@@ -369,6 +372,7 @@ public:
     const std::vector<SceneObjectId>& LightSwitchIds() const { return m_lightSwitchIds; }
 
 private:
+    std::shared_ptr<SceneSession> m_sceneControl;
     std::map<unsigned,EntityId> m_touchEntityHistory;
     struct FluidVolumeSetup;
     void PopulateFluid();

@@ -88,6 +88,7 @@ private:
     std::size_t m_fixedStepsSinceReset = 0;
     bool m_resetOccurred = false;
     bool m_wasPauseMenuOpen = false;
+    bool m_captureInitialized = false;
     double m_lastSurfaceMilliseconds = 0.0;
     double m_lastSceneMilliseconds = 0.0;
     std::string m_worldStatePath;

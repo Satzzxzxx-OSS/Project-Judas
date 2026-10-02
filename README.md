@@ -1402,3 +1402,7 @@ layout, clipping and M35 focus/input ownership. See [runtime UI](docs/RUNTIME_UI
 and `projects/ui_demo/ui_demo.judasproj`. Operator visual acceptance is pending.
 
 M42: [authored collision/sensor events](docs/COLLISION_EVENTS.md), with a scripted [demo project](projects/touch_demo/touch_demo.judasproj).
+
+M43 adds queued runtime scene transitions and bounded JavaScript session data.
+See [scene transitions](docs/SCENE_TRANSITIONS.md). The two-scene demonstration is
+`projects/scene_demo/scene_demo.judasproj` (E send/return, P spawn, R reload).

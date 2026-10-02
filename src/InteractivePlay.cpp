@@ -29,6 +29,7 @@ bool InteractivePlay::Begin(RuntimeWorld& world, const WorldCoordinates& worldCo
     m_fixedStepsSinceReset = 0;
     m_resetOccurred = false;
     m_wasPauseMenuOpen = false;
+    m_captureInitialized = false;
     m_lastAerodynamicDrag = {};
     world.BeginAudio();
     return true;
@@ -117,9 +118,12 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
             m_pauseMenu.HandleMouseClick(glm::vec2(static_cast<float>(uiClickX), static_cast<float>(uiClickY)));
         }
     }
-    if (IsPaused() != m_wasPauseMenuOpen) {
+    // A replacement scene may begin after an outgoing modal menu released
+    // the cursor. Reconcile ownership after the new scene's UI starts.
+    if (!m_captureInitialized || IsPaused() != m_wasPauseMenuOpen) {
         window.SetMouseCaptured(!IsPaused());
         m_wasPauseMenuOpen = IsPaused();
+        m_captureInitialized = true;
     }
     // Edge requests are drained every frame regardless of pause state so a
     // press while the menu owns input can never fire on resume.

@@ -8735,3 +8735,14 @@ See [RUNTIME_UI.md](RUNTIME_UI.md) for authoring, scaling, APIs and limits.
 
 ### M42 contact event ownership
 PhysicsWorld aggregates actual contact/TOI observations and discrete sensor overlaps into deterministic generation-keyed pair transitions. Sensors share geometry/filtering but never enter response solves. RuntimeWorld dispatches entity-safe snapshots at the ordinary fixed-step boundary; JavaScript owns reactions. See [COLLISION_EVENTS.md](COLLISION_EVENTS.md) for scope and callback semantics.
+
+### M43 — project session and scene replacement
+
+`SceneSession` owns the registered project scene paths, pending first-wins request
+and bounded detached JSON session store. Each `RuntimeWorld` exposes that session
+to M40 without owning transition orchestration. Application/editor Play consume
+requests only after `InteractivePlay::Frame` returns. They validate an unstarted
+candidate, stop/release the outgoing world and begin a fresh ordinary world using
+the same session. No scene-local entities or JS heap objects survive. Existing M38
+scene-directory packaging and FTFT1 baseline identity remain authoritative.
+See `docs/SCENE_TRANSITIONS.md` for the API and synchronous-loading limits.

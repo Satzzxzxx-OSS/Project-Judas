@@ -48,3 +48,19 @@ declare module 'judas' {
   }
   interface Entity { setColliderEnabled(enabled:boolean): boolean; }
 }
+
+declare module "judas" {
+/** M43: project-relative registered scenes; first valid request wins this frame. */
+export const scenes: {
+    readonly current: string;
+    readonly registered: string[];
+    load(scene: string): boolean;
+    reload(): boolean;
+};
+/** Detached, bounded JSON values. Survives scene changes, ends with Play/session. */
+export const session: {
+    get(key: string): unknown;
+    set(key: string, value: unknown): void;
+    delete(key: string): void;
+};
+}

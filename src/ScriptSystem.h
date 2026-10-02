@@ -27,7 +27,7 @@ public:
     bool Restore(const std::vector<ScriptStateRecord>& records,std::string& error);
     const std::vector<ScriptDiagnostic>& Diagnostics() const;
     void SetBudget(unsigned interruptPolls);
-    static bool ValidateJson(const std::string& text,std::string& error);
+    static bool ValidateJson(const std::string& text,std::string& error,bool requireObject=true);
     static bool ReadProperties(const std::string& schema,const std::string& values,std::vector<ScriptProperty>& out,std::string& error);
     static std::string WriteProperties(const std::vector<ScriptProperty>& values);
     static bool SourceFingerprint(const AssetDatabase& assets,const Scene& scene,std::string& digest,std::string& error,bool strict=true);

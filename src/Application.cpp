@@ -13,6 +13,7 @@
 #include "RuntimeOptions.h"
 #include "RuntimeWorld.h"
 #include "Scene.h"
+#include "SceneSession.h"
 #include "SceneSerialization.h"
 #include "TestHarness.h"
 #include "WorldCoordinates.h"
@@ -79,7 +80,11 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
 
     if (control && control->hostReady) control->hostReady(host);
 
-    RuntimeWorld world;
+    auto worldOwner=std::make_unique<RuntimeWorld>();
+    auto sceneControl=std::make_shared<SceneSession>(options.project,options.scenePath);
+    sceneControl->EnableSaves(!options.worldStatePath.empty());
+    worldOwner->SetSceneControl(sceneControl);
+    RuntimeWorld& world=*worldOwner;
     if (!world.Build(scene, &host.Resources(), error, options.project.IsLoaded()?&options.project.Settings().classification:nullptr)) {
         std::fprintf(stderr, "Scene '%s' could not be instantiated: %s\n", options.scenePath.c_str(),
                      error.c_str());
@@ -135,6 +140,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     const Uint64 frequency = SDL_GetPerformanceFrequency();
     Uint64 previousCounter = SDL_GetPerformanceCounter();
     while (!window.ShouldClose() && !play.QuitRequested()) {
+        RuntimeWorld& world=*worldOwner;
         if (control && control->beforeFrame) control->beforeFrame(host, world, play);
         window.PollEvents();
         // Milestone 31: finished background loads are installed here, on
@@ -163,7 +169,9 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
         }
         if (control && control->afterFrame) control->afterFrame(host, world, play);
         window.SwapBuffers();
+        if(!sceneControl->Apply(worldOwner,play,host.Resources(),error))
+            std::fprintf(stderr,"Scene transition failed: %s\n",error.c_str());
     }
-    if (control && control->beforeShutdown) control->beforeShutdown(host, world, play);
+    if (control && control->beforeShutdown) control->beforeShutdown(host, *worldOwner, play);
     return 0;
 }

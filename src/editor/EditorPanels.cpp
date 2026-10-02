@@ -608,6 +608,8 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
         ImGui::EndCombo();
     }
     ImGui::Text("Assets: %s   Scenes: %s   Saves: %s", s.assetsDir.c_str(), s.scenesDir.c_str(), s.savesDir.c_str());
+    ImGui::TextWrapped("Runtime scenes: saved .judas files in the project scene directory, plus the startup scene. Scripts load them by project-relative path. Export includes this same set.");
+    for(const auto& scene:state.sceneFiles)ImGui::BulletText("%s",scene.c_str());
     if (ImGui::Button("Save project")) requests.saveProject = true;
     ImGui::SameLine();
     if (ImGui::Button("Run project")) requests.runProject = true;
