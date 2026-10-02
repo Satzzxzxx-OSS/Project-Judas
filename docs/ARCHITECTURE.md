@@ -8732,3 +8732,6 @@ while ordinary frame/fixed gameplay callbacks remain paused. Handles validate li
 document IDs; source is never rewritten by runtime. UI menus/HUD behaviour lives
 in project JS, with the legacy engine menu retained only as a no-document fallback.
 See [RUNTIME_UI.md](RUNTIME_UI.md) for authoring, scaling, APIs and limits.
+
+### M42 contact event ownership
+PhysicsWorld aggregates actual contact/TOI observations and discrete sensor overlaps into deterministic generation-keyed pair transitions. Sensors share geometry/filtering but never enter response solves. RuntimeWorld dispatches entity-safe snapshots at the ordinary fixed-step boundary; JavaScript owns reactions. See [COLLISION_EVENTS.md](COLLISION_EVENTS.md) for scope and callback semantics.

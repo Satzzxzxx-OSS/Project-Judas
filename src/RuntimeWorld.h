@@ -259,6 +259,8 @@ public:
     // The M25 held-key water source: adds one particle at the next emitter
     // slot if any emitter has capacity. Returns false when none does.
     void UpdateScripts(const InputSystem* input,float dt);
+    void DispatchPhysicsEvents(const InputSystem* input,float dt);
+    bool SetColliderEnabled(EntityId id,bool enabled);
     void FixedScripts(const InputSystem* input,float dt);
     bool RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error);
     void EndScripts(){m_scripts.reset();m_ui.reset();}
@@ -367,6 +369,7 @@ public:
     const std::vector<SceneObjectId>& LightSwitchIds() const { return m_lightSwitchIds; }
 
 private:
+    std::map<unsigned,EntityId> m_touchEntityHistory;
     struct FluidVolumeSetup;
     void PopulateFluid();
     // Creates the PhysicsWorld body for a record's definition at `state`,

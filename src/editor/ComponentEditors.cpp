@@ -185,6 +185,8 @@ void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
 
 void DrawBody(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     SceneBodyComponent& b = *o.body;
+    Checkbox(doc,"Sensor (events, no response)",b.sensor);
+    Checkbox(doc,"Collider enabled",b.enabled);
     if(state.project){DrawCategoryLayer(doc,"Collision layer",b.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",b.collisionMask,state.project->Settings().classification.collision);}
     Combo(doc, "Motion", b.motion, kMotionNames, 2);
     Combo(doc, "Collider", b.shape, kBodyShapeNames, 5);

@@ -1400,3 +1400,5 @@ Projects can author menus/HUDs as UI assets and control them through JavaScript.
 Canvas/panels, text/images, buttons/sliders/toggles share reference-resolution
 layout, clipping and M35 focus/input ownership. See [runtime UI](docs/RUNTIME_UI.md)
 and `projects/ui_demo/ui_demo.judasproj`. Operator visual acceptance is pending.
+
+M42: [authored collision/sensor events](docs/COLLISION_EVENTS.md), with a scripted [demo project](projects/touch_demo/touch_demo.judasproj).

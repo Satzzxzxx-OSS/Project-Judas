@@ -62,3 +62,25 @@ void RuntimeWorld::UpdateUIScripts(InputSystem* input,float dt){
     if(input&&!wasPaused&&m_ui&&m_ui->Paused())input->ConsumeBindings({"pause"});
 }
 void RuntimeWorld::DispatchUIEvents(const InputSystem* input,float dt){if(m_scripts)m_scripts->UIEvents(input,dt);}
+
+void RuntimeWorld::DispatchPhysicsEvents(const InputSystem* input,float dt){
+    if(!m_scripts)return; // No script consumers: do not scan/copy entity definitions.
+    // Freeze pair->entity identities before any callback can destroy/spawn bodies.
+    for(const auto& o:ScriptObjects()){auto h=RuntimeBody(o.id);if(h.IsValid())m_touchEntityHistory[h.id]=o.id;}
+    struct Delivery {EntityId a,b;PhysicsWorld::TouchEvent event;};
+    std::vector<Delivery> deliveries;
+    std::map<unsigned,EntityId> next;
+    for(const auto& event:m_physics.LastStepTouchEvents()){
+        auto a=m_touchEntityHistory.find(event.a.id),b=m_touchEntityHistory.find(event.b.id);
+        if(a==m_touchEntityHistory.end()||b==m_touchEntityHistory.end())continue;
+        deliveries.push_back({a->second,b->second,event});
+        if(event.phase!=PhysicsWorld::TouchPhase::Exit){next[event.a.id]=a->second;next[event.b.id]=b->second;}
+    }
+    if(m_scripts){m_scripts->Synchronize(ScriptObjects());
+        for(const auto& d:deliveries){m_scripts->PhysicsEvent(d.a,d.b,d.event,false);m_scripts->PhysicsEvent(d.b,d.a,d.event,true);}}
+    m_touchEntityHistory=std::move(next);(void)input;(void)dt;
+}
+bool RuntimeWorld::SetColliderEnabled(EntityId id,bool enabled){
+    auto h=RuntimeBody(id);if(!h.IsValid()||!m_physics.SetBodyEnabled(h,enabled))return false;
+    auto& d=m_scriptDefinitions.at(id);if(d.body)d.body->enabled=enabled;return true;
+}

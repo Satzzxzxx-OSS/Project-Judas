@@ -36,3 +36,15 @@ declare module 'judas' {
   export class UIDocument { readonly handle:number; visible:boolean; enabled:boolean; modal:boolean; get(id:string):UIElement; show():void; hide():void; unload():void; }
   export const ui:{get(name:string):UIDocument|null;load(asset:string,name:string):UIDocument;quit():void;debugOverlayVisible:boolean};
 }
+
+// M42 fixed-step contact snapshots. Normals point toward the recipient.
+declare module 'judas' {
+  interface ContactEvent {
+    other: Entity;
+    point: {x:number;y:number;z:number};
+    normal: {x:number;y:number;z:number};
+    relativeVelocity: {x:number;y:number;z:number};
+    normalImpulse: number|null;
+  }
+  interface Entity { setColliderEnabled(enabled:boolean): boolean; }
+}

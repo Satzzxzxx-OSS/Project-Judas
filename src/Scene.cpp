@@ -108,7 +108,7 @@ bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
         return x.asset==y.asset&&x.enabled==y.enabled&&x.playOnStart==y.playOnStart&&x.loop==y.loop&&x.spatial==y.spatial&&x.volume==y.volume&&x.pitch==y.pitch&&x.referenceDistance==y.referenceDistance&&x.maximumDistance==y.maximumDistance&&x.rolloff==y.rolloff&&x.attenuation==y.attenuation;
     }) || !OptEq(a.audioListener,b.audioListener,[](const auto& x,const auto& y){return x.enabled==y.enabled&&x.followActiveView==y.followActiveView;})) return false;
     if (!OptEq(a.body, b.body, [](const SceneBodyComponent& x, const SceneBodyComponent& y) {
-            if (x.collisionLayer != y.collisionLayer || x.collisionMask != y.collisionMask) return false;
+            if (x.sensor!=y.sensor || x.enabled!=y.enabled || x.collisionLayer != y.collisionLayer || x.collisionMask != y.collisionMask) return false;
             if (x.compoundBoxes.size() != y.compoundBoxes.size()) return false;
             for (std::size_t i = 0; i < x.compoundBoxes.size(); ++i) {
                 if (!Eq(x.compoundBoxes[i].localCenter, y.compoundBoxes[i].localCenter) ||

@@ -22,6 +22,7 @@ struct BodyHandle {
 struct PhysicsQueryFilter {
     CategoryMask includeLayers=kAllCategories, excludeLayers=0;
     CategoryMask requiredTags=0, excludedTags=0;
+    bool includeSensors=false;
     std::vector<BodyHandle> ignoredBodies;
 };
 
@@ -135,6 +136,24 @@ public:
     };
     const std::vector<DebugContact>& LastStepContacts() const;
     std::size_t LastStepContactCount() const { return LastStepContacts().size(); }
+
+    // Pair events are snapshots from the authoritative Step, ordered by
+    // generation-checked body handles. One event per pair, not manifold point.
+    enum class TouchPhase { Enter, Stay, Exit };
+    struct TouchEvent {
+        BodyHandle a,b;
+        TouchPhase phase=TouchPhase::Enter;
+        bool sensor=false;
+        glm::vec3 point{0},normal{0},relativeVelocity{0}; // normal toward A; vB-vA at point
+        bool impulseAvailable=false;
+        float normalImpulse=0; // available accumulated support impulse
+    };
+    const std::vector<TouchEvent>& LastStepTouchEvents() const;
+    void ClearTouchHistory();
+    bool SetBodySensor(BodyHandle handle,bool sensor);
+    bool IsBodySensor(BodyHandle handle) const;
+    bool SetBodyEnabled(BodyHandle handle,bool enabled);
+    bool IsBodyEnabled(BodyHandle handle) const;
 
     // Milestone 32: what the most recent Step's broadphase, narrowphase and
     // solver did. `possiblePairs` is the number of pairs an exhaustive

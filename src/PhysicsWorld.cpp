@@ -157,6 +157,7 @@ struct PhysicsWorld::Impl {
         CategoryMask collisionMask=kAllCategories, tags=0;
         float friction = 0.5f;
         float restitution = 0.0f;
+        bool sensor = false, enabled = true;
         bool isDynamic = false;
         bool alive = false;
         // Milestone 29: a slot is reused after DestroyBody; the generation
@@ -178,6 +179,44 @@ struct PhysicsWorld::Impl {
     std::vector<unsigned int> freeSlots;
     std::vector<unsigned int> aliveSlots;
     std::vector<PhysicsWorld::DebugContact> lastStepContacts;
+    using TouchKey=std::pair<unsigned,unsigned>;
+    std::map<TouchKey,PhysicsWorld::TouchEvent> previousTouches,stepTouches;
+    std::vector<PhysicsWorld::TouchEvent> touchEvents;
+    void Observe(unsigned a,unsigned b,const Contact& c,float impulse=0) {
+        auto ha=MakeHandle(a),hb=MakeHandle(b);
+        bool flip=ha.id>hb.id;if(flip)std::swap(ha,hb);
+        auto key=std::make_pair(ha.id,hb.id);
+        auto& e=stepTouches[key];
+        e.a=ha;e.b=hb;e.sensor=bodies[a].sensor||bodies[b].sensor;
+        e.point=c.point;e.normal=flip?-c.normal:c.normal;
+        const auto va=bodies[a].rigidBody.linearVelocity+glm::cross(bodies[a].rigidBody.angularVelocity,c.point-bodies[a].rigidBody.position);
+        const auto vb=bodies[b].rigidBody.linearVelocity+glm::cross(bodies[b].rigidBody.angularVelocity,c.point-bodies[b].rigidBody.position);
+        e.relativeVelocity=flip?va-vb:vb-va;e.normalImpulse+=impulse;
+    }
+    void FinishTouches() {
+        touchEvents.clear();
+        // Sensor overlap is discrete endpoint geometry, never speculative skin
+        // or TOI response. Reuse the same tree, layer policy and narrowphase.
+        if(std::any_of(aliveSlots.begin(),aliveSlots.end(),[&](unsigned i){return bodies[i].sensor&&bodies[i].enabled;})) {
+            GenerateCandidatePairs();
+            for(auto [a,b]:candidatePairs) if(bodies[a].sensor||bodies[b].sensor) {
+                const auto& oa=Orientation(bodies[a]);const auto& ob=Orientation(bodies[b]);
+                for(int pa=0;pa<PrimitiveCount(bodies[a].shape);++pa)
+                    for(int pb=0;pb<PrimitiveCount(bodies[b].shape);++pb) {
+                        auto m=ComputeContacts(PrimitiveAt(bodies[a].shape,bodies[a].rigidBody,pa,&oa),PrimitiveAt(bodies[b].shape,bodies[b].rigidBody,pb,&ob),0,&oa,&ob);
+                        if(m.count)Observe(a,b,m.points[0]);
+                    }
+            }
+        }
+        for(auto& [key,e]:stepTouches) {
+            const auto old=previousTouches.find(key);
+            if(old!=previousTouches.end()&&old->second.sensor!=e.sensor){auto exit=old->second;exit.phase=PhysicsWorld::TouchPhase::Exit;touchEvents.push_back(exit);}
+            e.phase=old!=previousTouches.end()&&old->second.sensor==e.sensor?PhysicsWorld::TouchPhase::Stay:PhysicsWorld::TouchPhase::Enter;touchEvents.push_back(e);
+        }
+        for(auto& [key,e]:previousTouches)if(!stepTouches.count(key)){auto exit=e;exit.phase=PhysicsWorld::TouchPhase::Exit;touchEvents.push_back(exit);}
+        std::stable_sort(touchEvents.begin(),touchEvents.end(),[](const auto& a,const auto& b){return std::tie(a.a.id,a.b.id)<std::tie(b.a.id,b.b.id);});
+        previousTouches=stepTouches;
+    }
 
     // Milestone 32: broadphase, the per-step candidate list, the solver
     // (reused so its storage is not reallocated every step) and statistics.
@@ -452,7 +491,7 @@ struct PhysicsWorld::Impl {
         scheduledImpacts.clear();
         std::map<std::array<unsigned,4>,std::size_t> scheduledIndex;
         auto schedule=[&](const std::array<unsigned,4>& key) {
-            if(!CanCollide(key[0],key[1]))return;
+            if(!CanRespond(key[0],key[1]))return;
             const double time=std::binary_search(supportPairs.begin(),supportPairs.end(),key) ? double(dt)+1 :
                 ImpactTime(key[0],key[1],int(key[2]),int(key[3]),now,dt);
             const auto found=scheduledIndex.find(key);
@@ -480,7 +519,7 @@ struct PhysicsWorld::Impl {
                 const unsigned a=island[next]; const auto pose=PoseAt(a,now);
                 const auto candidates=QuerySlots(ShapeAabb(bodies[a].shape,pose.position,pose.orientation));
                 for (unsigned b:candidates) {
-                    if (a==b || !CanCollide(a,b)) continue;
+                    if (a==b || !CanRespond(a,b)) continue;
                     const auto pair=std::minmax(a,b);
                     if (std::find(touching.begin(),touching.end(),std::pair<unsigned,unsigned>(pair))!=touching.end()) continue;
                     bool hit=false;
@@ -517,6 +556,7 @@ struct PhysicsWorld::Impl {
                         const auto m=PairAt(pair.first,pair.second,pa,pb,now,0);
                         if(m.count) eventPairs.push_back({pair.first,pair.second,unsigned(pa),unsigned(pb)});
                         for(int k=0;k<m.count;++k) {
+                            Observe(pair.first,pair.second,m.points[k]);
                             rows.push_back({&a.rigidBody,&b.rigidBody,m.points[k],
                                 std::sqrt(std::max(0.f,a.friction)*std::max(0.f,b.friction)),
                                 std::max(a.restitution,b.restitution),false});
@@ -557,7 +597,7 @@ struct PhysicsWorld::Impl {
                    std::find(changed.begin(),changed.end(),event.key[1])!=changed.end()) dirty.push_back(event.key);
             for(unsigned slot:changed) {
                 const auto candidates=QuerySlots(tree.FatAabb(bodies[slot].proxy));
-                for(unsigned other:candidates) if(other!=slot && CanCollide(slot,other)) {
+                for(unsigned other:candidates) if(other!=slot && CanRespond(slot,other)) {
                     const auto a=std::min(slot,other),b=std::max(slot,other);
                     for(int pa=0;pa<PrimitiveCount(bodies[a].shape);++pa)
                         for(int pb=0;pb<PrimitiveCount(bodies[b].shape);++pb)
@@ -717,10 +757,11 @@ struct PhysicsWorld::Impl {
     // body, in ascending lexicographic slot order — the same order the
     // pre-M32 all-pairs loop visited them in, restricted to candidates.
     bool CanCollide(unsigned a,unsigned b) const {
-        return CollisionPermitted(bodies[a].collisionLayer,bodies[a].collisionMask,bodies[b].collisionLayer,bodies[b].collisionMask);
+        return bodies[a].enabled&&bodies[b].enabled&&CollisionPermitted(bodies[a].collisionLayer,bodies[a].collisionMask,bodies[b].collisionLayer,bodies[b].collisionMask);
     }
+    bool CanRespond(unsigned a,unsigned b) const {return CanCollide(a,b)&&!bodies[a].sensor&&!bodies[b].sensor;}
     bool MatchesQuery(unsigned slot,const PhysicsQueryFilter& filter) const {
-        const auto& b=bodies[slot]; const auto bit=CategoryBit(b.collisionLayer);
+        const auto& b=bodies[slot]; if(!b.enabled||(b.sensor&&!filter.includeSensors))return false; const auto bit=CategoryBit(b.collisionLayer);
         if(!(filter.includeLayers&bit)||(filter.excludeLayers&bit)||
            (b.tags&filter.requiredTags)!=filter.requiredTags||(b.tags&filter.excludedTags))return false;
         for(const auto handle:filter.ignoredBodies)if(handle.id==MakeHandle(slot).id)return false;
@@ -730,14 +771,14 @@ struct PhysicsWorld::Impl {
         candidatePairs.clear();
         for (const unsigned int slot : aliveSlots) {
             const Body& a = bodies[slot];
-            if (a.rigidBody.IsStatic()) continue;
+            if (!a.enabled || (a.rigidBody.IsStatic()&&!a.sensor)) continue;
             tree.Query(tree.FatAabb(a.proxy), [&](int proxy) {
                 const unsigned int other = tree.UserData(proxy);
                 if (other == slot) return;
                 const Body& b = bodies[other];
                 // A pair of two movable bodies is found by both queries;
                 // keep it from the lower slot's query only.
-                if (!b.rigidBody.IsStatic() && other < slot) return;
+                if ((!b.rigidBody.IsStatic()||b.sensor) && other < slot) return;
                 if(!CanCollide(slot,other)){++stats.layerRejectedPairs;return;}
                 candidatePairs.emplace_back(std::min(slot, other), std::max(slot, other));
             });
@@ -770,6 +811,7 @@ struct PhysicsWorld::Impl {
         ClosestBodyResult result;
         for (const unsigned int i : candidates) {
             const Body& body = bodies[i];
+            if(!body.enabled||body.sensor)continue;
             const bool interpolateBody = interpolateDynamicBodyMotion && body.isDynamic;
             const bool ledger=interpolateBody && bodyMotionAlpha<1.0f && !body.motion.Segments().empty();
             const auto observed=ledger ? body.motion.Evaluate(std::clamp(double(bodyMotionAlpha),0.0,1.0)*stepDuration) : body.rigidBody;
@@ -1213,7 +1255,7 @@ void PhysicsWorld::SolveParticleContacts(std::vector<ContactParticle>& particles
         const float queryMargin=(surfaceSpeed(w.bodies[slot])+maximumBodySpeed+maximumParticleSpeed)*remainingRigidDt;
         const auto neighbors = w.QuerySlots(w.CurrentBound(w.bodies[slot]).Expanded(queryMargin));
         for (const unsigned other : neighbors) {
-            if (other==slot || !w.CanCollide(slot,other)) continue;
+            if (other==slot || !w.CanRespond(slot,other)) continue;
             const auto pair = std::minmax(slot,other);
             if (!inspected.emplace(pair.first,pair.second).second) continue;
             auto& a = w.bodies[pair.first]; auto& b = w.bodies[pair.second];
@@ -1482,6 +1524,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     Impl& w = *m_impl;
     const Clock::time_point stepStart = Clock::now();
     w.stats = StepStats{};
+    w.stepTouches.clear();
     const auto cachesBefore = w.cacheCounters;
     const ContactGeometryDiagnostics geometryBefore = GetContactGeometryDiagnostics();
 
@@ -1526,6 +1569,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     for (const auto& [slotA, slotB] : w.candidatePairs) {
         Impl::Body& a = w.bodies[slotA];
         Impl::Body& b = w.bodies[slotB];
+        if(a.sensor||b.sensor)continue;
         const float friction = std::sqrt(std::max(a.friction, 0.0f) * std::max(b.friction, 0.0f));
         // Speculative margin: the distance this pair's surfaces can close
         // within the step at their post-force velocities (relative linear
@@ -1561,6 +1605,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
                 for (int p = 0; p < manifold.count; ++p) {
                     Contact contact = manifold.points[p];
                     if (!contact.hit) continue;
+                    if((contact.hasLocalAnchors?contact.signedSeparation<=0:contact.penetration>=0)||touchingManifold) w.Observe(slotA,slotB,contact);
                     // Warm start from the nearest unused cached point of the
                     // same bodies/primitives (same generations: a reused slot
                     // never inherits a previous occupant's impulses).
@@ -1626,6 +1671,10 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     // Remember this step's converged impulses for the next step's warm start.
     const std::vector<ContactConstraint>& solved = w.solver.Constraints();
     for (std::size_t i = 0; i < solved.size() && i < w.pendingCache.size(); ++i) {
+        const auto& key=w.pendingCache[i].key;
+        const unsigned ha=w.MakeHandle(key.slotA).id,hb=w.MakeHandle(key.slotB).id;
+        const auto pair=std::minmax(ha,hb);
+        if(auto it=w.stepTouches.find({pair.first,pair.second});it!=w.stepTouches.end()){it->second.normalImpulse+=solved[i].normalImpulse;it->second.impulseAvailable=true;}
         w.pendingCache[i].normalImpulse = solved[i].normalImpulse;
         w.pendingCache[i].tangentImpulse = solved[i].tangentImpulse;
     }
@@ -1646,6 +1695,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         Impl::Body& body = w.bodies[slot];
         if (body.isDynamic) w.RefreshProxy(body);
     }
+    w.FinishTouches();
     w.stats.proxyReinsertions = w.reinsertionsSinceStep;
     w.reinsertionsSinceStep = 0;
     w.stats.treeHeight = w.tree.Height();
@@ -1868,6 +1918,7 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
     std::vector<unsigned int> candidates = m_impl->QuerySlots(sweptBound);
     candidates.erase(std::remove_if(candidates.begin(),candidates.end(),[&](unsigned slot){
         if(filter)return !m_impl->MatchesQuery(slot,*filter);
+        if(!m_impl->bodies[slot].enabled||m_impl->bodies[slot].sensor)return true;
         const auto& b=m_impl->bodies[slot];
         return !CollisionPermitted(m_impl->playerCollisionLayer,m_impl->playerCollisionMask,b.collisionLayer,b.collisionMask);
     }),candidates.end());
@@ -1954,3 +2005,11 @@ bool PhysicsWorld::GetCollisionFilter(BodyHandle handle,unsigned& layer,Category
 }
 bool PhysicsWorld::SetBodyTags(BodyHandle handle,CategoryMask tags){auto* b=m_impl->Get(handle);if(!b)return false;b->tags=tags;return true;}
 void PhysicsWorld::SetPlayerCollisionFilter(unsigned layer,CategoryMask mask){if(layer<64){m_impl->playerCollisionLayer=layer;m_impl->playerCollisionMask=mask;}}
+
+const std::vector<PhysicsWorld::TouchEvent>& PhysicsWorld::LastStepTouchEvents() const {return m_impl->touchEvents;}
+bool PhysicsWorld::SetBodySensor(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->sensor=value;return true;}
+bool PhysicsWorld::IsBodySensor(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->sensor;}
+bool PhysicsWorld::SetBodyEnabled(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->enabled=value;return true;}
+bool PhysicsWorld::IsBodyEnabled(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->enabled;}
+
+void PhysicsWorld::ClearTouchHistory(){m_impl->previousTouches.clear();m_impl->stepTouches.clear();m_impl->touchEvents.clear();}

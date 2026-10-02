@@ -1,5 +1,6 @@
 #pragma once
 #include "Scene.h"
+#include "PhysicsWorld.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@ public:
     void Frame(const InputSystem* input,float dt);
     void Fixed(const InputSystem* input,float dt);
     void UIFrame(const InputSystem* input,float dt);
+    void PhysicsEvent(SceneObjectId self,SceneObjectId other,const PhysicsWorld::TouchEvent& event,bool reverse);
     void UIEvents(const InputSystem* input,float dt);
     void Stop();
     std::vector<ScriptStateRecord> Capture() const;

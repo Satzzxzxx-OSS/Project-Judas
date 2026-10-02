@@ -158,6 +158,8 @@ void WriteObject(Writer& w, const SceneObject& o) {
         const SceneBodyComponent& b = *o.body;
         w.Line("body", std::string(b.motion == SceneBodyMotion::Static ? "static" : "dynamic") +
                            " " + ShapeName(b.shape));
+        if(b.sensor) w.Line("body.sensor","true");
+        if(!b.enabled) w.Line("body.enabled","false");
         if(b.collisionLayer) w.Line("body.collision-layer",std::to_string(b.collisionLayer));
         if(b.collisionMask!=kAllCategories) w.Line("body.collision-mask",std::to_string(b.collisionMask));
         w.Line("body.half-extents", V(b.halfExtents));
@@ -689,6 +691,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     }
     if (p.Has("body")) {
         SceneBodyComponent b;
+        if(p.Has("body.sensor")&&!p.Bool("body.sensor",b.sensor))return false;
+        if(p.Has("body.enabled")&&!p.Bool("body.enabled",b.enabled))return false;
         if(p.Has("body.collision-layer")&&!p.Layer("body.collision-layer",b.collisionLayer))return false;
         if(p.Has("body.collision-mask")&&!p.Mask("body.collision-mask",b.collisionMask))return false;
         const std::vector<Token>* h = p.Header("body", 2, 2);

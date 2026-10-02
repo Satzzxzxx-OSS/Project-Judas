@@ -92,7 +92,7 @@ void ProductionFluidCoupling::PrepareRigidStep(RuntimeWorld& world,float dt) {
         else ++it;
     }
     for(std::size_t i=0;i<s.bodies.size();++i) {
-        auto& body=s.bodies[i];const auto pose=p.GetTransform(body.handle);const FluidHydrostaticField* field=&s.field;
+        auto& body=s.bodies[i];if(p.IsBodySensor(body.handle)||!p.IsBodyEnabled(body.handle))continue;const auto pose=p.GetTransform(body.handle);const FluidHydrostaticField* field=&s.field;
         if(!body.cavities.empty() && !s.first) {
             std::vector<bool> excluded;excluded.reserve(fluid.Particles().size());
             for(const auto& particle:fluid.Particles()) {
@@ -167,6 +167,7 @@ void ProductionFluidCoupling::AdvanceResolvedLiquid(RuntimeWorld& world,float dt
         std::vector<FluidBoxCollider> boxes;std::vector<FluidSphereCollider> spheres;std::vector<FluidTerrainCollider> terrains;
         std::unordered_map<unsigned,BodyTransform> nextPoses, startPoses;
         for(const auto handle:alive) {
+            if(p.IsBodySensor(handle)||!p.IsBodyEnabled(handle))continue;
             Shape shape;BodyTransform now;if(!p.GetBodyShape(handle,shape,now))continue;
             const auto& history=s.pendingMotion.at(handle.id);
             // Only the engine's genuine continuous ledger selects anchored

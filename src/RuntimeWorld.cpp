@@ -119,6 +119,7 @@ bool RuntimeWorld::InstantiateEntityBody(EntityRecord& record, const EntityPhysi
     // Reconstruction hands the body its retained pose AND velocities: no
     // reset to rest, no impulse.
     m_physics.SetCollisionFilter(handle,b.collisionLayer,b.collisionMask);
+    m_physics.SetBodySensor(handle,b.sensor);m_physics.SetBodyEnabled(handle,b.enabled);
     m_physics.SetBodyTags(handle,TagsOf(record.id));
     m_entityCategories[record.id].body=handle;
     m_physics.ResetBody(handle, state.position, state.rotation);
@@ -368,6 +369,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
 
         if(bodyHandle.IsValid()&&o.body){
             m_physics.SetCollisionFilter(bodyHandle,o.body->collisionLayer,o.body->collisionMask);
+            m_physics.SetBodySensor(bodyHandle,o.body->sensor);m_physics.SetBodyEnabled(bodyHandle,o.body->enabled);
             m_physics.SetBodyTags(bodyHandle,o.tags);m_entityCategories[o.id].body=bodyHandle;
         }
         // --- Renderable without a dynamic body ---
@@ -660,7 +662,7 @@ bool RuntimeWorld::EmitFluidParticle() {
 }
 
 void RuntimeWorld::RestoreAuthoredState() {
-    m_scripts.reset();m_ui.reset();
+    m_scripts.reset();m_ui.reset();m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
     if (!m_built) return;
     for(const auto& o:ScriptObjects())if(o.ui&&o.ui->enabled){std::string error;UI().Load(o.ui->asset,o.ui->name,o.id,error);}
     for(auto& [id,info]:m_entityCategories){(void)id;info.tags=info.authoredTags;m_physics.SetBodyTags(info.body,info.tags);}
@@ -703,6 +705,10 @@ void RuntimeWorld::RestoreAuthoredState() {
                     local.rotation=glm::inverse(p.rotation)*local.rotation;local.scale/=p.scale;}}
             o.transform=local;
         }
+    }
+    for(auto& [id,d]:m_scriptDefinitions)if(const auto* record=FindEntity(id))if(record->authored&&record->definition.body&&d.body){
+        d.body->enabled=record->definition.body->enabled;
+        m_physics.SetBodyEnabled(RuntimeBody(id),d.body->enabled);
     }
     ++m_entityVersion;
     RebuildCelestialParticipants();
@@ -1132,7 +1138,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
-    m_scripts.reset();m_ui.reset();m_scriptDefinitions.clear();m_hasScripts=false;
+    m_scripts.reset();m_ui.reset();m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;

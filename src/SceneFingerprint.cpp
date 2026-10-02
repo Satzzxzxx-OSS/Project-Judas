@@ -313,6 +313,8 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
                 if(!slot.id||!slots.insert(slot.id).second||!IsValidAssetId(slot.asset)||!ScriptSystem::ValidateJson(slot.properties,error))w.Fail("invalid script slot/properties: "+error);
                 w.U64(o.id);w.U64(slot.id);w.Text(slot.asset);w.Boolean(slot.enabled);w.Text(slot.properties);}}
     }
+    bool sensors=false;for(const auto& o:scene.Objects())if(o.body&&(o.body->sensor||!o.body->enabled))sensors=true;
+    if(sensors){w.Text("Judas.BodySensor.1");for(const auto& o:scene.Objects())if(o.body){w.U64(o.id);w.Boolean(o.body->sensor);w.Boolean(o.body->enabled);}}
     bool classified=s.mainCameraRenderMask!=kAllCategories;
     for(const auto& o:scene.Objects()) classified|=o.tags||o.renderLayer||
         (o.body&&(o.body->collisionLayer||o.body->collisionMask!=kAllCategories))||

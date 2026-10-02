@@ -32,6 +32,7 @@ export class Entity {
  set transform(value){call('setTransform',this.id,value)}
  get parent(){return entity(call('parent',this.id))}
  get children(){return call('children',this.id).map(entity)}
+ setColliderEnabled(enabled){return call('colliderEnabled',this.id,enabled)}
  destroy(){return call('destroy',this.id)}
  hasTag(tag){return call('hasTag',this.id,tag)}
  addTag(tag){return call('addTag',this.id,tag)}
@@ -241,6 +242,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         auto include=JS_GetPropertyStr(c,arg(3),"includeLayers");auto exclude=JS_GetPropertyStr(c,arg(3),"excludeLayers");
         auto layerMask=[&](JSValueConst a,CategoryMask& mask){if(JS_IsUndefined(a))return true;if(!JS_IsArray(a))return false;auto len=JS_GetPropertyStr(c,a,"length");uint32_t n=0;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);if(n>64)return false;mask=0;
             for(uint32_t i=0;i<n;++i){auto v=JS_GetPropertyUint32(c,a,i);auto name=String(c,v);JS_FreeValue(c,v);int id=world.Categories().collision.Find(name);if(id<0)return false;mask|=CategoryBit(id);}return true;};
+        auto sensors=JS_GetPropertyStr(c,arg(3),"includeSensors");if(!JS_IsUndefined(sensors)&&!JS_IsBool(sensors)){JS_FreeValue(c,sensors);return JS_ThrowTypeError(c,"includeSensors must be boolean");}filter.includeSensors=JS_ToBool(c,sensors)>0;JS_FreeValue(c,sensors);
         auto required=JS_GetPropertyStr(c,arg(3),"requiredTags"),excluded=JS_GetPropertyStr(c,arg(3),"excludedTags"),ignored=JS_GetPropertyStr(c,arg(3),"ignored");
         bool tagsOk=(JS_IsUndefined(required)||tagMask(required,filter.requiredTags))&&(JS_IsUndefined(excluded)||tagMask(excluded,filter.excludedTags));
         JS_FreeValue(c,required);JS_FreeValue(c,excluded);
@@ -260,6 +262,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     const auto* definition=world.RuntimeDefinition(id);
     if(op=="valid")return JS_NewBool(c,definition!=nullptr);
     if(!definition)return JS_ThrowReferenceError(c,"stale or invalid entity %llu",(unsigned long long)id);
+    if(op=="colliderEnabled"){if(!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.SetColliderEnabled(id,JS_ToBool(c,arg(2))));}
     if(op=="scriptState"){auto slot=String(c,arg(2));uint64_t slotId=0;try{slotId=std::stoull(slot);}catch(...){return JS_ThrowTypeError(c,"invalid slot");}
         auto it=s->instances.find({id,slotId});if(it==s->instances.end()||it->second.fault)return JS_NULL;
         auto value=JS_GetPropertyStr(c,it->second.value,"state");std::string text,error;bool ok=s->Json(value,text,error);JS_FreeValue(c,value);
@@ -400,6 +403,38 @@ void ScriptSystem::UIEvents(const InputSystem* input,float dt){m->CheckThread();
         auto& i=it->second;m->polls=0;m->currentOwner=i.entity;m->currentSlot=i.slot.id;auto fn=JS_GetPropertyStr(m->ctx,i.value,"onUI");if(JS_IsException(fn)){m->Error(i,"onUI");JS_FreeValue(m->ctx,fn);continue;}if(JS_IsFunction(m->ctx,fn)){
             auto e=JS_NewObject(m->ctx);JS_SetPropertyStr(m->ctx,e,"document",JS_NewString(m->ctx,event.document.c_str()));JS_SetPropertyStr(m->ctx,e,"element",JS_NewString(m->ctx,event.element.c_str()));JS_SetPropertyStr(m->ctx,e,"type",JS_NewString(m->ctx,event.type.c_str()));JS_SetPropertyStr(m->ctx,e,"value",JS_NewFloat64(m->ctx,event.value));
             auto result=JS_Call(m->ctx,fn,i.value,1,&e);if(JS_IsException(result))m->Error(i,"onUI");else if(JS_PromiseState(m->ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(m->ctx,"async UI callback unsupported");m->Error(i,"onUI");}JS_FreeValue(m->ctx,result);JS_FreeValue(m->ctx,e);
+        }JS_FreeValue(m->ctx,fn);
+    }
+}
+
+void ScriptSystem::PhysicsEvent(SceneObjectId self,SceneObjectId other,const PhysicsWorld::TouchEvent& event,bool reverse){
+    m->CheckThread();m->fixed=true;
+    auto* definition=m->world->RuntimeDefinition(self);if(!definition)return;
+    const auto slots=definition->scripts;
+    const char* names[2][3]={{"onCollisionEnter","onCollisionStay","onCollisionExit"},{"onTriggerEnter","onTriggerStay","onTriggerExit"}};
+    const char* name=names[event.sensor?1:0][static_cast<int>(event.phase)];
+    for(const auto& slot:slots){
+        auto* live=m->world->RuntimeDefinition(self);if(!live)return;
+        if(event.phase!=PhysicsWorld::TouchPhase::Exit&&!m->world->Physics().IsBodyEnabled(m->world->RuntimeBody(self)))return;
+        if(std::none_of(live->scripts.begin(),live->scripts.end(),[&](const auto& s){return s.id==slot.id&&s.enabled;}))continue;
+        auto it=m->instances.find({self,slot.id});if(it==m->instances.end()||it->second.fault)continue;
+        auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}
+        if(!m->world->RuntimeDefinition(self)||i.fault)continue;
+        m->polls=0;m->currentOwner=self;m->currentSlot=slot.id;
+        auto fn=JS_GetPropertyStr(m->ctx,i.value,name);if(JS_IsException(fn)){m->Error(i,name);JS_FreeValue(m->ctx,fn);continue;}
+        if(JS_IsFunction(m->ctx,fn)){
+            auto e=JS_NewObject(m->ctx);
+            auto ns=m->NamespaceLibrary();auto entityFn=JS_GetPropertyStr(m->ctx,ns,"entity");auto id=JS_NewString(m->ctx,std::to_string(other).c_str());
+            auto handle=JS_Call(m->ctx,entityFn,JS_UNDEFINED,1,&id);
+            JS_FreeValue(m->ctx,id);JS_FreeValue(m->ctx,entityFn);JS_FreeValue(m->ctx,ns);
+            JS_SetPropertyStr(m->ctx,e,"other",handle);
+            JS_SetPropertyStr(m->ctx,e,"point",Vec(m->ctx,event.point));
+            JS_SetPropertyStr(m->ctx,e,"normal",Vec(m->ctx,reverse?-event.normal:event.normal));
+            JS_SetPropertyStr(m->ctx,e,"relativeVelocity",Vec(m->ctx,reverse?-event.relativeVelocity:event.relativeVelocity));
+            JS_SetPropertyStr(m->ctx,e,"normalImpulse",event.impulseAvailable?JS_NewFloat64(m->ctx,event.normalImpulse):JS_NULL);
+            auto result=JS_Call(m->ctx,fn,i.value,1,&e);
+            if(JS_IsException(result))m->Error(i,name);else if(JS_PromiseState(m->ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(m->ctx,"async contact callbacks unsupported");m->Error(i,name);}
+            JS_FreeValue(m->ctx,result);JS_FreeValue(m->ctx,e);
         }JS_FreeValue(m->ctx,fn);
     }
 }

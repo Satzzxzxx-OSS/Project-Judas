@@ -82,6 +82,8 @@ struct SceneFluidCavity {
 };
 
 struct SceneBodyComponent {
+    bool sensor=false;
+    bool enabled=true;
     unsigned collisionLayer = 0;
     CategoryMask collisionMask = kAllCategories;
     SceneBodyMotion motion = SceneBodyMotion::Static;
