@@ -7,17 +7,11 @@
 
 #include "CollisionShapes.h"
 #include "Classification.h"
+#include "JointTypes.h"
 
 // Opaque handle to a body inside PhysicsWorld. Deliberately not tied to
 // any concrete physics-engine body-ID representation — no file outside
 // PhysicsWorld.cpp needs to know what implements this class.
-struct BodyHandle {
-    static constexpr unsigned int kInvalidId = 0xFFFFFFFFu;
-    unsigned int id = kInvalidId;
-
-    bool IsValid() const { return id != kInvalidId; }
-};
-
 // Query policy is independent of bilateral physical collision masks.
 struct PhysicsQueryFilter {
     CategoryMask includeLayers=kAllCategories, excludeLayers=0;
@@ -95,6 +89,11 @@ public:
 
     PhysicsWorld(const PhysicsWorld&) = delete;
     PhysicsWorld& operator=(const PhysicsWorld&) = delete;
+
+    JointHandle CreateJoint(const JointSettings& settings);
+    bool DestroyJoint(JointHandle handle);
+    bool GetJoint(JointHandle handle,JointState& state) const;
+    bool SetJoint(JointHandle handle,const JointSettings& settings);
 
     bool Init();
     void Shutdown();

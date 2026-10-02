@@ -38,6 +38,7 @@ endif()
 # dependency.
 
 set(JUDAS_PHYSICS_SOURCES
+    src/JointSolver.cpp
     src/PhysicsCastGeometry.cpp
     src/ImpactSolver.cpp
     src/RigidBody.cpp
@@ -946,3 +947,15 @@ target_compile_options(judas_physics_cast_tests PRIVATE -Wall -Wextra)
 add_executable(judas_physics_cast_application_tests tests/PhysicsCastApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_physics_cast_application_tests PRIVATE judas_engine)
 target_compile_options(judas_physics_cast_application_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_joint_tests tests/JointTests.cpp)
+target_link_libraries(judas_joint_tests PRIVATE judas_engine)
+target_compile_options(judas_joint_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_joint_authoring_tests tests/JointAuthoringTests.cpp)
+target_link_libraries(judas_joint_authoring_tests PRIVATE judas_engine)
+target_compile_options(judas_joint_authoring_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_joint_application_tests tests/JointApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_joint_application_tests PRIVATE judas_engine)
+target_compile_options(judas_joint_application_tests PRIVATE -Wall -Wextra)

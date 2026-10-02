@@ -166,7 +166,7 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
     record.definition = o;
     record.authored = authored;
     record.managed = b.managed;
-    record.requiresFull = EntityRequiresFull(o);
+    record.requiresFull = EntityRequiresFull(o)||m_jointParticipants.count(o.id);
     record.state = state;
     record.slot = m_dynamicBodies.size();
     if (record.requiresFull) fidelity = SimulationFidelity::Full;
@@ -245,6 +245,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         return false;
     }
     m_built = true;
+    for(const auto& o:scene.Objects())if(o.joint){m_jointParticipants.insert(o.joint->bodyA);if(o.joint->bodyB)m_jointParticipants.insert(o.joint->bodyB);}
 
     if (!(m_settings.fluidScale > 0.0f)) {
         outError = "settings: fluid-scale must be positive";
@@ -272,6 +273,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     }
 
     if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
+    SynchronizeJoints();
     for(const auto& o:scene.Objects())if(m_hasScripts&&!FindEntity(o.id)){
         std::string unsupported;
         if(o.scripts.empty()&&!ValidateEntityDefinition(o,unsupported))continue;
@@ -284,6 +286,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
 
 bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     const FidelityPolicyContext& loadContext, std::string& outError) {
+    for(const auto& o:scene.Objects())if(o.joint){m_jointOwners.insert(o.id);m_jointParticipants.insert(o.joint->bodyA);if(o.joint->bodyB)m_jointParticipants.insert(o.joint->bodyB);}
     const auto fail = [&](const SceneObject& o, const std::string& what) {
         outError = "object " + std::to_string(o.id) + " \"" + o.name + "\": " + what;
         return false;
@@ -923,7 +926,11 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
     // Finite fields / enum validation follows the canonical authored schema.
     // Check the smaller subset runtime creation can actually instantiate below.
     Scene validation;
+    if(definition.joint&&(!definition.joint->bodyA||definition.joint->bodyA==definition.joint->bodyB||!ValidJointSettings(definition.joint->settings))){error="invalid runtime joint settings";return false;}
     SceneObject copy = definition;
+    // Cross-body references are checked at scene/batch/save preflight, not in
+    // this one-object component validator.
+    copy.joint.reset();
     copy.id = 1;
     validation.InsertObject(copy);
     std::string fingerprint;
@@ -1038,6 +1045,7 @@ EntityId RuntimeWorld::SpawnPrefab(const AssetId& asset,const SceneTransform& pl
         o.prefabAsset.clear();o.prefabRoot=o.prefabSource=0;o.prefabIds.clear();o.prefabOverrides.clear();
         if(!ValidateEntityDefinition(o,error)||!ValidateVisualAssets(o,error))return 0;
     }
+    for(const auto& o:instance.Objects())if(o.joint){m_jointParticipants.insert(o.joint->bodyA);if(o.joint->bodyB)m_jointParticipants.insert(o.joint->bodyB);}
     std::vector<EntityId> created;
     std::set<SceneObjectId> pending;
     for(const auto& o:instance.Objects())pending.insert(o.id);
@@ -1052,6 +1060,7 @@ EntityId RuntimeWorld::SpawnPrefab(const AssetId& asset,const SceneTransform& pl
         }
         if(!progress){error="cyclic runtime camera/parent creation dependencies";for(auto prior:created)DestroyEntity(prior);return 0;}
     }
+    SynchronizeJoints();
     return root;
 }
 
@@ -1138,6 +1147,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
+    m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
     m_scripts.reset();m_ui.reset();m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;
     EndAudio();
     m_particleEmitters.clear();

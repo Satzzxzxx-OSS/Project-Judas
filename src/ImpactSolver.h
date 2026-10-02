@@ -36,10 +36,11 @@ struct ImpactResult {
 // single isolated closing point: material restitution; connected multi-point
 // or persistent island: inelastic normal response. No warm impulse is replayed.
 // This owns reusable solver storage; no pointers survive the next Solve call.
+class JointSolver;
 class ImpactSolver {
 public:
     ImpactResult Solve(const std::vector<ImpactContact>& contacts, float dt,
-                       bool forceInelastic = false);
+                       bool forceInelastic = false, JointSolver* joints = nullptr);
     const std::vector<ContactConstraint>& Constraints() const { return m_solver.Constraints(); }
 
 private:

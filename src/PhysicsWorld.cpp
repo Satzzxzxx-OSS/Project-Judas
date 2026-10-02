@@ -26,6 +26,8 @@
 #include "RigidBody.h"
 #include "RigidMotion.h"
 #include "ImpactSolver.h"
+#include "JointSolver.h"
+#include <atomic>
 
 // Judas's own rigid-body physics — no middleware. Collision detection,
 // contact generation, contact resolution, and integration are all owned
@@ -224,6 +226,24 @@ struct PhysicsWorld::Impl {
     DynamicAabbTree tree;
     std::vector<std::pair<unsigned int, unsigned int>> candidatePairs;
     mutable std::vector<unsigned int> queryScratch;
+    struct JointRecord {JointHandle handle;JointState state;std::array<float,10> warm{};};
+    std::vector<JointRecord> joints;
+    JointSolver jointSolver,eventJointSolver;
+    RigidBody worldAnchor;
+    bool JointActive(const JointRecord& joint) const {
+        const auto* a=Get(joint.state.settings.bodyA);const auto* b=Get(joint.state.settings.bodyB);
+        return joint.state.settings.enabled&&a&&a->enabled&&(!joint.state.settings.bodyB.IsValid()||(b&&b->enabled));
+    }
+    std::vector<JointInput> JointInputs(const std::vector<unsigned char>* included=nullptr) {
+        std::vector<JointInput> result;
+        for(auto& joint:joints){joint.state.active=JointActive(joint);if(!joint.state.active){joint.warm.fill(0);continue;}
+            auto* a=Get(joint.state.settings.bodyA);auto* b=Get(joint.state.settings.bodyB);
+            if(included&&!(*included)[joint.state.settings.bodyA.id&kSlotMask]&&
+               (!b||!(*included)[joint.state.settings.bodyB.id&kSlotMask]))continue;
+            result.push_back({&a->rigidBody,b?&b->rigidBody:&worldAnchor,&joint.state,&joint.warm});
+        }
+        return result;
+    }
     ContactSolver solver;
     ContactSolver particleSolver; // independent storage; never replays the rigid warm cache
     PhysicsWorld::ParticleContactStats particleContactStats;
@@ -433,6 +453,10 @@ struct PhysicsWorld::Impl {
         auto root=[&](unsigned i){while(parent[i]!=i) {parent[i]=parent[parent[i]];i=parent[i];}return i;};
         for (const auto& c:startContacts) if (!bodies[c.a].rigidBody.IsStatic() && !bodies[c.b].rigidBody.IsStatic())
             parent[root(c.b)]=root(c.a);
+        for(const auto& joint:joints)if(JointActive(joint)&&joint.state.settings.bodyB.IsValid()){
+            const auto a=joint.state.settings.bodyA.id&kSlotMask,b=joint.state.settings.bodyB.id&kSlotMask;
+            if(!bodies[a].rigidBody.IsStatic()&&!bodies[b].rigidBody.IsStatic())parent[root(b)]=root(a);
+        }
         std::vector<std::pair<unsigned,std::size_t>> order;
         for (std::size_t i=0;i<startContacts.size();++i) {
             const auto& c=startContacts[i];
@@ -455,7 +479,10 @@ struct PhysicsWorld::Impl {
                     rows.push_back({&a.rigidBody,&b.rigidBody,geometry[c.constraint],c.friction,
                                     std::max(a.restitution,b.restitution),persistent});
                 }
-                const auto result=impactSolver.Solve(rows,dt);
+                std::vector<unsigned char> included(bodies.size(),0);
+                for(unsigned slot:aliveSlots)if(root(slot)==order[begin].first)included[slot]=1;
+                eventJointSolver.Prepare(JointInputs(&included),dt,false,true);
+                const auto result=impactSolver.Solve(rows,dt,false,eventJointSolver.Empty()?nullptr:&eventJointSolver);
                 if(!result.energyBudgetSatisfied) throw std::runtime_error("inelastic impact energy guard failed");
                 if(result.effectiveRestitution==0) for(auto k=begin;k<end;++k) startContacts[order[k].second].newImpact=false;
                 ++stats.impactEvents; stats.impactSafetyFallback+=result.safetyFallback;
@@ -518,6 +545,11 @@ struct PhysicsWorld::Impl {
             std::vector<std::pair<unsigned,unsigned>> touching;
             for (std::size_t next=0;next<island.size();++next) {
                 const unsigned a=island[next]; const auto pose=PoseAt(a,now);
+                for(const auto& joint:joints)if(JointActive(joint)&&joint.state.settings.bodyB.IsValid()){
+                    const auto x=joint.state.settings.bodyA.id&kSlotMask,y=joint.state.settings.bodyB.id&kSlotMask;
+                    if(x==a)include(y);
+                    if(y==a)include(x);
+                }
                 const auto candidates=QuerySlots(ShapeAabb(bodies[a].shape,pose.position,pose.orientation));
                 for (unsigned b:candidates) {
                     if (a==b || !CanRespond(a,b)) continue;
@@ -566,7 +598,8 @@ struct PhysicsWorld::Impl {
                     }
             }
             if(rows.empty()) throw std::runtime_error("impact bracket lost contact geometry");
-            const auto result=impactSolver.Solve(rows,dt,capture);
+            eventJointSolver.Prepare(JointInputs(&included),dt,false,true);
+            const auto result=impactSolver.Solve(rows,dt,capture,eventJointSolver.Empty()?nullptr:&eventJointSolver);
             if(!result.energyBudgetSatisfied) throw std::runtime_error("inelastic impact energy guard failed");
             if(result.effectiveRestitution==0) {
                 supportPairs.insert(supportPairs.end(),eventPairs.begin(),eventPairs.end());
@@ -1016,6 +1049,7 @@ BodyHandle PhysicsWorld::CreateDynamicCompoundBoxes(const glm::vec3& position,
 }
 
 void PhysicsWorld::DestroyBody(BodyHandle handle) {
+    if(m_impl){auto& joints=m_impl->joints;joints.erase(std::remove_if(joints.begin(),joints.end(),[&](const auto& j){return j.state.settings.bodyA.id==handle.id||j.state.settings.bodyB.id==handle.id;}),joints.end());}
     m_impl->Remove(handle);
 }
 
@@ -1668,7 +1702,8 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     std::sort(w.supportPairs.begin(),w.supportPairs.end());
     w.supportPairs.erase(std::unique(w.supportPairs.begin(),w.supportPairs.end()),w.supportPairs.end());
     w.solver.Prepare(fixedDeltaTime);
-    w.solver.SolveVelocities();
+    if(w.joints.empty())w.solver.SolveVelocities();
+    else {w.jointSolver.Prepare(w.JointInputs(),fixedDeltaTime);for(int i=0;i<ContactSolver::kVelocityIterations;++i){w.solver.SolveVelocities(1);w.jointSolver.SolveIteration();}}
     // Remember this step's converged impulses for the next step's warm start.
     const std::vector<ContactConstraint>& solved = w.solver.Constraints();
     for (std::size_t i = 0; i < solved.size() && i < w.pendingCache.size(); ++i) {
@@ -1868,6 +1903,7 @@ void PhysicsWorld::ResetBody(BodyHandle handle, const glm::vec3& position,
                               const glm::quat& rotation) {
     Impl::Body* body = m_impl->Get(handle);
     if (!body) return;
+    for(auto& j:m_impl->joints)if(j.state.settings.bodyA.id==handle.id||j.state.settings.bodyB.id==handle.id)j.warm.fill(0);
     body->rigidBody.position = position;
     body->rigidBody.orientation = rotation;
     body->previousPosition = position;
@@ -2010,7 +2046,7 @@ void PhysicsWorld::SetPlayerCollisionFilter(unsigned layer,CategoryMask mask){if
 const std::vector<PhysicsWorld::TouchEvent>& PhysicsWorld::LastStepTouchEvents() const {return m_impl->touchEvents;}
 bool PhysicsWorld::SetBodySensor(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->sensor=value;return true;}
 bool PhysicsWorld::IsBodySensor(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->sensor;}
-bool PhysicsWorld::SetBodyEnabled(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->enabled=value;return true;}
+bool PhysicsWorld::SetBodyEnabled(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->enabled=value;for(auto& j:m_impl->joints)if(j.state.settings.bodyA.id==h.id||j.state.settings.bodyB.id==h.id)j.warm.fill(0);return true;}
 bool PhysicsWorld::IsBodyEnabled(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->enabled;}
 
 void PhysicsWorld::ClearTouchHistory(){m_impl->previousTouches.clear();m_impl->stepTouches.clear();m_impl->touchEvents.clear();}
@@ -2054,3 +2090,14 @@ PhysicsCastHit PhysicsWorld::Raycast(const glm::vec3& o,const glm::vec3& d,float
 PhysicsCastHit PhysicsWorld::SphereCast(const glm::vec3& o,float r,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Sphere(r),{o,{1,0,0,0}},d,m,f,s);}
 PhysicsCastHit PhysicsWorld::CapsuleCast(const BodyTransform& p,float r,float h,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Capsule(r,h),p,d,m,f,s);}
 PhysicsCastHit PhysicsWorld::BoxCast(const BodyTransform& p,const glm::vec3& h,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Box(h),p,d,m,f,s);}
+
+JointHandle PhysicsWorld::CreateJoint(const JointSettings& settings) {
+    if(!m_impl||!ValidJointSettings(settings))return {};
+    auto* a=m_impl->Get(settings.bodyA);auto* b=m_impl->Get(settings.bodyB);
+    if(!a||(settings.bodyB.IsValid()&&!b)||(b&&a==b)||(a->rigidBody.IsStatic()&&(!b||b->rigidBody.IsStatic())))return {};
+    static std::atomic<std::uint64_t> next{1};JointHandle handle{next.fetch_add(1)};
+    m_impl->joints.push_back({handle,{settings,false,0,0},{}});return handle;
+}
+bool PhysicsWorld::DestroyJoint(JointHandle handle){if(!m_impl)return false;auto& joints=m_impl->joints;auto it=std::find_if(joints.begin(),joints.end(),[&](const auto& j){return j.handle.id==handle.id;});if(it==joints.end())return false;joints.erase(it);return true;}
+bool PhysicsWorld::GetJoint(JointHandle handle,JointState& state)const{if(!m_impl)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){if(!m_impl->Get(joint.state.settings.bodyA)||(joint.state.settings.bodyB.IsValid()&&!m_impl->Get(joint.state.settings.bodyB)))return false;state=joint.state;state.active=m_impl->JointActive(joint);return true;}return false;}
+bool PhysicsWorld::SetJoint(JointHandle handle,const JointSettings& settings){JointState previous;if(!GetJoint(handle,previous)||!ValidJointSettings(settings)||settings.bodyA.id!=previous.settings.bodyA.id||settings.bodyB.id!=previous.settings.bodyB.id)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){joint.state.settings=settings;joint.warm.fill(0);return true;}return false;}

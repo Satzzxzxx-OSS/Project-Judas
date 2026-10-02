@@ -331,6 +331,15 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
             w.Boolean(bool(o.renderCamera));if(o.renderCamera)w.U64(o.renderCamera->renderMask);
         }
     }
+    size_t joints=0;for(const auto& o:scene.Objects())if(o.joint)++joints;
+    if(joints){w.Text("Judas.RigidJoints.1");w.U64(joints);for(const auto& o:scene.Objects())if(o.joint){const auto& j=*o.joint;const auto& s=j.settings;
+        if(!ValidJointSettings(s))w.Fail("invalid joint settings");
+        const auto* a=scene.Find(j.bodyA);const auto* b=scene.Find(j.bodyB);
+        if(!a||!a->body||(j.bodyB&&(!b||!b->body))||j.bodyA==j.bodyB||(a&&a->body&&a->body->motion==SceneBodyMotion::Static&&(!b||!b->body||b->body->motion==SceneBodyMotion::Static)))w.Fail("invalid joint body reference");
+        w.U64(o.id);w.U64(j.bodyA);w.U64(j.bodyB);w.U32(int(s.type));w.Boolean(s.enabled);w.Vector(s.anchorA);w.Vector(s.anchorB);
+        w.Quaternion(s.frameA);w.Quaternion(s.frameB);w.Boolean(s.limits);w.Boolean(s.motor);w.Boolean(s.spring);
+        w.Number(s.lower);w.Number(s.upper);w.Number(s.speed);w.Number(s.maxForce);w.Number(s.rest);w.Number(s.stiffness);w.Number(s.damping);
+    }}
     if (!w.Error().empty()) { outError = w.Error(); return false; }
     outFingerprint = SceneFingerprintSha256(w.Bytes());
     return true;

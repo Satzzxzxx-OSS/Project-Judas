@@ -132,3 +132,5 @@ They return a nearest-hit snapshot with a normal safe entity wrapper, or `null`.
 They share M39 query filtering and never drive collision response/events.
 See [PHYSICS_QUERIES.md](PHYSICS_QUERIES.md) for signatures, conventions and
 terrain limitations; typed declarations are in `judas.d.ts`.
+
+M45 adds `physics.joint(ownerEntity)` and safe `Joint` controls for enabling, limits, bounded motors and spring/damping. See [JOINTS.md](JOINTS.md) and the `Joint` declaration in `judas.d.ts`. These expose physical relationships; project JavaScript supplies their meaning.

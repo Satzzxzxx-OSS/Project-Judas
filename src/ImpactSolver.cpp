@@ -1,5 +1,6 @@
 #include "ImpactSolver.h"
 #include "RigidBody.h"
+#include "JointSolver.h"
 
 #include <algorithm>
 #include <cmath>
@@ -49,7 +50,7 @@ bool Finite(const glm::vec3& value) {
 } // namespace
 
 ImpactResult ImpactSolver::Solve(const std::vector<ImpactContact>& contacts, float dt,
-                                 bool forceInelastic) {
+                                 bool forceInelastic,JointSolver* joints) {
     if (!(dt >= 0) || !std::isfinite(dt)) throw std::invalid_argument("invalid impact interval");
     m_saved.clear();
     m_solver.Clear();
@@ -86,9 +87,10 @@ ImpactResult ImpactSolver::Solve(const std::vector<ImpactContact>& contacts, flo
                                    PointVelocity(*c.b, Offset(*c.b, c.geometry, false)), normal);
         if (vn < -kRestitutionVelocityThreshold) ++result.materialClosingContacts;
     }
+    if(joints)for(auto* body:joints->Bodies())remember(body);
     // Including every connected contact is deliberately conservative: a second
     // initially separating row can become closing after the first impulse.
-    result.ambiguous = forceInelastic || persistent || result.contacts > 1;
+    result.ambiguous = forceInelastic || persistent || result.contacts > 1 || (joints&&!joints->Empty());
     if (!result.ambiguous && result.materialClosingContacts == 1)
         for (const auto& c : contacts)
             if (!c.a->IsStatic() || !c.b->IsStatic()) result.effectiveRestitution = c.restitution;
@@ -103,7 +105,8 @@ ImpactResult ImpactSolver::Solve(const std::vector<ImpactContact>& contacts, flo
         // Geometry is already at the event, so no speculative gap/time target.
         // The persistent solver and its numerical expressions are unchanged.
         m_solver.Prepare(0.0f);
-        m_solver.SolveVelocities();
+        if(!joints||joints->Empty())m_solver.SolveVelocities();
+        else {joints->ResetImpulses();for(int i=0;i<ContactSolver::kVelocityIterations;++i){m_solver.SolveVelocities(1);joints->SolveIteration();}}
         result.kineticAfter = 0;
         result.momentumAfter = glm::dvec3(0);
         result.angularMomentumAfter = glm::dvec3(0);

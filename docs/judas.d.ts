@@ -70,7 +70,17 @@ declare module 'judas' {
   export interface CastPose {position:Vec3;rotation?:Quat}
   export interface CastHit {entity:Entity|null;entityId:string;bodyId:number;point:Vec3;normal:Vec3;
     distance:number;fraction:number;initialOverlap:boolean;primitiveIndex:number;shape:'sphere'|'box'|'terrain'}
+  export class Joint {
+    readonly id:string;
+    readonly valid:boolean;
+    readonly state:{active:boolean;enabled:boolean;coordinate:number;motorImpulse:number;type:number};
+    setEnabled(enabled:boolean):boolean;
+    setLimits(lower:number,upper:number,enabled?:boolean):boolean;
+    setMotor(speed:number,maxForce:number,enabled?:boolean):boolean;
+    setSpring(rest:number,stiffness:number,damping:number,enabled?:boolean):boolean;
+  }
   export const physics:{
+    joint(owner:Entity):Joint|null;
     raycast(origin:Vec3,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
     sphereCast(origin:Vec3,radius:number,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
     capsuleCast(pose:CastPose,radius:number,halfHeight:number,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;

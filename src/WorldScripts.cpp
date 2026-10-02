@@ -45,6 +45,7 @@ void RuntimeWorld::UpdateScripts(const InputSystem* input,float dt){
     m_scripts->Synchronize(ScriptObjects());m_scripts->Frame(input,dt);
 }
 void RuntimeWorld::FixedScripts(const InputSystem* input,float dt){
+    SynchronizeJoints();
     if(!m_scripts){if(!m_hasScripts)return;
         m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);}
     if(m_scripts){m_scripts->Synchronize(ScriptObjects());m_scripts->Fixed(input,dt);}
@@ -84,3 +85,18 @@ bool RuntimeWorld::SetColliderEnabled(EntityId id,bool enabled){
     auto h=RuntimeBody(id);if(!h.IsValid()||!m_physics.SetBodyEnabled(h,enabled))return false;
     auto& d=m_scriptDefinitions.at(id);if(d.body)d.body->enabled=enabled;return true;
 }
+
+void RuntimeWorld::SynchronizeJoints(){
+    for(auto owner:m_jointOwners){const auto* definition=RuntimeDefinition(owner);
+        auto it=m_runtimeJoints.find(owner);JointState state;
+        if(!definition||!definition->joint){if(it!=m_runtimeJoints.end()){m_physics.DestroyJoint(it->second);m_runtimeJoints.erase(it);}continue;}
+        const auto& j=*definition->joint;auto a=RuntimeBody(j.bodyA),b=RuntimeBody(j.bodyB);
+        if(it!=m_runtimeJoints.end()&&m_physics.GetJoint(it->second,state)&&state.settings.bodyA.id==a.id&&state.settings.bodyB.id==b.id)continue;
+        if(it!=m_runtimeJoints.end()){m_physics.DestroyJoint(it->second);m_runtimeJoints.erase(it);}
+        if(!a.IsValid()||(j.bodyB&&!b.IsValid()))continue;
+        auto settings=j.settings;settings.bodyA=a;settings.bodyB=b;
+        if(!j.bodyB){settings.anchorB=definition->transform.position+definition->transform.rotation*settings.anchorB;settings.frameB=definition->transform.rotation*settings.frameB;}
+        auto handle=m_physics.CreateJoint(settings);if(handle.IsValid())m_runtimeJoints[owner]=handle;
+    }
+}
+JointHandle RuntimeWorld::RuntimeJoint(EntityId owner){SynchronizeJoints();auto it=m_runtimeJoints.find(owner);return it==m_runtimeJoints.end()?JointHandle{}:it->second;}

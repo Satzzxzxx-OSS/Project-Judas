@@ -183,6 +183,35 @@ void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     if (r.shape == SceneShape::Terrain) ImGui::TextDisabled("Geometry comes from the terrain body.");
 }
 
+void DrawJoint(EditorDocument& doc, SceneObject& object, EditorPanelState&) {
+    auto& joint=*object.joint;auto& settings=joint.settings;
+    const char* names[]={"Fixed","Hinge","Ball/socket","Slider"};
+    Combo(doc,"Joint type",settings.type,names,4);
+    auto bodyField=[&](const char* label,SceneObjectId& id,bool world){
+        const auto* body=doc.GetScene().Find(id);const std::string preview=body?body->name:world&&id==0?"World anchor":"Select body";
+        if(ImGui::BeginCombo(label,preview.c_str())){
+            if(world&&ImGui::Selectable("World anchor",id==0)){doc.BeginEdit();id=0;doc.CommitEdit();}
+            for(const auto& candidate:doc.GetScene().Objects())if(candidate.body&&ImGui::Selectable((candidate.name+" ##"+std::to_string(candidate.id)).c_str(),candidate.id==id)){doc.BeginEdit();id=candidate.id;doc.CommitEdit();}
+            ImGui::EndCombo();
+        }
+    };
+    bodyField("Body A",joint.bodyA,false);bodyField("Body B",joint.bodyB,true);
+    DragVec3(doc,"Anchor A (body local)",settings.anchorA);
+    DragVec3(doc,joint.bodyB?"Anchor B (body local)":"Anchor B (owner local)",settings.anchorB);
+    auto frame=[&](const char* label,glm::quat& q){auto degrees=glm::degrees(glm::eulerAngles(glm::normalize(q)));if(ImGui::DragFloat3(label,&degrees.x,.5f))q=glm::normalize(glm::quat(glm::radians(degrees)));TrackEdit(doc);};
+    frame("Frame A (degrees)",settings.frameA);frame(joint.bodyB?"Frame B (degrees)":"World frame (owner local)",settings.frameB);
+    Checkbox(doc,"Joint enabled",settings.enabled);
+    ImGui::TextDisabled("Local frame X is the hinge/slider axis. Hinge values are radians.");
+    if(settings.type==JointType::Hinge||settings.type==JointType::Slider){
+        Checkbox(doc,"Limits",settings.limits);DragScalar(doc,"Lower",settings.lower);DragScalar(doc,"Upper",settings.upper);
+        Checkbox(doc,"Motor",settings.motor);DragScalar(doc,"Target speed",settings.speed);
+        DragScalar(doc,"Maximum force / torque",settings.maxForce,.1f,0,100000);
+        Checkbox(doc,"Spring",settings.spring);DragScalar(doc,"Rest coordinate",settings.rest);
+        DragScalar(doc,"Stiffness",settings.stiffness,.1f,0,100000);DragScalar(doc,"Damping",settings.damping,.1f,0,100000);
+    }
+    if(!ValidJointSettings(settings)||joint.bodyA==0||joint.bodyA==joint.bodyB)ImGui::TextColored(ImVec4(1,.3f,.2f,1),"Invalid joint settings or body references");
+}
+
 void DrawBody(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     SceneBodyComponent& b = *o.body;
     Checkbox(doc,"Sensor (events, no response)",b.sensor);
@@ -376,6 +405,7 @@ const std::vector<ComponentEditor>& ComponentEditorRegistry() {
         Make<SceneAudioListenerComponent>("Audio listener", 'N', &SceneObject::audioListener, DrawAudioListener),
         Make<SceneRenderCameraComponent>("Render camera", 'K', &SceneObject::renderCamera, DrawRenderCamera),
         Make<SceneRenderComponent>("Render", 'R', &SceneObject::render, DrawRender),
+        Make<SceneJointComponent>("Joint",'J',&SceneObject::joint,DrawJoint),
         Make<SceneBodyComponent>("Body", 'B', &SceneObject::body, DrawBody),
         Make<SceneGravityComponent>("Gravity region", 'G', &SceneObject::gravity, DrawGravity),
         Make<SceneLightComponent>("Light", 'L', &SceneObject::light, DrawLight),

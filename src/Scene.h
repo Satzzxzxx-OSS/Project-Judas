@@ -1,6 +1,7 @@
 #pragma once
 #include "Classification.h"
 #include "AudioTypes.h"
+#include "JointTypes.h"
 
 #include <cstdint>
 #include <map>
@@ -267,7 +268,10 @@ struct SceneScriptSlot {
     }
 };
 
+struct SceneJointComponent {SceneObjectId bodyA=0,bodyB=0;JointSettings settings;};
+
 struct SceneObject {
+    std::optional<SceneJointComponent> joint;
     std::vector<SceneScriptSlot> scripts;
     std::optional<SceneUIComponent> ui;
     CategoryMask tags = 0;

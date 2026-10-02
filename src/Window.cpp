@@ -37,8 +37,7 @@ bool Window::Init(const char* title, int width, int height, bool visible) {
         // The demo controls a player with mouse look, so start with the
         // mouse captured for immediate look control. A hidden (test
         // harness) window has no real cursor to capture.
-        SDL_SetRelativeMouseMode(SDL_TRUE);
-        m_mouseCaptured = true;
+        SetMouseCaptured(true);
     }
 
     m_width = width;
@@ -137,7 +136,12 @@ void Window::PollEvents(){
             if(event.window.event==SDL_WINDOWEVENT_CLOSE)m_shouldClose=true;
             if(event.window.event==SDL_WINDOWEVENT_SIZE_CHANGED){m_width=event.window.data1;m_height=event.window.data2;}
             if(event.window.event==SDL_WINDOWEVENT_FOCUS_LOST){m_inputFocused=false;m_input.Reset();ClearPendingRequests();}
-            if(event.window.event==SDL_WINDOWEVENT_FOCUS_GAINED)m_inputFocused=true;
+            if(event.window.event==SDL_WINDOWEVENT_FOCUS_GAINED){
+                m_inputFocused=true;
+                // SDL/compositor capture can disappear independently of the
+                // gameplay request. Restore that request, preserving paused UI.
+                SetMouseCaptured(m_mouseCaptured);
+            }
         }else if((event.type==SDL_KEYDOWN||event.type==SDL_KEYUP)&&!m_keyboardClaimed){
             m_input.SetPhysical(std::string("key:")+SDL_GetScancodeName(event.key.keysym.scancode),event.type==SDL_KEYDOWN?1:0);
         }else if((event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_MOUSEBUTTONUP)&&!m_mouseClaimed){
@@ -342,7 +346,10 @@ void Window::GetMousePosition(int& outX, int& outY) const {
 
 void Window::SetMouseCaptured(bool captured) {
     m_mouseCaptured = captured;
-    SDL_SetRelativeMouseMode(captured ? SDL_TRUE : SDL_FALSE);
+    SDL_SetWindowGrab(m_window,captured ? SDL_TRUE : SDL_FALSE);
+    if(SDL_SetRelativeMouseMode(captured ? SDL_TRUE : SDL_FALSE)!=0 &&
+       (SDL_GetWindowFlags(m_window)&SDL_WINDOW_SHOWN))
+        std::fprintf(stderr,"Mouse capture failed: %s\n",SDL_GetError());
 }
 
 float Window::InputAxis(const std::string& name)const{

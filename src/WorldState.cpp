@@ -295,6 +295,15 @@ bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& 
         if(!definition||std::none_of(definition->scripts.begin(),definition->scripts.end(),[&](const auto& slot){return slot.id==r.slot&&slot.enabled;})){
             outError="unknown or disabled script slot";return false;}
     }
+    // Created constraints are checked with the complete prospective entity set before mutation.
+    auto jointBody=[&](EntityId id)->const SceneObject* {
+        for(const auto& change:state.entities)if(change.id==id){if(change.destroyed)return nullptr;if(change.created)return &change.definition;}
+        return world.RuntimeDefinition(id);
+    };
+    for(const auto& change:state.entities)if(change.created&&change.definition.joint){
+        const auto& j=*change.definition.joint;auto a=jointBody(j.bodyA),b=j.bodyB?jointBody(j.bodyB):nullptr;
+        if(!a||!a->body||(j.bodyB&&(!b||!b->body))||(a->body->motion==SceneBodyMotion::Static&&(!b||b->body->motion==SceneBodyMotion::Static))){outError="created joint requires available bodies and a dynamic participant";return false;}
+    }
     // --- Apply.
     for (const WorldStateEntityChange& change : state.entities) {
         std::string error;

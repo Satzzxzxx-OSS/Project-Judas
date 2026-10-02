@@ -88,6 +88,13 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    if(o.joint){const auto& j=*o.joint;const auto& s=j.settings;
+        w.Line("joint",std::to_string(int(s.type)));w.Line("joint.body-a",std::to_string(j.bodyA));w.Line("joint.body-b",std::to_string(j.bodyB));
+        w.Line("joint.anchor-a",V(s.anchorA));w.Line("joint.anchor-b",V(s.anchorB));w.Line("joint.frame-a",Q(s.frameA));w.Line("joint.frame-b",Q(s.frameB));
+        w.Line("joint.enabled",B(s.enabled));w.Line("joint.limits",B(s.limits));w.Line("joint.motor",B(s.motor));w.Line("joint.spring",B(s.spring));
+        w.Line("joint.lower",F(s.lower));w.Line("joint.upper",F(s.upper));w.Line("joint.speed",F(s.speed));w.Line("joint.max-force",F(s.maxForce));
+        w.Line("joint.rest",F(s.rest));w.Line("joint.stiffness",F(s.stiffness));w.Line("joint.damping",F(s.damping));
+    }
     if(o.ui){w.Line("ui.asset",Quote(o.ui->asset));w.Line("ui.name",Quote(o.ui->name));w.Line("ui.enabled",B(o.ui->enabled));}
     if(!o.scripts.empty()) {
         w.Line("scripts",std::to_string(o.scripts.size()));
@@ -608,6 +615,14 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    if(p.Has("joint")){SceneJointComponent j;auto& s=j.settings;int type=0;
+        if(!p.Int("joint",type)||type<0||type>3||!p.Id("joint.body-a",j.bodyA)||!p.Id("joint.body-b",j.bodyB)||
+           !p.Vec3("joint.anchor-a",s.anchorA)||!p.Vec3("joint.anchor-b",s.anchorB)||!p.Quat("joint.frame-a",s.frameA)||!p.Quat("joint.frame-b",s.frameB)||
+           !p.Bool("joint.enabled",s.enabled)||!p.Bool("joint.limits",s.limits)||!p.Bool("joint.motor",s.motor)||!p.Bool("joint.spring",s.spring)||
+           !p.Float("joint.lower",s.lower)||!p.Float("joint.upper",s.upper)||!p.Float("joint.speed",s.speed)||!p.Float("joint.max-force",s.maxForce)||
+           !p.Float("joint.rest",s.rest)||!p.Float("joint.stiffness",s.stiffness)||!p.Float("joint.damping",s.damping))return false;
+        s.type=JointType(type);if(!j.bodyA||j.bodyA==j.bodyB||!ValidJointSettings(s))return reader.Fail("invalid joint settings");o.joint=j;
+    }
     if(p.Has("ui.asset")){SceneUIComponent u;if(!p.String("ui.asset",u.asset)||!p.String("ui.name",u.name)||!p.Bool("ui.enabled",u.enabled))return false;if(!IsValidAssetId(u.asset)||u.name.empty())return reader.Fail("invalid UI component");o.ui=u;}
     if(p.Has("scripts")) {
         int count=0;if(!p.Int("scripts",count)||count<0||count>64)return reader.Fail("invalid script slot count");
@@ -1076,6 +1091,8 @@ bool LoadSceneFromString(const std::string& text, Scene& outScene, std::string& 
             o.render->shape != SceneShape::Sphere && o.render->shape != SceneShape::Mesh))
             return reader.Fail("camera texture requires a box, sphere or mesh and no disk texture");
     }
+    for(const auto& object:scene.Objects())if(object.joint){const auto& j=*object.joint;const auto* a=scene.Find(j.bodyA);const auto* b=scene.Find(j.bodyB);
+        if(!a||!a->body||(j.bodyB&&(!b||!b->body))||(a->body->motion==SceneBodyMotion::Static&&(!b||b->body->motion==SceneBodyMotion::Static)))return reader.Fail("joint requires existing bodies and at least one dynamic body");}
     if (!ValidateHierarchy(scene, outError)) return false;
     outScene = std::move(scene);
     return true;

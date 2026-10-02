@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 #include <optional>
 #include <string>
 #include <vector>
@@ -276,6 +277,8 @@ public:
     const SceneObject* RuntimeDefinition(EntityId id) const;
     bool SetRuntimeTransform(EntityId id,const SceneTransform& transform);
     BodyHandle RuntimeBody(EntityId id) const;
+    JointHandle RuntimeJoint(EntityId owner);
+    void SynchronizeJoints();
     bool EmitFluidParticle();
     std::size_t EmittedFluidParticles() const { return m_emittedParticles; }
 
@@ -396,6 +399,8 @@ private:
     bool AppendSceneObjects(const Scene& scene, bool authored, const FidelityPolicyContext& context, std::string& error);
     Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
     bool m_hasScripts=false;
+    std::set<EntityId> m_jointOwners,m_jointParticipants;
+    std::map<EntityId,JointHandle> m_runtimeJoints;
     std::unique_ptr<ScriptSystem> m_scripts;
     std::unique_ptr<RuntimeUI> m_ui;
     std::map<EntityId,SceneObject> m_scriptDefinitions;

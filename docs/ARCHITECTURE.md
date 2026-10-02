@@ -8803,3 +8803,7 @@ finite-resolution approximation; box-versus-terrain is unsupported, explicitly.
 `world.viewRay` exposes the last completed active view for project aiming, not
 simulation authority. Details and limits: `PHYSICS_QUERIES.md`; focused demo:
 `projects/query_demo`; executed evidence: `docs/evidence/m44`.
+
+## Milestone 45 — rigid-body joints (candidate)
+
+PhysicsWorld owns fixed, hinge, ball/socket and slider constraints. Body-local frames/anchors feed a shared accumulated impulse solver alternating with contact rows; joints do not overwrite poses. Hinge/slider limits, bounded motors and implicit spring/damping operate along their free coordinate. Coupled impact islands include passive joint rows under the existing inelastic island policy. Safe joint handles, ordinary scene references, prefab remapping, editor settings and `physics.joint(owner)` JavaScript controls expose the primitive without game-specific meaning. See [JOINTS.md](JOINTS.md). The compact `projects/joint_demo` physical door is body + hinge + JS; historical M16 remains preserved. Tagged joint fingerprint content extends canonical schema 5 without changing no-joint baselines. Runtime motor settings and impulse caches are transient.

@@ -24,6 +24,7 @@ bool Scene::DestroyObject(SceneObjectId id) {
     std::vector<SceneObjectId> ids{id};
     for(size_t i=0;i<ids.size();++i)for(const auto& o:m_objects)if(o.parent==ids[i])ids.push_back(o.id);
     m_objects.erase(std::remove_if(m_objects.begin(),m_objects.end(),[&](const auto& o){return std::find(ids.begin(),ids.end(),o.id)!=ids.end();}),m_objects.end());
+    for(auto& object:m_objects)if(object.joint&&(std::find(ids.begin(),ids.end(),object.joint->bodyA)!=ids.end()||std::find(ids.begin(),ids.end(),object.joint->bodyB)!=ids.end()))object.joint.reset();
     return true;
 }
 
@@ -84,6 +85,7 @@ bool OptEq(const std::optional<T>& a, const std::optional<T>& b, F&& equal) {
 
 bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
     if(a.scripts!=b.scripts)return false;
+    if(!OptEq(a.joint,b.joint,[](const auto& x,const auto& y){return x.bodyA==y.bodyA&&x.bodyB==y.bodyB&&JointSettingsEqual(x.settings,y.settings);}))return false;
     if(!OptEq(a.ui,b.ui,[](const auto& x,const auto& y){return x.asset==y.asset&&x.name==y.name&&x.enabled==y.enabled;}))return false;
     if (a.tags != b.tags || a.renderLayer != b.renderLayer) return false;
     if (a.id != b.id || a.name != b.name || a.parent != b.parent ||

@@ -64,7 +64,17 @@ export const world={entity,get viewRay(){return call('viewRay')},queryTags:(requ
  overlap:(min,max,filter={})=>call('overlap',min,max,filter).map(entity),
  sweepCapsule:(from,displacement,rotation={w:1,x:0,y:0,z:0},filter={})=>call('sweep',from,displacement,filter,rotation)};
 const cast=(origin,direction,maximum,filter,shape)=>{const hit=call('cast',origin,direction,filter,{...shape,maximum});return hit?{...hit,entity:entity(hit.entityId)}:null};
+export class Joint {
+ constructor(id){this.id=String(id)}
+ get valid(){return call('jointValid',this.id)}
+ get state(){return call('jointState',this.id)}
+ setEnabled(enabled){return call('jointSet',this.id,{enabled})}
+ setLimits(lower,upper,limits=true){return call('jointSet',this.id,{lower,upper,limits})}
+ setMotor(speed,maxForce,motor=true){return call('jointSet',this.id,{speed,maxForce,motor})}
+ setSpring(rest,stiffness,damping,spring=true){return call('jointSet',this.id,{rest,stiffness,damping,spring})}
+}
 export const physics={
+ joint:owner=>{const id=call('joint',owner.id);return id?new Joint(id):null},
  raycast:(origin,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'ray'}),
  sphereCast:(origin,radius,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'sphere',radius}),
  capsuleCast:(pose,radius,halfHeight,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'capsule',rotation:pose.rotation,radius,halfHeight}),
@@ -211,6 +221,32 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(op=="log"){std::fprintf(stdout,"JS: %s\n",String(c,arg(1)).c_str());return JS_UNDEFINED;}
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
+
+    if(op=="joint"||op=="jointValid"||op=="jointState"||op=="jointSet") {
+        uint64_t id=0;try{const auto text=String(c,arg(1));size_t end;id=std::stoull(text,&end);if(end!=text.size())id=0;}catch(...){id=0;}
+        if(op=="joint"){auto h=world.RuntimeJoint(id);return h.IsValid()?JS_NewString(c,std::to_string(h.id).c_str()):JS_NULL;}
+        JointHandle h{id};JointState state;bool valid=world.Physics().GetJoint(h,state);
+        if(op=="jointValid")return JS_NewBool(c,valid);
+        if(!valid)return JS_ThrowReferenceError(c,"stale joint handle");
+        if(op=="jointSet"){
+            auto settings=state.settings;
+            for(auto entry:{std::pair<const char*,bool*>{"enabled",&settings.enabled},{"limits",&settings.limits},{"motor",&settings.motor},{"spring",&settings.spring}}){
+                auto value=JS_GetPropertyStr(c,arg(2),entry.first);if(!JS_IsUndefined(value)){if(!JS_IsBool(value)){JS_FreeValue(c,value);return JS_ThrowTypeError(c,"joint flag must be boolean");}*entry.second=JS_ToBool(c,value);}JS_FreeValue(c,value);
+            }
+            for(auto entry:{std::pair<const char*,float*>{"lower",&settings.lower},{"upper",&settings.upper},{"speed",&settings.speed},{"maxForce",&settings.maxForce},{"rest",&settings.rest},{"stiffness",&settings.stiffness},{"damping",&settings.damping}}){
+                auto value=JS_GetPropertyStr(c,arg(2),entry.first);bool present=!JS_IsUndefined(value);JS_FreeValue(c,value);if(present&&!Number(c,arg(2),entry.first,*entry.second))return JS_ThrowTypeError(c,"invalid joint number");
+            }
+            if(!world.Physics().SetJoint(h,settings))return JS_ThrowTypeError(c,"invalid joint settings");
+            return JS_TRUE;
+        }
+        auto result=JS_NewObject(c);
+        JS_SetPropertyStr(c,result,"active",JS_NewBool(c,state.active));
+        JS_SetPropertyStr(c,result,"enabled",JS_NewBool(c,state.settings.enabled));
+        JS_SetPropertyStr(c,result,"coordinate",JS_NewFloat64(c,state.coordinate));
+        JS_SetPropertyStr(c,result,"motorImpulse",JS_NewFloat64(c,state.motorImpulse));
+        JS_SetPropertyStr(c,result,"type",JS_NewInt32(c,int(state.settings.type)));
+        return result;
+    }
 
     if(op=="sceneCurrent"||op=="sceneList"||op=="sceneLoad"||op=="sceneReload"||op=="sessionGet"||op=="sessionSet"||op=="sessionDelete") {
         auto scenes=world.SceneControl();if(!scenes)return JS_ThrowTypeError(c,"No project scene session is active");
