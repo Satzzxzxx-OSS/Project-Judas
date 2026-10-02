@@ -35,3 +35,6 @@ void DrawTransformEditor(EditorDocument& doc, SceneObject& object);
 // A short string of indicator letters for the components an object has
 // (e.g. "RB" for render + body), in registry order.
 std::string ComponentIndicators(const SceneObject& object);
+
+void DrawCategoryLayer(EditorDocument&,const char*,unsigned&,const CategoryRegistry&);
+void DrawCategoryMask(EditorDocument&,const char*,CategoryMask&,const CategoryRegistry&,bool allowAll=true);

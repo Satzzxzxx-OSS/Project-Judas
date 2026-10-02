@@ -116,6 +116,9 @@ bool RuntimeWorld::InstantiateEntityBody(EntityRecord& record, const EntityPhysi
     }
     // Reconstruction hands the body its retained pose AND velocities: no
     // reset to rest, no impulse.
+    m_physics.SetCollisionFilter(handle,b.collisionLayer,b.collisionMask);
+    m_physics.SetBodyTags(handle,TagsOf(record.id));
+    m_entityCategories[record.id].body=handle;
     m_physics.ResetBody(handle, state.position, state.rotation);
     m_physics.SetLinearVelocity(handle, state.linearVelocity);
     m_physics.SetAngularVelocity(handle, state.angularVelocity);
@@ -189,10 +192,12 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
     return true;
 }
 
-bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError) {
+bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError, const ProjectClassification* categories) {
     Scene resolved, scene;
     if (!ResolvePrefabs(authored, resources ? resources->Assets() : nullptr, resolved, outError) ||
         !FlattenHierarchy(resolved, scene, outError)) return false;
+    const ProjectClassification selected=categories?*categories:ProjectClassification{};
+    if(!ValidateSceneClassification(scene,selected,outError))return false;
     int activeAudioListeners=0;
     for(const auto& o:scene.Objects())if(o.audioListener&&o.audioListener->enabled)++activeAudioListeners;
     if(activeAudioListeners>1){outError="more than one enabled audio listener";return false;}
@@ -216,6 +221,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     std::string fingerprint;
     if (!ComputeSceneFingerprint(scene, fingerprint, outError)) return false;
     Destroy();
+    m_categories=selected;
     m_assets = resources;
     m_audioSystem=resources?resources->GetAudioSystem():nullptr;
     m_settings = scene.Settings();
@@ -264,6 +270,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     };
 
     for (const SceneObject& o : scene.Objects()) {
+        m_entityCategories[o.id]={o.tags,o.tags,o.renderLayer,{}};
         const glm::vec3 position = o.transform.position;
         const glm::quat rotation = glm::normalize(o.transform.rotation);
 
@@ -337,6 +344,10 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
             return fail(o, "compound/terrain rendering needs a body");
         }
 
+        if(bodyHandle.IsValid()&&o.body){
+            m_physics.SetCollisionFilter(bodyHandle,o.body->collisionLayer,o.body->collisionMask);
+            m_physics.SetBodyTags(bodyHandle,o.tags);m_entityCategories[o.id].body=bodyHandle;
+        }
         // --- Renderable without a dynamic body ---
         if (o.render && !isDynamic && o.render->shape != SceneShape::Terrain && !o.door && !o.lightSwitch) {
             StaticRenderable sr;
@@ -423,6 +434,9 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
             m_doors.emplace_back(m_physics, position, rotation, o.render->halfExtents, o.door->localHingeAxis,
                                  glm::radians(o.door->openAngleDegrees),
                                  glm::radians(o.door->angularSpeedDegreesPerSecond), o.render->color);
+            const auto handle=m_doors.back().Handle();
+            m_physics.SetCollisionFilter(handle,o.door->collisionLayer,o.door->collisionMask);
+            m_physics.SetBodyTags(handle,o.tags);m_entityCategories[o.id].body=handle;
             m_doorIds.push_back(o.id);
         }
         if (o.lightSwitch) {
@@ -510,6 +524,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
 
         // --- Player start ---
         if (o.playerStart) {
+            m_physics.SetPlayerCollisionFilter(o.playerStart->collisionLayer,o.playerStart->collisionMask);
             if (m_playerStart) return fail(o, "more than one player-start");
             m_playerStart = PlayerStart{position, o.playerStart->yawDegrees, o.playerStart->view,
                 o.playerStart->density, o.playerStart->fluidDrag, o.playerStart->swimAcceleration};
@@ -624,6 +639,7 @@ bool RuntimeWorld::EmitFluidParticle() {
 
 void RuntimeWorld::RestoreAuthoredState() {
     if (!m_built) return;
+    for(auto& [id,info]:m_entityCategories){(void)id;info.tags=info.authoredTags;m_physics.SetBodyTags(info.body,info.tags);}
     // Every surviving entity returns to its definition's state at Full
     // fidelity (the policy re-decides on the next step). Destroyed entities
     // stay destroyed: destruction is permanent within a run.
@@ -890,6 +906,10 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
 
 bool RuntimeWorld::ValidateEntityCreation(const SceneObject& definition, std::string& error) const {
     if (!m_built) { error = "no world"; return false; }
+    Scene classified;auto classifiedDefinition=definition;
+    if(!classifiedDefinition.id)classifiedDefinition.id=1;
+    classified.InsertObject(classifiedDefinition);
+    if(!ValidateSceneClassification(classified,m_categories,error))return false;
     if (!ValidateEntityDefinition(definition, error) || !ValidateVisualAssets(definition, error)) return false;
     if (definition.render && definition.render->textureCamera) {
         const SceneObjectId reference = definition.render->textureCamera;
@@ -948,6 +968,7 @@ EntityId RuntimeWorld::SpawnPrefab(const AssetId& asset,const SceneTransform& pl
     Scene instance;instance.SetNextId(m_nextRuntimeId);SceneObjectId root=0;
     if(!InstantiatePrefab(instance,source,asset,placement,root,error))return 0;
     Scene flat;if(!FlattenHierarchy(instance,flat,error))return 0;
+    if(!ValidateSceneClassification(flat,m_categories,error))return 0;
     // Complete preflight before creating any member. The resolved hierarchy is
     // ordinary data; runtime state and saved creations never depend on a live source.
     for(auto& o:flat.Objects()){
@@ -1079,6 +1100,7 @@ void RuntimeWorld::Destroy() {
     m_dynamicBodies.clear();
     m_dynamicVisuals.clear();
     m_entities.clear();
+    m_entityCategories.clear();
     m_policy.reset();
     m_nextRuntimeId = kRuntimeEntityIdBase;
     m_entityVersion = 0;
@@ -1137,4 +1159,28 @@ void RuntimeWorld::UpdateVisualParticles(float dt){
 bool RuntimeWorld::EmitParticleBurst(SceneObjectId id,unsigned count){
     for(auto& e:m_particleEmitters)if(e.id==id){const auto t=PresentedTransform(e.id,e.transform,1);e.pool.Burst(count,t.position,t.rotation,t.scale);return true;}
     return false;
+}
+
+CategoryMask RuntimeWorld::TagsOf(EntityId id)const{
+    const auto it=m_entityCategories.find(id);const auto* entity=FindEntity(id);
+    return it==m_entityCategories.end()||(entity&&entity->lifecycle==EntityLifecycle::Destroyed)?0:it->second.tags;
+}
+unsigned RuntimeWorld::RenderLayerOf(EntityId id)const{const auto it=m_entityCategories.find(id);return it==m_entityCategories.end()?0:it->second.renderLayer;}
+bool RuntimeWorld::AddTag(EntityId id,unsigned tag){
+    auto it=m_entityCategories.find(id);const auto* entity=FindEntity(id);
+    if(it==m_entityCategories.end()||!m_categories.tags.names.count(tag)||(entity&&entity->lifecycle==EntityLifecycle::Destroyed))return false;
+    it->second.tags|=CategoryBit(tag);m_physics.SetBodyTags(it->second.body,it->second.tags);return true;
+}
+bool RuntimeWorld::RemoveTag(EntityId id,unsigned tag){
+    auto it=m_entityCategories.find(id);if(it==m_entityCategories.end()||tag>=64)return false;
+    it->second.tags&=~CategoryBit(tag);m_physics.SetBodyTags(it->second.body,it->second.tags);return true;
+}
+std::vector<EntityId> RuntimeWorld::QueryEntities(CategoryMask required,CategoryMask excluded,const std::vector<EntityId>* candidates)const{
+    std::vector<EntityId> result;
+    for(const auto& [id,info]:m_entityCategories){
+        if(candidates&&std::find(candidates->begin(),candidates->end(),id)==candidates->end())continue;
+        const auto* e=FindEntity(id);if(e&&e->lifecycle==EntityLifecycle::Destroyed)continue;
+        if((info.tags&required)==required&&!(info.tags&excluded))result.push_back(id);
+    }
+    return result;
 }

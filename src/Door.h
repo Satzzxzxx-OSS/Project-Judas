@@ -39,6 +39,7 @@ public:
          const glm::vec3& halfExtents, const glm::vec3& localHingeAxis, float openAngleRadians,
          float angularSpeedRadiansPerSecond, const glm::vec3& color);
 
+    BodyHandle Handle() const { return m_bodyHandle; }
     void Destroy(PhysicsWorld& physics);
 
     // Advances the door's own open/close animation by one fixed step and

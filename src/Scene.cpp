@@ -83,6 +83,7 @@ bool OptEq(const std::optional<T>& a, const std::optional<T>& b, F&& equal) {
 }  // namespace
 
 bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
+    if (a.tags != b.tags || a.renderLayer != b.renderLayer) return false;
     if (a.id != b.id || a.name != b.name || a.parent != b.parent ||
         a.prefabAsset != b.prefabAsset || a.prefabRoot != b.prefabRoot ||
         a.prefabSource != b.prefabSource || a.prefabIds != b.prefabIds ||
@@ -105,6 +106,7 @@ bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
         return x.asset==y.asset&&x.enabled==y.enabled&&x.playOnStart==y.playOnStart&&x.loop==y.loop&&x.spatial==y.spatial&&x.volume==y.volume&&x.pitch==y.pitch&&x.referenceDistance==y.referenceDistance&&x.maximumDistance==y.maximumDistance&&x.rolloff==y.rolloff&&x.attenuation==y.attenuation;
     }) || !OptEq(a.audioListener,b.audioListener,[](const auto& x,const auto& y){return x.enabled==y.enabled&&x.followActiveView==y.followActiveView;})) return false;
     if (!OptEq(a.body, b.body, [](const SceneBodyComponent& x, const SceneBodyComponent& y) {
+            if (x.collisionLayer != y.collisionLayer || x.collisionMask != y.collisionMask) return false;
             if (x.compoundBoxes.size() != y.compoundBoxes.size()) return false;
             for (std::size_t i = 0; i < x.compoundBoxes.size(); ++i) {
                 if (!Eq(x.compoundBoxes[i].localCenter, y.compoundBoxes[i].localCenter) ||
@@ -141,7 +143,7 @@ bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
         return false;
     }
     if (!OptEq(a.door, b.door, [](const SceneDoorComponent& x, const SceneDoorComponent& y) {
-            return Eq(x.localHingeAxis, y.localHingeAxis) && x.openAngleDegrees == y.openAngleDegrees &&
+            return Eq(x.localHingeAxis, y.localHingeAxis) && x.collisionLayer == y.collisionLayer && x.collisionMask == y.collisionMask && x.openAngleDegrees == y.openAngleDegrees &&
                    x.angularSpeedDegreesPerSecond == y.angularSpeedDegreesPerSecond;
         })) {
         return false;
@@ -205,14 +207,14 @@ bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
                [](const ScenePlayerStartComponent& x, const ScenePlayerStartComponent& y) {
                    return x.yawDegrees == y.yawDegrees && x.view == y.view &&
                           x.density == y.density && x.fluidDrag == y.fluidDrag &&
-                          x.swimAcceleration == y.swimAcceleration;
+                          x.swimAcceleration == y.swimAcceleration && x.collisionLayer == y.collisionLayer && x.collisionMask == y.collisionMask;
                })) {
         return false;
     }
     if (!OptEq(a.renderCamera, b.renderCamera, [](const SceneRenderCameraComponent& x, const SceneRenderCameraComponent& y) {
         return x.enabled == y.enabled && x.width == y.width && x.height == y.height &&
             x.updateEveryFrames == y.updateEveryFrames && x.verticalFovDegrees == y.verticalFovDegrees &&
-            x.nearPlane == y.nearPlane && x.farPlane == y.farPlane;
+            x.nearPlane == y.nearPlane && x.farPlane == y.farPlane && x.renderMask == y.renderMask;
     })) return false;
     return true;
 }
@@ -220,6 +222,7 @@ bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
 bool ScenesEqual(const Scene& a, const Scene& b) {
     const SceneSettings& sa = a.Settings();
     const SceneSettings& sb = b.Settings();
+    if(sa.mainCameraRenderMask!=sb.mainCameraRenderMask)return false;
     if (sa.name != sb.name || !Eq(sa.worldOrigin, sb.worldOrigin) ||
         !Eq(sa.sunDirection, sb.sunDirection) || !Eq(sa.sunColor, sb.sunColor) ||
         !Eq(sa.ambientColor, sb.ambientColor) || sa.fluidScale != sb.fluidScale ||

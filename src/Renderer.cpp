@@ -1095,6 +1095,7 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
                          const glm::vec3& tintColor, float alpha) {
     GpuMesh* gpuMesh = GetMesh(mesh);
     if (!gpuMesh) return;
+    if(!m_shadowPassActive&&!AllowsLayer(m_renderLayer)){++m_stats.layerRejectedDraws;return;}
 
     const glm::mat4 model = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(rotation) *
                              glm::scale(glm::mat4(1.0f), scale);
@@ -1383,6 +1384,7 @@ bool Renderer::BeginRenderTarget(RenderTargetHandle target) {
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &m_savedDrawFramebuffer);
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &m_savedReadFramebuffer);
     glGetIntegerv(GL_VIEWPORT, m_savedViewport);
+    m_savedRenderMask=m_renderMask;m_savedRenderLayer=m_renderLayer;
     m_savedView = m_view; m_savedProjection = m_projection; m_activeTarget = target;
     const auto& gpu = m_targets[target.id];
     glBindFramebuffer(GL_FRAMEBUFFER, gpu.framebuffer);
@@ -1394,7 +1396,7 @@ void Renderer::EndRenderTarget() {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(m_savedDrawFramebuffer));
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(m_savedReadFramebuffer));
     glViewport(m_savedViewport[0], m_savedViewport[1], m_savedViewport[2], m_savedViewport[3]);
-    SetCamera(m_savedView,m_savedProjection); m_activeTarget = {};
+    SetCamera(m_savedView,m_savedProjection);m_renderMask=m_savedRenderMask;m_renderLayer=m_savedRenderLayer; m_activeTarget = {};
 }
 
 Renderer::TargetDiagnostics Renderer::RenderTargetDiagnostics() const {
@@ -1415,6 +1417,7 @@ void Renderer::FinishForDiagnostics() const { glFinish(); }
 
 void Renderer::DrawParticles(const std::vector<ParticleBillboard>& particles,const VisualBounds& bounds,TextureHandle texture){
     if(m_shadowPassActive||particles.empty())return;
+    if(!AllowsLayer(m_renderLayer)){++m_stats.layerRejectedEmitters;return;}
     ++m_stats.particleEmittersConsidered;
     if(!IsVisible(bounds)){++m_stats.particleEmittersCulled;return;}
     ++m_stats.particleEmittersVisible;

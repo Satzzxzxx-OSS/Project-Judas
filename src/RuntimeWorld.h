@@ -209,7 +209,7 @@ public:
     // missing or undecodable shows as a placeholder and reads Failed in the
     // resource manager. On failure nothing is left allocated and `outError`
     // says which object/component could not be realised.
-    bool Build(const Scene& scene, ResourceManager* resources, std::string& outError);
+    bool Build(const Scene& scene, ResourceManager* resources, std::string& outError, const ProjectClassification* categories=nullptr);
     ResourceManager* Resources() const { return m_assets; }
     void Destroy();
     bool IsBuilt() const { return m_built; }
@@ -273,6 +273,14 @@ public:
     // Every dynamic body is a persistent entity with a record here, in
     // slot order (parallel to DynamicBodies()). Static content is not an
     // entity in this sense: it never changes and needs no lifecycle.
+    const ProjectClassification& Categories() const { return m_categories; }
+    CategoryMask TagsOf(EntityId id) const;
+    bool HasTag(EntityId id,unsigned tag) const {return (TagsOf(id)&CategoryBit(tag))!=0;}
+    bool AddTag(EntityId id,unsigned tag);
+    bool RemoveTag(EntityId id,unsigned tag);
+    unsigned RenderLayerOf(EntityId id) const;
+    std::vector<EntityId> QueryEntities(CategoryMask requiredTags,CategoryMask excludedTags=0,
+                                      const std::vector<EntityId>* candidates=nullptr) const;
     const std::vector<EntityRecord>& Entities() const { return m_entities; }
     std::vector<EntityRecord>& MutableEntities() { return m_entities; }
     const EntityRecord* FindEntity(EntityId id) const;
@@ -358,6 +366,9 @@ private:
     bool ValidateVisualAssets(const SceneObject& o, std::string& outError) const;
     void RebuildCelestialParticipants();
 
+    struct EntityCategories {CategoryMask tags=0, authoredTags=0;unsigned renderLayer=0;BodyHandle body;};
+    ProjectClassification m_categories;
+    std::map<EntityId,EntityCategories> m_entityCategories;
     bool m_built = false;
     PhysicsWorld m_physics;
     bool AppendSceneObjects(const Scene& scene, bool authored, const FidelityPolicyContext& context, std::string& error);

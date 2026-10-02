@@ -1381,3 +1381,7 @@ M36 adds linked prefab assets, stable hierarchy IDs, property overrides and runt
 
 M37 adds per-camera frustum culling and authored visual particle emitters. See
 [docs/M37.md](docs/M37.md); demo: `./build/judas assets/scenes/particle_demo.judas`.
+
+M39 adds project-defined tags, collision layers/masks, independent query filters
+and per-camera render masks. See [docs/M39.md](docs/M39.md). Demo:
+`./build/judas_editor projects/classification_demo/Classification_and_filtering.judasproj`.

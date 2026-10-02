@@ -8692,3 +8692,13 @@ at Linux user data; authored serialization and baseline fingerprints are unchang
 All registered assets are included to support runtime ID loading, with no editor
 runtime dependency. System SDL2/graphics/audio/C++ libraries remain platform
 requirements. See `docs/M38.md` for layout, replacement guarantees and limits.
+
+## M39 classification
+
+Project owns independent stable tag/collision/render registries (64 lifetime IDs
+per registry). Entity tags are multi-valued; bodies have one collision layer and
+bilateral masks; explicit broadphase/capsule queries have their own filter.
+Renderer applies each camera's mask before its M37 frustum; simulation is unchanged.
+Normal scene/prefab property serialization carries assignments and the optional
+canonical fingerprint extension covers nondefault effective authored values.
+Default legacy behaviour is preserved. See `docs/M39.md` for APIs and limits.

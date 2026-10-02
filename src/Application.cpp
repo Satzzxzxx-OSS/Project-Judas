@@ -80,7 +80,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     if (control && control->hostReady) control->hostReady(host);
 
     RuntimeWorld world;
-    if (!world.Build(scene, &host.Resources(), error)) {
+    if (!world.Build(scene, &host.Resources(), error, options.project.IsLoaded()?&options.project.Settings().classification:nullptr)) {
         std::fprintf(stderr, "Scene '%s' could not be instantiated: %s\n", options.scenePath.c_str(),
                      error.c_str());
         return 1;

@@ -1,3 +1,4 @@
+#include <charconv>
 #include "SceneSerialization.h"
 #include "Prefab.h"
 #include "AssetDatabase.h"
@@ -87,6 +88,8 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    if(o.tags) w.Line("tags", std::to_string(o.tags));
+    if(o.renderLayer) w.Line("render-layer", std::to_string(o.renderLayer));
     w.Line("position", V(o.transform.position));
     w.Line("rotation", Q(o.transform.rotation));
     w.Line("scale", V(o.transform.scale));
@@ -134,6 +137,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
     if (o.renderCamera) {
         const auto& c = *o.renderCamera;
         w.Line("render-camera", "");
+        if(c.renderMask!=kAllCategories) w.Line("camera.render-mask",std::to_string(c.renderMask));
         w.Line("camera.enabled", c.enabled ? "true" : "false");
         w.Line("camera.width", std::to_string(c.width));
         w.Line("camera.height", std::to_string(c.height));
@@ -146,6 +150,8 @@ void WriteObject(Writer& w, const SceneObject& o) {
         const SceneBodyComponent& b = *o.body;
         w.Line("body", std::string(b.motion == SceneBodyMotion::Static ? "static" : "dynamic") +
                            " " + ShapeName(b.shape));
+        if(b.collisionLayer) w.Line("body.collision-layer",std::to_string(b.collisionLayer));
+        if(b.collisionMask!=kAllCategories) w.Line("body.collision-mask",std::to_string(b.collisionMask));
         w.Line("body.half-extents", V(b.halfExtents));
         w.Line("body.radius", F(b.radius));
         w.Line("body.terrain", Quote(b.terrainSurface));
@@ -181,6 +187,8 @@ void WriteObject(Writer& w, const SceneObject& o) {
     }
     if (o.door) {
         const SceneDoorComponent& d = *o.door;
+        if(d.collisionLayer)w.Line("door.collision-layer",std::to_string(d.collisionLayer));
+        if(d.collisionMask!=kAllCategories)w.Line("door.collision-mask",std::to_string(d.collisionMask));
         w.Line("door", "");
         w.Line("door.hinge-axis", V(d.localHingeAxis));
         w.Line("door.open-angle", F(d.openAngleDegrees));
@@ -242,6 +250,8 @@ void WriteObject(Writer& w, const SceneObject& o) {
     }
     if (o.playerStart) {
         const ScenePlayerStartComponent& p = *o.playerStart;
+        if(p.collisionLayer) w.Line("player-start.collision-layer",std::to_string(p.collisionLayer));
+        if(p.collisionMask!=kAllCategories) w.Line("player-start.collision-mask",std::to_string(p.collisionMask));
         w.Line("player-start", p.view == ScenePlayerView::ThirdPerson ? "third-person" : "first-person");
         w.Line("player-start.yaw", F(p.yawDegrees));
         w.Line("player-start.density", F(p.density));
@@ -414,6 +424,17 @@ public:
         out = static_cast<SceneObjectId>(value); return Consume(key);
     }
 
+    bool Mask(const std::string& key, CategoryMask& out) {
+        const auto* t=Require(key,1); if(!t)return false;
+        const auto& text=(*t)[0].text; auto result=std::from_chars(text.data(),text.data()+text.size(),out);
+        if((*t)[0].quoted||result.ec!=std::errc{}||result.ptr!=text.data()+text.size())return m_reader.Fail("invalid mask "+key);
+        return Consume(key);
+    }
+    bool Layer(const std::string& key,unsigned& out) {
+        int value=0;if(!Int(key,value))return false;
+        if(value<0||value>=64)return m_reader.Fail("layer must be in [0,63]");
+        out=unsigned(value);return true;
+    }
     bool Int(const std::string& key, int& out) {
         const std::vector<Token>* t = Require(key, 1);
         if (!t) return false;
@@ -535,6 +556,7 @@ bool ParseSettings(Reader& reader, const Block& block, Scene& scene) {
     } else {
         return reader.Fail("fidelity-policy must be 'none' or 'distance <fullRadius> <coarseRadius>'");
     }
+    if(p.Has("main-camera.render-mask")&&!p.Mask("main-camera.render-mask",s.mainCameraRenderMask))return false;
     int nextId = 0;
     if (!p.Int("next-id", nextId)) return false;
     if (nextId < 1) return reader.Fail("next-id must be at least 1");
@@ -553,6 +575,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     o.name = header[2].text;
 
     ObjectParser p(reader, block);
+    if(p.Has("tags")&&!p.Mask("tags",o.tags))return false;
+    if(p.Has("render-layer")&&!p.Layer("render-layer",o.renderLayer))return false;
     if (p.Has("parent") && !p.Id("parent", o.parent)) return false;
     if (p.Has("prefab.root")) {
         std::string ids, overrides;
@@ -635,6 +659,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     }
     if (p.Has("render-camera")) {
         SceneRenderCameraComponent c;
+        if(p.Has("camera.render-mask")&&!p.Mask("camera.render-mask",c.renderMask))return false;
         if (!p.Header("render-camera", 0, 0) || !p.Bool("camera.enabled", c.enabled) ||
             !p.Int("camera.width", c.width) || !p.Int("camera.height", c.height) ||
             !p.Int("camera.cadence", c.updateEveryFrames) || !p.Float("camera.fov", c.verticalFovDegrees) ||
@@ -646,6 +671,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     }
     if (p.Has("body")) {
         SceneBodyComponent b;
+        if(p.Has("body.collision-layer")&&!p.Layer("body.collision-layer",b.collisionLayer))return false;
+        if(p.Has("body.collision-mask")&&!p.Mask("body.collision-mask",b.collisionMask))return false;
         const std::vector<Token>* h = p.Header("body", 2, 2);
         if (!h) return false;
         if ((*h)[0].text == "static") b.motion = SceneBodyMotion::Static;
@@ -752,6 +779,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     }
     if (p.Has("door")) {
         SceneDoorComponent d;
+        if(p.Has("door.collision-layer")&&!p.Layer("door.collision-layer",d.collisionLayer))return false;
+        if(p.Has("door.collision-mask")&&!p.Mask("door.collision-mask",d.collisionMask))return false;
         if (!p.Header("door", 0, 0)) return false;
         if (!p.Vec3("door.hinge-axis", d.localHingeAxis)) return false;
         if (!p.Float("door.open-angle", d.openAngleDegrees)) return false;
@@ -849,6 +878,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     }
     if (p.Has("player-start")) {
         ScenePlayerStartComponent ps;
+        if(p.Has("player-start.collision-layer")&&!p.Layer("player-start.collision-layer",ps.collisionLayer))return false;
+        if(p.Has("player-start.collision-mask")&&!p.Mask("player-start.collision-mask",ps.collisionMask))return false;
         const std::vector<Token>* h = p.Header("player-start", 1, 1);
         if (!h) return false;
         if ((*h)[0].text == "third-person") ps.view = ScenePlayerView::ThirdPerson;
@@ -929,6 +960,7 @@ bool SaveSceneToString(const Scene& scene, std::string& outText) {
     w.Line("fidelity-policy", s.fidelityPolicy == SceneFidelityPolicy::None
                                   ? std::string("none")
                                   : "distance " + F(s.fidelityFullRadius) + " " + F(s.fidelityCoarseRadius));
+    if(s.mainCameraRenderMask!=kAllCategories)w.Line("main-camera.render-mask",std::to_string(s.mainCameraRenderMask));
     w.Line("next-id", std::to_string(scene.NextId()));
     w.Raw("end\n");
     for (const SceneObject& o : scene.Objects()) {

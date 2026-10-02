@@ -466,7 +466,7 @@ bool EditorApplication::RunProject(std::string& outMessage) {
 
 bool EditorApplication::StartPlay(std::string& outError) {
     m_world = std::make_unique<RuntimeWorld>();
-    if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError)) {
+    if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError, &m_project.Settings().classification)) {
         m_world.reset();
         return false;
     }

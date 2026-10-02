@@ -49,7 +49,7 @@ bool ReleaseRuntime(const fs::path& executable) {
     while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
     return WIFEXITED(status) && WEXITSTATUS(status) == 0 && text == "Judas runtime Linux Release\n";
 }
-void References(const Scene& scene, const AssetDatabase& assets) {
+void References(const Scene& scene, const AssetDatabase& assets, const ProjectClassification& categories) {
     const auto check = [&](const AssetId& id, AssetType type) {
         if (id.empty()) return;
         const auto* record = assets.Find(id);
@@ -67,6 +67,7 @@ void References(const Scene& scene, const AssetDatabase& assets) {
     }
     Scene resolved; std::string error;
     Require(ResolvePrefabs(scene, &assets, resolved, error), "Prefab resolution: " + error);
+    Require(ValidateSceneClassification(resolved,categories,error),"Classification: "+error);
     // Overrides/source content must be validated too, not just placeholders.
     for (const auto& object : resolved.Objects()) {
         if (object.render) {
@@ -132,7 +133,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             Scene scene; std::string detail;
             const bool loaded = LoadSceneFromFile(path.string(), scene, detail);
             Require(loaded, "Invalid scene " + path.string() + ": " + detail);
-            References(scene, assets);
+            References(scene, assets, project.Settings().classification);
         }
         for (const auto& [id, record] : assets.Records()) {
             (void)id; std::string detail;
@@ -142,7 +143,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             Require(valid, "Invalid asset " + record.relativePath + ": " + detail);
             if (record.type == AssetType::Prefab) {
                 Scene prefab; Require(LoadSceneFromFile(record.path, prefab, detail), detail);
-                References(prefab, assets);
+                References(prefab, assets, project.Settings().classification);
             }
         }
         fs::create_directories(destination.parent_path());

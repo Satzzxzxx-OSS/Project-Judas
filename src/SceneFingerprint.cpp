@@ -302,6 +302,22 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
             w.Text(e.textureAsset);w.U32(e.seed);
         }
     }
+    bool classified=s.mainCameraRenderMask!=kAllCategories;
+    for(const auto& o:scene.Objects()) classified|=o.tags||o.renderLayer||
+        (o.body&&(o.body->collisionLayer||o.body->collisionMask!=kAllCategories))||
+        (o.door&&(o.door->collisionLayer||o.door->collisionMask!=kAllCategories))||
+        (o.playerStart&&(o.playerStart->collisionLayer||o.playerStart->collisionMask!=kAllCategories))||
+        (o.renderCamera&&o.renderCamera->renderMask!=kAllCategories);
+    if(classified){w.Text("Judas.Classification.1");w.U64(s.mainCameraRenderMask);
+        for(const auto& o:scene.Objects()){
+            w.U64(o.id);w.U64(o.tags);w.U32(o.renderLayer);
+            if(o.renderLayer>=64)w.Fail("invalid render layer");
+            w.Boolean(bool(o.body));if(o.body){w.U32(o.body->collisionLayer);w.U64(o.body->collisionMask);if(o.body->collisionLayer>=64)w.Fail("invalid collision layer");}
+            w.Boolean(bool(o.door));if(o.door){w.U32(o.door->collisionLayer);w.U64(o.door->collisionMask);if(o.door->collisionLayer>=64)w.Fail("invalid door layer");}
+            w.Boolean(bool(o.playerStart));if(o.playerStart){w.U32(o.playerStart->collisionLayer);w.U64(o.playerStart->collisionMask);if(o.playerStart->collisionLayer>=64)w.Fail("invalid player layer");}
+            w.Boolean(bool(o.renderCamera));if(o.renderCamera)w.U64(o.renderCamera->renderMask);
+        }
+    }
     if (!w.Error().empty()) { outError = w.Error(); return false; }
     outFingerprint = SceneFingerprintSha256(w.Bytes());
     return true;

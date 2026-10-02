@@ -57,6 +57,7 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
+    src/Classification.cpp
     src/GamePackage.cpp
     src/ProjectExporter.cpp
     src/AudioData.cpp
@@ -893,3 +894,8 @@ target_compile_options(judas_export_tests PRIVATE -Wall -Wextra)
 add_executable(judas_package_application_tests tests/PackageApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_package_application_tests PRIVATE judas_engine)
 target_compile_options(judas_package_application_tests PRIVATE -Wall -Wextra)
+
+# M39: normal project/runtime/physics/GL classification consumers.
+add_executable(judas_classification_tests tests/ClassificationTests.cpp src/editor/EditorHistory.cpp)
+target_link_libraries(judas_classification_tests PRIVATE judas_engine)
+target_compile_options(judas_classification_tests PRIVATE -Wall -Wextra)

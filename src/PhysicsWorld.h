@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "CollisionShapes.h"
+#include "Classification.h"
 
 // Opaque handle to a body inside PhysicsWorld. Deliberately not tied to
 // any concrete physics-engine body-ID representation — no file outside
@@ -15,6 +16,13 @@ struct BodyHandle {
     unsigned int id = kInvalidId;
 
     bool IsValid() const { return id != kInvalidId; }
+};
+
+// Query policy is independent of bilateral physical collision masks.
+struct PhysicsQueryFilter {
+    CategoryMask includeLayers=kAllCategories, excludeLayers=0;
+    CategoryMask requiredTags=0, excludedTags=0;
+    std::vector<BodyHandle> ignoredBodies;
 };
 
 struct BodyTransform {
@@ -140,6 +148,7 @@ public:
         std::size_t dynamicBodies = 0;
         std::size_t possiblePairs = 0;
         std::size_t candidatePairs = 0;
+        std::size_t layerRejectedPairs = 0;
         std::size_t collidingPairs = 0;
         std::size_t contactPoints = 0;
         std::size_t proxyReinsertions = 0;
@@ -174,7 +183,11 @@ public:
     // body whose broadphase bound overlaps the box. Conservative (bounds are
     // grown by a margin); callers still test real geometry. Results are in
     // ascending handle-slot order, so iteration order is deterministic.
-    std::vector<BodyHandle> QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max) const;
+    std::vector<BodyHandle> QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max, const PhysicsQueryFilter& filter = {}) const;
+    bool SetCollisionFilter(BodyHandle,unsigned layer,CategoryMask mask);
+    bool GetCollisionFilter(BodyHandle,unsigned& layer,CategoryMask& mask) const;
+    bool SetBodyTags(BodyHandle,CategoryMask tags);
+    void SetPlayerCollisionFilter(unsigned layer,CategoryMask mask);
     // The (fat) broadphase bound of a body, for the debug view.
     bool GetBodyBroadphaseBounds(BodyHandle handle, glm::vec3& outMin, glm::vec3& outMax) const;
 
@@ -385,7 +398,8 @@ public:
                                     const glm::vec3& displacement,
                                     bool interpolateDynamicBodyMotion = false,
                                     float bodyMotionStart = 0.0f,
-                                    float bodyMotionEnd = 1.0f) const;
+                                    float bodyMotionEnd = 1.0f,
+                                    const PhysicsQueryFilter* filter = nullptr) const;
 
 private:
     struct Impl;

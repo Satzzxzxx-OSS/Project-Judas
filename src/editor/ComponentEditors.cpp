@@ -6,6 +6,7 @@
 #include "imgui.h"
 
 #include "AssetDatabase.h"
+#include "Project.h"
 #include "EditorPanels.h"
 #include "EditorWidgets.h"
 
@@ -93,8 +94,9 @@ void DrawAudioListener(EditorDocument& doc,SceneObject& o,EditorPanelState&){
     ImGui::TextDisabled("One enabled listener per scene. Local -Z forward / +Y up.");
 }
 
-void DrawRenderCamera(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
+void DrawRenderCamera(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     auto& c = *o.renderCamera;
+    if(state.project)DrawCategoryMask(doc,"Render mask",c.renderMask,state.project->Settings().classification.render);
     Checkbox(doc, "Enabled", c.enabled);
     DragInt(doc, "Target width", c.width, 1, 4096);
     DragInt(doc, "Target height", c.height, 1, 4096);
@@ -145,6 +147,7 @@ void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
 
 void DrawBody(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     SceneBodyComponent& b = *o.body;
+    if(state.project){DrawCategoryLayer(doc,"Collision layer",b.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",b.collisionMask,state.project->Settings().classification.collision);}
     Combo(doc, "Motion", b.motion, kMotionNames, 2);
     Combo(doc, "Collider", b.shape, kBodyShapeNames, 5);
     if (b.shape == SceneShape::Box) DragVec3(doc, "Half extents##body", b.halfExtents, 0.01f);
@@ -224,7 +227,8 @@ void DrawLight(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
     }
 }
 
-void DrawDoor(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
+void DrawDoor(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
+    if(state.project){auto& d=*o.door;DrawCategoryLayer(doc,"Collision layer",d.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",d.collisionMask,state.project->Settings().classification.collision);}
     DragVec3(doc, "Hinge axis (local)", o.door->localHingeAxis, 0.01f);
     DragScalar(doc, "Open angle (deg)", o.door->openAngleDegrees, 0.5f, 0.0f, 180.0f);
     DragScalar(doc, "Angular speed (deg/s)", o.door->angularSpeedDegreesPerSecond, 1.0f, 0.0f, 3600.0f);
@@ -294,7 +298,8 @@ void DrawFluidVolume(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
     ImGui::TextDisabled("Lattice grows along local +Y from the object.");
 }
 
-void DrawPlayerStart(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
+void DrawPlayerStart(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
+    if(state.project){auto& p=*o.playerStart;DrawCategoryLayer(doc,"Collision layer",p.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",p.collisionMask,state.project->Settings().classification.collision);}
     DragScalar(doc, "Yaw (deg)", o.playerStart->yawDegrees, 0.5f, -360.0f, 360.0f);
     Combo(doc, "View", o.playerStart->view, kViewNames, 2);
     DragScalar(doc, "Density (kg/m^3)", o.playerStart->density, 1.0f, 0.001f, 1.0e6f);
@@ -364,4 +369,24 @@ std::string ComponentIndicators(const SceneObject& object) {
         if (editor.has(object)) out += editor.indicator;
     }
     return out;
+}
+
+void DrawCategoryLayer(EditorDocument& doc,const char* label,unsigned& value,const CategoryRegistry& registry){
+    auto it=registry.names.find(value);const std::string preview=it==registry.names.end()?"[unregistered ID "+std::to_string(value)+"]":it->second;
+    if(ImGui::BeginCombo(label,preview.c_str())){
+        for(const auto& [id,name]:registry.names)if(ImGui::Selectable(name.c_str(),id==value)){doc.BeginEdit();value=id;doc.CommitEdit();}
+        ImGui::EndCombo();
+    }
+}
+void DrawCategoryMask(EditorDocument& doc,const char* label,CategoryMask& mask,const CategoryRegistry& registry,bool allowAll){
+    if(ImGui::TreeNode(label)){
+        if(allowAll&&ImGui::Button("All (including future layers)")){doc.BeginEdit();mask=kAllCategories;doc.CommitEdit();}
+        if(ImGui::Button("None")){doc.BeginEdit();mask=0;doc.CommitEdit();}
+        for(const auto& [id,name]:registry.names){bool selected=(mask&CategoryBit(id))!=0;ImGui::PushID(int(id));
+            if(ImGui::Checkbox(name.c_str(),&selected)){doc.BeginEdit();if(selected)mask|=CategoryBit(id);else mask&=~CategoryBit(id);doc.CommitEdit();}
+            ImGui::PopID();
+        }
+        if(!allowAll&&(mask&~registry.ActiveMask()))ImGui::TextColored(ImVec4(1,.3f,.2f,1),"Contains retired/unregistered tags");
+        ImGui::TreePop();
+    }
 }

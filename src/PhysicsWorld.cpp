@@ -153,6 +153,8 @@ struct PhysicsWorld::Impl {
         std::optional<PreparedShapeBounds> boundPreparation;
         bool boundPreparationValid = false;
         PoseBound currentBound, previousBound;
+        unsigned collisionLayer=0;
+        CategoryMask collisionMask=kAllCategories, tags=0;
         float friction = 0.5f;
         float restitution = 0.0f;
         bool isDynamic = false;
@@ -450,6 +452,7 @@ struct PhysicsWorld::Impl {
         scheduledImpacts.clear();
         std::map<std::array<unsigned,4>,std::size_t> scheduledIndex;
         auto schedule=[&](const std::array<unsigned,4>& key) {
+            if(!CanCollide(key[0],key[1]))return;
             const double time=std::binary_search(supportPairs.begin(),supportPairs.end(),key) ? double(dt)+1 :
                 ImpactTime(key[0],key[1],int(key[2]),int(key[3]),now,dt);
             const auto found=scheduledIndex.find(key);
@@ -477,7 +480,7 @@ struct PhysicsWorld::Impl {
                 const unsigned a=island[next]; const auto pose=PoseAt(a,now);
                 const auto candidates=QuerySlots(ShapeAabb(bodies[a].shape,pose.position,pose.orientation));
                 for (unsigned b:candidates) {
-                    if (a==b) continue;
+                    if (a==b || !CanCollide(a,b)) continue;
                     const auto pair=std::minmax(a,b);
                     if (std::find(touching.begin(),touching.end(),std::pair<unsigned,unsigned>(pair))!=touching.end()) continue;
                     bool hit=false;
@@ -554,7 +557,7 @@ struct PhysicsWorld::Impl {
                    std::find(changed.begin(),changed.end(),event.key[1])!=changed.end()) dirty.push_back(event.key);
             for(unsigned slot:changed) {
                 const auto candidates=QuerySlots(tree.FatAabb(bodies[slot].proxy));
-                for(unsigned other:candidates) if(other!=slot) {
+                for(unsigned other:candidates) if(other!=slot && CanCollide(slot,other)) {
                     const auto a=std::min(slot,other),b=std::max(slot,other);
                     for(int pa=0;pa<PrimitiveCount(bodies[a].shape);++pa)
                         for(int pb=0;pb<PrimitiveCount(bodies[b].shape);++pb)
@@ -713,6 +716,16 @@ struct PhysicsWorld::Impl {
     // Candidate pairs (lo, hi) for every pair with at least one movable
     // body, in ascending lexicographic slot order — the same order the
     // pre-M32 all-pairs loop visited them in, restricted to candidates.
+    bool CanCollide(unsigned a,unsigned b) const {
+        return CollisionPermitted(bodies[a].collisionLayer,bodies[a].collisionMask,bodies[b].collisionLayer,bodies[b].collisionMask);
+    }
+    bool MatchesQuery(unsigned slot,const PhysicsQueryFilter& filter) const {
+        const auto& b=bodies[slot]; const auto bit=CategoryBit(b.collisionLayer);
+        if(!(filter.includeLayers&bit)||(filter.excludeLayers&bit)||
+           (b.tags&filter.requiredTags)!=filter.requiredTags||(b.tags&filter.excludedTags))return false;
+        for(const auto handle:filter.ignoredBodies)if(handle.id==MakeHandle(slot).id)return false;
+        return true;
+    }
     void GenerateCandidatePairs() {
         candidatePairs.clear();
         for (const unsigned int slot : aliveSlots) {
@@ -725,6 +738,7 @@ struct PhysicsWorld::Impl {
                 // A pair of two movable bodies is found by both queries;
                 // keep it from the lower slot's query only.
                 if (!b.rigidBody.IsStatic() && other < slot) return;
+                if(!CanCollide(slot,other)){++stats.layerRejectedPairs;return;}
                 candidatePairs.emplace_back(std::min(slot, other), std::max(slot, other));
             });
         }
@@ -737,6 +751,8 @@ struct PhysicsWorld::Impl {
         return handle;
     }
 
+    unsigned playerCollisionLayer=0;
+    CategoryMask playerCollisionMask=kAllCategories;
     bool hasPlayerShape = false;
     Shape playerShape;
 
@@ -1197,7 +1213,7 @@ void PhysicsWorld::SolveParticleContacts(std::vector<ContactParticle>& particles
         const float queryMargin=(surfaceSpeed(w.bodies[slot])+maximumBodySpeed+maximumParticleSpeed)*remainingRigidDt;
         const auto neighbors = w.QuerySlots(w.CurrentBound(w.bodies[slot]).Expanded(queryMargin));
         for (const unsigned other : neighbors) {
-            if (other==slot) continue;
+            if (other==slot || !w.CanCollide(slot,other)) continue;
             const auto pair = std::minmax(slot,other);
             if (!inspected.emplace(pair.first,pair.second).second) continue;
             auto& a = w.bodies[pair.first]; auto& b = w.bodies[pair.second];
@@ -1658,10 +1674,10 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
 
 const PhysicsWorld::StepStats& PhysicsWorld::LastStepStats() const { return m_impl->stats; }
 
-std::vector<BodyHandle> PhysicsWorld::QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max) const {
+std::vector<BodyHandle> PhysicsWorld::QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max, const PhysicsQueryFilter& filter) const {
     std::vector<BodyHandle> result;
     for (const unsigned int slot : m_impl->QuerySlots(Aabb{glm::min(min, max), glm::max(min, max)})) {
-        result.push_back(m_impl->MakeHandle(slot));
+        if(m_impl->MatchesQuery(slot,filter))result.push_back(m_impl->MakeHandle(slot));
     }
     return result;
 }
@@ -1824,7 +1840,7 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
                                               const glm::vec3& displacement,
                                               bool interpolateDynamicBodyMotion,
                                               float bodyMotionStart,
-                                              float bodyMotionEnd) const {
+                                              float bodyMotionEnd, const PhysicsQueryFilter* filter) const {
     ShapeSweepHit result;
     if (!m_impl->hasPlayerShape) return result;
 
@@ -1849,7 +1865,12 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
         sweptBound.max = glm::max(glm::max(a0, b0), glm::max(a1, b1));
         sweptBound = sweptBound.Expanded(capsuleRadius + kSweepQueryEpsilon);
     }
-    const std::vector<unsigned int> candidates = m_impl->QuerySlots(sweptBound);
+    std::vector<unsigned int> candidates = m_impl->QuerySlots(sweptBound);
+    candidates.erase(std::remove_if(candidates.begin(),candidates.end(),[&](unsigned slot){
+        if(filter)return !m_impl->MatchesQuery(slot,*filter);
+        const auto& b=m_impl->bodies[slot];
+        return !CollisionPermitted(m_impl->playerCollisionLayer,m_impl->playerCollisionMask,b.collisionLayer,b.collisionMask);
+    }),candidates.end());
     auto evaluateAt = [&](float t) {
         const glm::vec3 center = fromCenter + displacement * t;
         const auto [segA, segB] = worldSegmentAt(center);
@@ -1920,3 +1941,16 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
 
     return result;  // no hit across the entire displacement
 }
+
+bool PhysicsWorld::SetCollisionFilter(BodyHandle handle,unsigned layer,CategoryMask mask){
+    auto* b=m_impl->Get(handle);if(!b||layer>=64)return false;
+    b->collisionLayer=layer;b->collisionMask=mask;
+    const unsigned slot=handle.id&Impl::kSlotMask;
+    auto remove=[&](auto& cache){cache.erase(std::remove_if(cache.begin(),cache.end(),[&](const auto& c){return c.key.slotA==slot||c.key.slotB==slot;}),cache.end());};
+    remove(m_impl->contactCache);remove(m_impl->pendingCache);return true;
+}
+bool PhysicsWorld::GetCollisionFilter(BodyHandle handle,unsigned& layer,CategoryMask& mask)const{
+    const auto* b=m_impl->Get(handle);if(!b)return false;layer=b->collisionLayer;mask=b->collisionMask;return true;
+}
+bool PhysicsWorld::SetBodyTags(BodyHandle handle,CategoryMask tags){auto* b=m_impl->Get(handle);if(!b)return false;b->tags=tags;return true;}
+void PhysicsWorld::SetPlayerCollisionFilter(unsigned layer,CategoryMask mask){if(layer<64){m_impl->playerCollisionLayer=layer;m_impl->playerCollisionMask=mask;}}

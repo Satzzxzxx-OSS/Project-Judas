@@ -365,6 +365,11 @@ void DrawInspectorPanel(EditorDocument& doc, EditorPanelState& state) {
             ImGui::EndCombo();
         }
     }
+    if(state.project){const auto& c=state.project->Settings().classification;
+        DrawCategoryMask(doc,"Tags",o->tags,c.tags,false);
+        if(state.runtime)ImGui::Text("Runtime entities matching these tags: %zu",state.runtime->QueryEntities(o->tags).size());
+        DrawCategoryLayer(doc,"Render layer",o->renderLayer,c.render);
+    }
     DrawTransformEditor(doc, *o);
     for (const ComponentEditor& editor : ComponentEditorRegistry()) {
         if (!editor.has(*o)) continue;
@@ -382,6 +387,7 @@ void DrawSceneSettingsPanel(EditorDocument& doc, EditorPanelState& state) {
     if (!ImGui::Begin("Scene")) { ImGui::End(); return; }
     if (state.mode == EditorMode::Play) ImGui::BeginDisabled();
     SceneSettings& s = doc.GetScene().Settings();
+    if(state.project)DrawCategoryMask(doc,"Main/editor camera render mask",s.mainCameraRenderMask,state.project->Settings().classification.render);
     TextField(doc, "Name##scene", s.name);
     double origin[3] = {s.worldOrigin.x, s.worldOrigin.y, s.worldOrigin.z};
     if (ImGui::InputScalarN("World origin (m)", ImGuiDataType_Double, origin, 3, nullptr, nullptr, "%.6g")) {
@@ -578,6 +584,23 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
     ImGui::TextWrapped("Export uses saved scenes and all registered assets. Save scene edits first. Choose a directory outside the project.");
     if (ImGui::Button("Export project (Release)")) requests.exportProject = true;
     ImGui::Separator();
+    if(ImGui::CollapsingHeader("Tags and layers")){
+        auto registry=[&](const char* label,CategoryRegistry& r,bool preserveDefault){
+            ImGui::PushID(label);
+            if(ImGui::TreeNode(label)){
+                static char addName[128]="";ImGui::InputText("New name",addName,sizeof(addName));
+                if(ImGui::Button("Create")){unsigned id;if(!r.Add(addName,id))state.status="Name exists/empty or all 64 lifetime IDs used";else addName[0]=0;}
+                for(auto it=r.names.begin();it!=r.names.end();++it){ImGui::PushID(int(it->first));char renamed[256];CopyToBuffer(it->second,renamed,sizeof(renamed));
+                    ImGui::Text("Stable ID %u",it->first);if(ImGui::InputText("Name",renamed,sizeof(renamed))&&!r.Rename(it->first,renamed))state.status="Invalid/duplicate category name";
+                    if(!(preserveDefault&&it->first==0)&&ImGui::Button("Delete")){r.Remove(it->first,preserveDefault);ImGui::PopID();break;}
+                    ImGui::PopID();
+                }
+                ImGui::TextWrapped("Deleted IDs are never reused. Repair assignments before Play/export. Save project to persist changes.");ImGui::TreePop();
+            }
+            ImGui::PopID();
+        };
+        registry("Tags",s.classification.tags,false);registry("Collision layers",s.classification.collision,true);registry("Render layers",s.classification.render,true);
+    }
     if(ImGui::CollapsingHeader("Input actions and axes")){
         static char newName[128]="";static bool newAxis=false;
         ImGui::InputText("New input name",newName,sizeof(newName));ImGui::Checkbox("Analog axis",&newAxis);

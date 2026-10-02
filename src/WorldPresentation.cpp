@@ -84,18 +84,21 @@ void DrawRenderable(Renderer& r, ResourceManager* resources, const SceneRenderCo
 void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession* session,
                        float alpha, const WorldDrawOptions& options) {
     for (const RuntimeWorld::StaticRenderable& s : world.StaticRenderables()) {
+        r.SetRenderLayer(world.RenderLayerOf(s.id));
         const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,s.rotation,s.scale},alpha);
         DrawRenderable(r, world.Resources(), s.render, t.position, t.rotation, t.scale, 1.0f, world.CameraTexture(s.render.textureCamera));
     }
     if (options.includeTerrain) {
         for (const RuntimeWorld::Terrain& t : world.Terrains()) {
+            r.SetRenderLayer(world.RenderLayerOf(t.id));
             if (t.mesh.IsValid()) {
                 r.DrawMesh(t.mesh, t.position, t.rotation, glm::vec3(1.0f), TextureHandle{}, t.color);
             }
         }
     }
-    for (const Door& door : world.Doors()) door.Draw(r, alpha);
-    for (const LightSwitch& lightSwitch : world.LightSwitches()) lightSwitch.Draw(r, alpha);
+    for(size_t i=0;i<world.Doors().size();++i){r.SetRenderLayer(world.RenderLayerOf(world.DoorIds()[i]));world.Doors()[i].Draw(r,alpha);}
+    for(size_t i=0;i<world.LightSwitches().size();++i){r.SetRenderLayer(world.RenderLayerOf(world.LightSwitchIds()[i]));world.LightSwitches()[i].Draw(r,alpha);}
+    r.SetRenderLayer(0);
 
     if (session) {
         // Milestone 11: while attached, the pilot is rendered from the
@@ -121,6 +124,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
     const std::vector<RuntimeWorld::DynamicVisual>& visuals = world.DynamicVisuals();
     for (std::size_t i = 0; i < bodies.size(); ++i) {
         const RuntimeWorld::DynamicVisual& v = visuals[i];
+        r.SetRenderLayer(world.RenderLayerOf(v.id));
         if (!v.hasRender) continue;
         const glm::vec3 position = bodies[i].GetPresentedPosition(alpha);
         const glm::quat rotation = bodies[i].GetPresentedOrientation(alpha);
@@ -138,6 +142,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
         DrawRenderable(r, world.Resources(), v.render, position, rotation, v.scale, 1.0f, world.CameraTexture(v.render.textureCamera));
     }
 
+    r.SetRenderLayer(0);
     // The fluid receives ordinary lighting/shadows in the colour pass; its
     // constantly rebuilt surface does not occupy the depth maps.
     if (world.HasFluid() && !world.Fluid().Particles().empty() && world.FluidMesh().IsValid() &&
@@ -159,6 +164,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
         r.BeginTransparentPass();
         for (std::size_t i = 0; i < bodies.size(); ++i) {
             const RuntimeWorld::DynamicVisual& v = visuals[i];
+        r.SetRenderLayer(world.RenderLayerOf(v.id));
             if (!v.hasRender || v.render.shape != SceneShape::Compound) continue;
             const glm::vec3 position = bodies[i].GetPresentedPosition(alpha);
             const glm::quat rotation = bodies[i].GetPresentedOrientation(alpha);
@@ -172,6 +178,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
     }
 
     if (world.GetAtmosphere()) {
+        r.SetRenderLayer(world.RenderLayerOf(world.GetAtmosphere()->id));
         // Two faint shells mark the extent of the gas field; they are not
         // density, pressure or a collision boundary.
         const AtmosphereParameters& p = world.GetAtmosphere()->field.Parameters();
@@ -188,6 +195,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
         const RuntimeWorld::Atmosphere& atmosphere = *world.GetAtmosphere();
         r.BeginTransparentPass();
         for (const RuntimeWorld::Combustible& c : world.Combustibles()) {
+            r.SetRenderLayer(world.RenderLayerOf(c.id));
             const ThermalBodyState* state = world.Combustion().State(c.handle);
             if (!state || state->burnRateKgPerSecond <= 0.0f) continue;
             const DynamicBody& body = bodies[c.dynamicIndex];
@@ -213,6 +221,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
 
     // Runtime visual state is updated once in Simulation, never per camera.
     for(auto& emitter:world.VisualEmitters()){
+        r.SetRenderLayer(world.RenderLayerOf(emitter.id));
         if(!emitter.pool.settings.enabled)continue;
         if(const auto* entity=world.FindEntity(emitter.id))if(entity->lifecycle==EntityLifecycle::Destroyed)continue;
         const auto t=world.PresentedTransform(emitter.id,emitter.transform,alpha);
@@ -221,6 +230,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
         r.DrawParticles(particles,emitter.pool.Bounds(),texture);
     }
 
+    r.SetRenderLayer(0);
     if (session && session->IgniterPowered()) {
         glm::vec3 eye, look;
         session->Player().GetTorchTransform(alpha, eye, look);
@@ -388,6 +398,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
             if (!camera.error.empty() || !renderer.BeginRenderTarget(camera.target)) continue;
             renderer.SetCamera(glm::lookAt(position, position + rotation * glm::vec3(0,0,-1), rotation * glm::vec3(0,1,0)),
                 glm::perspective(glm::radians(c.verticalFovDegrees), static_cast<float>(c.width)/c.height, c.nearPlane, c.farPlane));
+            renderer.SetRenderMask(c.renderMask);
             renderer.SetDynamicLights(lights);
             DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});
             DrawWorldTransparents(renderer, world, session, alpha);
@@ -396,6 +407,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
     }
     renderer.BeginFrame(width, height);
     renderer.SetCamera(view, projection);
+    renderer.SetRenderMask(world.Settings().mainCameraRenderMask);
     renderer.SetDynamicLights(lights);
     DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});
     DrawWorldTransparents(renderer, world, session, alpha);
@@ -403,7 +415,9 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
 }
 
 void DrawAuthoredScene(Renderer& r, const Scene& scene, ResourceManager& assets) {
+    r.SetRenderMask(scene.Settings().mainCameraRenderMask);
     for (const SceneObject& o : scene.Objects()) {
+        r.SetRenderLayer(o.renderLayer);
         const glm::vec3 position = o.transform.position;
         const glm::quat rotation = glm::normalize(o.transform.rotation);
         if (o.render) {
@@ -449,6 +463,7 @@ void DrawAuthoredScene(Renderer& r, const Scene& scene, ResourceManager& assets)
                       glm::vec3(0.12f, 0.48f, 0.82f));
         }
     }
+    r.SetRenderLayer(0);
 }
 
 std::vector<DynamicLight> BuildAuthoredLights(const Scene& scene) {

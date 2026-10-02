@@ -1,4 +1,5 @@
 #pragma once
+#include "Classification.h"
 #include "AudioTypes.h"
 
 #include <cstdint>
@@ -81,6 +82,8 @@ struct SceneFluidCavity {
 };
 
 struct SceneBodyComponent {
+    unsigned collisionLayer = 0;
+    CategoryMask collisionMask = kAllCategories;
     SceneBodyMotion motion = SceneBodyMotion::Static;
     SceneShape shape = SceneShape::Box;  // Box, Sphere, Compound or Terrain
     glm::vec3 halfExtents{0.5f};
@@ -136,6 +139,8 @@ struct SceneLightComponent {
 // The M16 hinged door. Uses the render component's box half-extents and
 // colour; Door owns its own static physics body, so no body component.
 struct SceneDoorComponent {
+    unsigned collisionLayer=0;
+    CategoryMask collisionMask=kAllCategories;
     glm::vec3 localHingeAxis{0.0f, 1.0f, 0.0f};
     float openAngleDegrees = 90.0f;
     float angularSpeedDegreesPerSecond = 120.0f;
@@ -216,6 +221,8 @@ enum class ScenePlayerView { ThirdPerson, FirstPerson };
 
 // Where the player starts. Exactly one object may carry this.
 struct ScenePlayerStartComponent {
+    unsigned collisionLayer = 0;
+    CategoryMask collisionMask = kAllCategories;
     float yawDegrees = 0.0f;
     ScenePlayerView view = ScenePlayerView::ThirdPerson;
     float density = 950.0f;          // kg/m^3; approximate fluid response
@@ -225,6 +232,7 @@ struct ScenePlayerStartComponent {
 
 // Perspective camera, local -Z forward and +Y up, matching existing views.
 struct SceneRenderCameraComponent {
+    CategoryMask renderMask = kAllCategories;
     bool enabled = true;
     int width = 256;
     int height = 256;
@@ -245,6 +253,8 @@ struct SceneAudioListenerComponent {
 };
 
 struct SceneObject {
+    CategoryMask tags = 0;
+    unsigned renderLayer = 0;
     SceneObjectId id = kInvalidSceneObjectId;
     std::string name;
     // Authored parent-local transform. No implied rigid constraint.
@@ -277,6 +287,7 @@ enum class SceneFidelityPolicy { None, Distance };
 
 // Scene-wide authored settings.
 struct SceneSettings {
+    CategoryMask mainCameraRenderMask = kAllCategories;
     std::string name;
     // M23 absolute world origin of this local scene, metres.
     glm::dvec3 worldOrigin{0.0};

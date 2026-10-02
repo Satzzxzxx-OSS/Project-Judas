@@ -1,4 +1,5 @@
 #pragma once
+#include "Classification.h"
 
 #include <utility>
 #include <vector>
@@ -44,6 +45,7 @@ struct TextureHandle {
 // counts line segments, which are not triangles.
 struct RenderStats {
     unsigned int drawCalls = 0;
+    unsigned int layerRejectedDraws=0,layerRejectedEmitters=0;
     unsigned int renderablesConsidered=0,renderablesVisible=0,renderablesCulled=0;
     unsigned int particleEmittersConsidered=0,particleEmittersVisible=0,particleEmittersCulled=0,particlesSubmitted=0;
     unsigned int triangles = 0;
@@ -91,6 +93,9 @@ public:
     // ratio correct across window resizes.
     void SetCamera(const glm::mat4& view, const glm::mat4& projection);
     void SetCullingEnabled(bool enabled){m_cullingEnabled=enabled;}
+    void SetRenderMask(CategoryMask mask){m_renderMask=mask;}
+    void SetRenderLayer(unsigned layer){m_renderLayer=layer;}
+    bool AllowsLayer(unsigned layer)const{return (m_renderMask&CategoryBit(layer))!=0;}
     bool IsVisible(const VisualBounds& bounds)const{return !m_cullingEnabled || m_frustum.IsVisible(bounds);}
     void DrawParticles(const std::vector<ParticleBillboard>& particles,const VisualBounds& bounds,TextureHandle texture={});
 
@@ -317,6 +322,8 @@ private:
     RenderTargetHandle m_activeTarget;
     GLint m_savedDrawFramebuffer = 0, m_savedReadFramebuffer = 0;
     GLint m_savedViewport[4] = {0, 0, 0, 0};
+    CategoryMask m_savedRenderMask=kAllCategories;
+    unsigned m_savedRenderLayer=0;
     glm::mat4 m_savedView{1.0f}, m_savedProjection{1.0f};
 
     struct GpuTexture {
@@ -372,6 +379,8 @@ private:
     // shadow factor.
     GLint m_uDynamicLightShadowIndex[kMaxDynamicLights];
 
+    CategoryMask m_renderMask=kAllCategories;
+    unsigned m_renderLayer=0;
     Frustum m_frustum;
     bool m_cullingEnabled=true;
     GLuint m_particleProgram=0,m_particleVao=0,m_particleVbo=0;
