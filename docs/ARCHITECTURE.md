@@ -8789,3 +8789,17 @@ candidate, stop/release the outgoing world and begin a fresh ordinary world usin
 the same session. No scene-local entities or JS heap objects survive. Existing M38
 scene-directory packaging and FTFT1 baseline identity remain authoritative.
 See `docs/SCENE_TRANSITIONS.md` for the API and synchronous-loading limits.
+
+## M44 — explicit runtime geometry queries (candidate)
+
+`PhysicsWorld` exposes nearest ray, sphere, capsule and fixed-orientation box
+casts. Existing tree candidates and M39 filters feed resolved sphere/box/
+compound geometry; robust signed contact geometry supplies box witnesses.
+M40's `physics` module returns safe entity hit snapshots or null. Queries are
+read-only, distinct from player locomotion sweeps and M42 contact events:
+**Judas answers geometric questions; JavaScript decides why they matter.**
+Ray/sphere/capsule terrain casts use the real radial surface with a documented
+finite-resolution approximation; box-versus-terrain is unsupported, explicitly.
+`world.viewRay` exposes the last completed active view for project aiming, not
+simulation authority. Details and limits: `PHYSICS_QUERIES.md`; focused demo:
+`projects/query_demo`; executed evidence: `docs/evidence/m44`.

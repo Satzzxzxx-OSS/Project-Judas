@@ -1,4 +1,5 @@
 #include "PhysicsWorld.h"
+#include "PhysicsCastGeometry.h"
 
 #include <algorithm>
 #include <array>
@@ -2013,3 +2014,43 @@ bool PhysicsWorld::SetBodyEnabled(BodyHandle h,bool value){auto* b=m_impl->Get(h
 bool PhysicsWorld::IsBodyEnabled(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->enabled;}
 
 void PhysicsWorld::ClearTouchHistory(){m_impl->previousTouches.clear();m_impl->stepTouches.clear();m_impl->touchEvents.clear();}
+
+PhysicsCastHit PhysicsWorld::Cast(const Shape& shape,const BodyTransform& pose,const glm::vec3& direction,float maximum,
+    const PhysicsQueryFilter& filter,PhysicsCastStats* stats) const {
+    if(stats)*stats={};
+    auto finite=[](glm::vec3 v){return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);};
+    double q2=glm::dot(glm::dvec4(pose.rotation.x,pose.rotation.y,pose.rotation.z,pose.rotation.w),
+                        glm::dvec4(pose.rotation.x,pose.rotation.y,pose.rotation.z,pose.rotation.w));
+    double d2=glm::dot(glm::dvec3(direction),glm::dvec3(direction));
+    if(!finite(pose.position)||!finite(direction)||!std::isfinite(maximum)||maximum<0||d2<=0||!std::isfinite(q2)||q2<=0)
+        throw std::invalid_argument("cast requires finite pose, nonzero orientation/direction and nonnegative distance");
+    if(!finite(shape.halfExtents)||!std::isfinite(shape.radius)||!std::isfinite(shape.halfHeight)||shape.radius<0||shape.halfHeight<0||
+       (shape.type==ShapeType::Box&&(shape.halfExtents.x<=0||shape.halfExtents.y<=0||shape.halfExtents.z<=0)))
+        throw std::invalid_argument("invalid cast dimensions");
+    PhysicsCastHit result;if(!m_impl)return result;
+    const glm::vec3 unit=glm::vec3(glm::dvec3(direction)/std::sqrt(d2));
+    auto bound=ShapeAabb(shape,pose.position,pose.rotation);
+    auto end=ShapeAabb(shape,pose.position+unit*maximum,pose.rotation);
+    Aabb swept{glm::min(bound.min,end.min),glm::max(bound.max,end.max)};
+    auto candidates=m_impl->QuerySlots(swept.Expanded(kSweepQueryEpsilon));
+    if(stats)stats->broadphaseCandidates=static_cast<unsigned>(candidates.size());
+    double nearest=maximum;
+    for(auto slot:candidates){if(!m_impl->MatchesQuery(slot,filter))continue;if(stats)++stats->filteredCandidates;
+        const auto& body=m_impl->bodies[slot];
+        for(int part=0;part<PrimitiveCount(body.shape);++part){if(stats)++stats->primitivesTested;
+            const auto primitive=PrimitiveAt(body.shape,body.rigidBody,part);
+            const auto hit=CastAgainstPrimitive(shape,pose,unit,nearest,primitive);
+            const auto handle=m_impl->MakeHandle(slot);
+            if(hit.hit&&(!result.hit||hit.distance<nearest||(hit.distance==nearest&&handle.id<result.body.id))){
+                nearest=hit.distance;result.hit=true;result.initialOverlap=hit.initialOverlap;result.body=handle;
+                result.point=hit.point;result.normal=hit.normal;result.distance=static_cast<float>(hit.distance);
+                result.fraction=maximum>0?result.distance/maximum:0;result.primitiveIndex=part;result.shape=primitive.shape.type;
+            }
+        }
+    }
+    return result;
+}
+PhysicsCastHit PhysicsWorld::Raycast(const glm::vec3& o,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Sphere(0),{o,{1,0,0,0}},d,m,f,s);}
+PhysicsCastHit PhysicsWorld::SphereCast(const glm::vec3& o,float r,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Sphere(r),{o,{1,0,0,0}},d,m,f,s);}
+PhysicsCastHit PhysicsWorld::CapsuleCast(const BodyTransform& p,float r,float h,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Capsule(r,h),p,d,m,f,s);}
+PhysicsCastHit PhysicsWorld::BoxCast(const BodyTransform& p,const glm::vec3& h,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Box(h),p,d,m,f,s);}

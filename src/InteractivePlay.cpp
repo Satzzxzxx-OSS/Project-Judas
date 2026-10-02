@@ -1,3 +1,4 @@
+#include "ScriptSystem.h"
 #include "InteractivePlay.h"
 
 #include <algorithm>
@@ -205,6 +206,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
         view = player.GetViewMatrix(presentationAlpha, m_session.ViewMode());
     }
     const auto sceneStart = Clock::now();
+    if(world.Scripts())world.Scripts()->SetView(view);
     world.UpdateAudio(view,presentationAlpha);
     RenderWorldFrame(renderer, window.Width(), window.Height(), world, &m_session, view,
                      player.GetProjectionMatrix(aspectRatio), player.GetPresentedPosition(presentationAlpha),

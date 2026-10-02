@@ -124,3 +124,11 @@ Open `projects/script_demo/script_demo.judasproj` and Play:
 
 All key/lock/spawner rules live in JS. C++ supplies only engine primitives.
 Human visual/listening acceptance remains the operator's responsibility.
+
+## M44 explicit geometry queries
+
+Import `physics` for `raycast`, `sphereCast`, `capsuleCast` and `boxCast`.
+They return a nearest-hit snapshot with a normal safe entity wrapper, or `null`.
+They share M39 query filtering and never drive collision response/events.
+See [PHYSICS_QUERIES.md](PHYSICS_QUERIES.md) for signatures, conventions and
+terrain limitations; typed declarations are in `judas.d.ts`.

@@ -59,10 +59,16 @@ export class Entity {
  setCameraEnabled(enabled){return call('camera',this.id,enabled)}
 }
 export const entity=id=>id&&id!=='0'?new Entity(id):null;
-export const world={entity,queryTags:(required=[],excluded=[])=>call('queryTags',required,excluded).map(entity),
+export const world={entity,get viewRay(){return call('viewRay')},queryTags:(required=[],excluded=[])=>call('queryTags',required,excluded).map(entity),
  spawnPrefab:(asset,transform)=>entity(call('spawn',asset,transform)),
  overlap:(min,max,filter={})=>call('overlap',min,max,filter).map(entity),
  sweepCapsule:(from,displacement,rotation={w:1,x:0,y:0,z:0},filter={})=>call('sweep',from,displacement,filter,rotation)};
+const cast=(origin,direction,maximum,filter,shape)=>{const hit=call('cast',origin,direction,filter,{...shape,maximum});return hit?{...hit,entity:entity(hit.entityId)}:null};
+export const physics={
+ raycast:(origin,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'ray'}),
+ sphereCast:(origin,radius,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'sphere',radius}),
+ capsuleCast:(pose,radius,halfHeight,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'capsule',rotation:pose.rotation,radius,halfHeight}),
+ boxCast:(pose,halfExtents,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'box',rotation:pose.rotation,halfExtents})};
 export const scenes={get current(){return call('sceneCurrent')},get registered(){return call('sceneList')},load:name=>call('sceneLoad',name),reload:()=>call('sceneReload')};
 export const session={get:key=>call('sessionGet',key),set:(key,value)=>call('sessionSet',key,value),delete:key=>call('sessionDelete',key)};
 export const input={held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
@@ -110,6 +116,7 @@ struct ScriptSystem::Impl {
     std::map<std::string,JSModuleDef*> modules;
     std::vector<ScriptDiagnostic> diagnostics;
     const InputSystem* input=nullptr;bool fixed=false;float delta=0;
+    bool hasView=false;glm::vec3 viewOrigin{0},viewDirection{0};
     unsigned budget=10000,polls=0;bool stopping=false;SceneObjectId currentOwner=0;std::uint64_t currentSlot=0;
     std::map<std::pair<SceneObjectId,std::uint64_t>,std::string> restored;
     Impl(RuntimeWorld* w,const AssetDatabase* a):world(w),assets(a){
@@ -256,7 +263,8 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         JS_FreeValue(c,p);JS_FreeValue(c,r);JS_FreeValue(c,scale);return ok;};
     if(op=="queryTags"){CategoryMask required,excluded;if(!tagMask(arg(1),required)||!tagMask(arg(2),excluded))return JS_ThrowTypeError(c,"unknown tag");return ids(world.QueryEntities(required,excluded));}
     if(op=="spawn"){SceneTransform t;if(!readTransform(arg(2),t))return JS_ThrowTypeError(c,"invalid transform");std::string error;auto id=world.SpawnPrefab(String(c,arg(1)),t,error);if(!id)return JS_ThrowTypeError(c,"spawn: %s",error.c_str());return JS_NewString(c,std::to_string(id).c_str());}
-    if(op=="overlap"||op=="sweep"){
+    if(op=="viewRay"){if(!s->hasView)return JS_NULL;auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"origin",Vec(c,s->viewOrigin));JS_SetPropertyStr(c,o,"direction",Vec(c,s->viewDirection));return o;}
+    if(op=="overlap"||op=="sweep"||op=="cast"){
         glm::vec3 min,max;if(!ReadVec(c,arg(1),min)||!ReadVec(c,arg(2),max))return JS_ThrowTypeError(c,"invalid bounds");PhysicsQueryFilter filter;
         auto include=JS_GetPropertyStr(c,arg(3),"includeLayers");auto exclude=JS_GetPropertyStr(c,arg(3),"excludeLayers");
         auto layerMask=[&](JSValueConst a,CategoryMask& mask){if(JS_IsUndefined(a))return true;if(!JS_IsArray(a))return false;auto len=JS_GetPropertyStr(c,a,"length");uint32_t n=0;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);if(n>64)return false;mask=0;
@@ -269,6 +277,36 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
             for(uint32_t i=0;tagsOk&&i<n;++i){auto v=JS_GetPropertyUint32(c,ignored,i);auto idv=JS_GetPropertyStr(c,v,"id");try{auto body=world.RuntimeBody(std::stoull(String(c,idv)));if(body.IsValid())filter.ignoredBodies.push_back(body);}catch(...){tagsOk=false;}JS_FreeValue(c,idv);JS_FreeValue(c,v);}}
         JS_FreeValue(c,ignored);
         bool ok=tagsOk&&layerMask(include,filter.includeLayers)&&layerMask(exclude,filter.excludeLayers);JS_FreeValue(c,include);JS_FreeValue(c,exclude);if(!ok)return JS_ThrowTypeError(c,"unknown collision layer");
+        if(op=="cast") {
+            auto spec=arg(4);float maximum=0,radius=0,halfHeight=0;BodyTransform pose;pose.position=min;
+            auto kindValue=JS_GetPropertyStr(c,spec,"kind");auto kind=String(c,kindValue);JS_FreeValue(c,kindValue);
+            if(!Number(c,spec,"maximum",maximum))return JS_ThrowTypeError(c,"invalid cast maximum");
+            if(kind=="sphere"||kind=="capsule")if(!Number(c,spec,"radius",radius))return JS_ThrowTypeError(c,"invalid radius");
+            if(kind=="capsule"&&!Number(c,spec,"halfHeight",halfHeight))return JS_ThrowTypeError(c,"invalid capsule halfHeight");
+            glm::vec3 halfExtents{0};
+            if(kind=="box"){auto h=JS_GetPropertyStr(c,spec,"halfExtents");bool valid=ReadVec(c,h,halfExtents);JS_FreeValue(c,h);if(!valid)return JS_ThrowTypeError(c,"invalid halfExtents");}
+            if(kind=="box"||kind=="capsule") {auto r=JS_GetPropertyStr(c,spec,"rotation");
+                bool valid=JS_IsUndefined(r)||(Number(c,r,"w",pose.rotation.w)&&Number(c,r,"x",pose.rotation.x)&&Number(c,r,"y",pose.rotation.y)&&Number(c,r,"z",pose.rotation.z));
+                JS_FreeValue(c,r);if(!valid)return JS_ThrowTypeError(c,"invalid cast rotation");}
+            PhysicsCastHit hit;
+            try {
+                if(kind=="ray")hit=world.Physics().Raycast(min,max,maximum,filter);
+                else if(kind=="sphere")hit=world.Physics().SphereCast(min,radius,max,maximum,filter);
+                else if(kind=="capsule")hit=world.Physics().CapsuleCast(pose,radius,halfHeight,max,maximum,filter);
+                else if(kind=="box")hit=world.Physics().BoxCast(pose,halfExtents,max,maximum,filter);
+                else return JS_ThrowTypeError(c,"unknown cast shape");
+            }catch(const std::exception& e){return JS_ThrowTypeError(c,"cast: %s",e.what());}
+            if(!hit.hit)return JS_NULL;
+            auto o=JS_NewObject(c);auto id=world.EntityIdOfBody(hit.body);
+            JS_SetPropertyStr(c,o,"entityId",JS_NewString(c,std::to_string(id).c_str()));
+            JS_SetPropertyStr(c,o,"bodyId",JS_NewUint32(c,hit.body.id));
+            JS_SetPropertyStr(c,o,"point",Vec(c,hit.point));JS_SetPropertyStr(c,o,"normal",Vec(c,hit.normal));
+            JS_SetPropertyStr(c,o,"distance",JS_NewFloat64(c,hit.distance));JS_SetPropertyStr(c,o,"fraction",JS_NewFloat64(c,hit.fraction));
+            JS_SetPropertyStr(c,o,"primitiveIndex",JS_NewInt32(c,hit.primitiveIndex));
+            JS_SetPropertyStr(c,o,"initialOverlap",JS_NewBool(c,hit.initialOverlap));
+            JS_SetPropertyStr(c,o,"shape",JS_NewString(c,hit.shape==ShapeType::Sphere?"sphere":hit.shape==ShapeType::Terrain?"terrain":"box"));
+            return o;
+        }
         if(op=="sweep"){glm::quat rotation;auto r=arg(4);
             if(!Number(c,r,"w",rotation.w)||!Number(c,r,"x",rotation.x)||!Number(c,r,"y",rotation.y)||!Number(c,r,"z",rotation.z)||!std::isfinite(glm::dot(rotation,rotation))||glm::dot(rotation,rotation)<1e-12f)return JS_ThrowTypeError(c,"invalid rotation");
             auto hit=world.Physics().SweepPlayerShape(min,glm::normalize(rotation),max,false,0,1,&filter);auto o=JS_NewObject(c);
@@ -456,4 +494,9 @@ void ScriptSystem::PhysicsEvent(SceneObjectId self,SceneObjectId other,const Phy
             JS_FreeValue(m->ctx,result);JS_FreeValue(m->ctx,e);
         }JS_FreeValue(m->ctx,fn);
     }
+}
+
+void ScriptSystem::SetView(const glm::mat4& view) {
+    m->CheckThread();auto inverse=glm::inverse(view);m->viewOrigin=glm::vec3(inverse[3]);
+    m->viewDirection=-glm::vec3(inverse[2]);m->hasView=true;
 }

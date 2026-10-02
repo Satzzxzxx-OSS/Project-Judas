@@ -17,6 +17,8 @@ public:
     ~ScriptSystem();
     ScriptSystem(const ScriptSystem&)=delete;
     void Synchronize(const std::vector<SceneObject>& objects);
+    // Latest active presentation camera, for project-authored pointing UI.
+    void SetView(const glm::mat4& view);
     void Frame(const InputSystem* input,float dt);
     void Fixed(const InputSystem* input,float dt);
     void UIFrame(const InputSystem* input,float dt);

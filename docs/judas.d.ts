@@ -2,7 +2,7 @@ declare module "judas" {
   export interface Vec3 { x:number; y:number; z:number }
   export interface Quat extends Vec3 { w:number }
   export interface Transform { position:Vec3; rotation:Quat; scale:Vec3 }
-  export interface QueryFilter { includeLayers?:string[]; excludeLayers?:string[]; requiredTags?:string[]; excludedTags?:string[]; ignored?:Entity[] }
+  export interface QueryFilter { includeLayers?:string[]; excludeLayers?:string[]; requiredTags?:string[]; excludedTags?:string[]; ignored?:Entity[]; includeSensors?:boolean }
   export class Entity {
     constructor(id:string);
     readonly id:string; readonly valid:boolean;
@@ -20,7 +20,7 @@ declare module "judas" {
     setCameraEnabled(enabled:boolean):boolean;
   }
   export function entity(id:string):Entity|null;
-  export const world:{entity:typeof entity;queryTags(required?:string[],excluded?:string[]):Entity[];
+  export const world:{readonly viewRay:{origin:Vec3;direction:Vec3}|null;entity:typeof entity;queryTags(required?:string[],excluded?:string[]):Entity[];
     spawnPrefab(asset:string,transform:Partial<Transform>):Entity;
     overlap(min:Vec3,max:Vec3,filter?:QueryFilter):Entity[];
     sweepCapsule(from:Vec3,displacement:Vec3,rotation?:Quat,filter?:QueryFilter):{hit:boolean;distance:number;normal:Vec3;entityId:string}};
@@ -63,4 +63,17 @@ export const session: {
     set(key: string, value: unknown): void;
     delete(key: string): void;
 };
+}
+
+// M44: explicit read-only snapshot queries, independent of physical collision masks.
+declare module 'judas' {
+  export interface CastPose {position:Vec3;rotation?:Quat}
+  export interface CastHit {entity:Entity|null;entityId:string;bodyId:number;point:Vec3;normal:Vec3;
+    distance:number;fraction:number;initialOverlap:boolean;primitiveIndex:number;shape:'sphere'|'box'|'terrain'}
+  export const physics:{
+    raycast(origin:Vec3,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
+    sphereCast(origin:Vec3,radius:number,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
+    capsuleCast(pose:CastPose,radius:number,halfHeight:number,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
+    boxCast(pose:CastPose,halfExtents:Vec3,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
+  };
 }

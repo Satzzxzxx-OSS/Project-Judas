@@ -26,6 +26,19 @@ struct PhysicsQueryFilter {
     std::vector<BodyHandle> ignoredBodies;
 };
 
+// A snapshot query result. No hit leaves hit=false; point/normal then have no
+// meaning. BodyHandle includes slot generation. primitiveIndex identifies a
+// compound child (0 for a single collider); terrain has one sampled surface.
+struct PhysicsCastHit {
+    bool hit=false, initialOverlap=false;
+    BodyHandle body;
+    glm::vec3 point{0}, normal{0};
+    float distance=0, fraction=0;
+    int primitiveIndex=0;
+    ShapeType shape=ShapeType::Sphere;
+};
+struct PhysicsCastStats { unsigned broadphaseCandidates=0, filteredCandidates=0, primitivesTested=0; };
+
 struct BodyTransform {
     glm::vec3 position{0.0f, 0.0f, 0.0f};
     glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};  // identity
@@ -202,6 +215,19 @@ public:
     // body whose broadphase bound overlaps the box. Conservative (bounds are
     // grown by a margin); callers still test real geometry. Results are in
     // ascending handle-slot order, so iteration order is deterministic.
+    // Read-only casts against current resolved geometry, independent of physical
+    // masks. Direction is normalized internally; zero direction/invalid dimensions
+    // throw invalid_argument. Zero distance asks for initial overlap. Orientation
+    // stays fixed (no angular trajectory). Optional stats belong to the caller.
+    PhysicsCastHit Raycast(const glm::vec3& origin,const glm::vec3& direction,float maximum,
+        const PhysicsQueryFilter& filter={},PhysicsCastStats* stats=nullptr) const;
+    PhysicsCastHit SphereCast(const glm::vec3& origin,float radius,const glm::vec3& direction,float maximum,
+        const PhysicsQueryFilter& filter={},PhysicsCastStats* stats=nullptr) const;
+    PhysicsCastHit CapsuleCast(const BodyTransform& pose,float radius,float halfHeight,const glm::vec3& direction,float maximum,
+        const PhysicsQueryFilter& filter={},PhysicsCastStats* stats=nullptr) const;
+    PhysicsCastHit BoxCast(const BodyTransform& pose,const glm::vec3& halfExtents,const glm::vec3& direction,float maximum,
+        const PhysicsQueryFilter& filter={},PhysicsCastStats* stats=nullptr) const;
+
     std::vector<BodyHandle> QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max, const PhysicsQueryFilter& filter = {}) const;
     bool SetCollisionFilter(BodyHandle,unsigned layer,CategoryMask mask);
     bool GetCollisionFilter(BodyHandle,unsigned& layer,CategoryMask& mask) const;
@@ -421,6 +447,8 @@ public:
                                     const PhysicsQueryFilter* filter = nullptr) const;
 
 private:
+    PhysicsCastHit Cast(const Shape& shape,const BodyTransform& pose,const glm::vec3& direction,float maximum,
+        const PhysicsQueryFilter& filter,PhysicsCastStats* stats) const;
     struct Impl;
     Impl* m_impl = nullptr;
 };

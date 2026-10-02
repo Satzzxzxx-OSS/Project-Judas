@@ -38,6 +38,7 @@ endif()
 # dependency.
 
 set(JUDAS_PHYSICS_SOURCES
+    src/PhysicsCastGeometry.cpp
     src/ImpactSolver.cpp
     src/RigidBody.cpp
     src/RigidBodyGravity.cpp
@@ -938,3 +939,10 @@ target_compile_options(judas_touch_application_tests PRIVATE -Wall -Wextra)
 add_executable(judas_scene_transition_tests tests/SceneTransitionTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_scene_transition_tests PRIVATE judas_engine)
 target_compile_options(judas_scene_transition_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_physics_cast_tests tests/PhysicsCastTests.cpp)
+target_link_libraries(judas_physics_cast_tests PRIVATE judas_engine)
+target_compile_options(judas_physics_cast_tests PRIVATE -Wall -Wextra)
+add_executable(judas_physics_cast_application_tests tests/PhysicsCastApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_physics_cast_application_tests PRIVATE judas_engine)
+target_compile_options(judas_physics_cast_application_tests PRIVATE -Wall -Wextra)
