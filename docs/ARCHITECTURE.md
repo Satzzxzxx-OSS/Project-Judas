@@ -6,7 +6,13 @@ someone with no prior context on this project. It is updated in place as
 milestones land, rather than kept as a per-milestone snapshot — see
 "Milestone history" below for how to recover an earlier milestone exactly.
 
-## What exists right now (rigid checkpoint plus FTFT repairs; M32 as scoped is NOT complete)
+## What exists right now (completed through M43)
+
+Current checkpoint: `6f199eff9378270d7291a9dd8605fcfde5760569` (M43).
+FTFT stabilization is complete within its documented approximations. The M33–M43
+sections below describe completed capabilities. Earlier milestone accounts retain
+their original evidence and exclusions; those exclusions are not current limits
+where later accepted work explicitly supersedes them.
 
 **Judas is a game engine.** Everything a player meets in the default
 launch — the terrain planet, its lake and atmosphere, the spacecraft, the
@@ -90,8 +96,9 @@ The earlier two-planet demonstration described below is
 
 ## Milestone history
 
-Each milestone is tagged in git so it can be recovered exactly, rather than
-preserved as parallel runtime code:
+The early milestones below have Git tags; later checkpoints, including M33–M43,
+are commits without milestone tags. Recover their recorded commits rather than
+preserving parallel runtime code:
 
 - `milestone-1` — window creation, a single 2D box, keyboard movement.
 - `milestone-2` — 3D rendering, perspective, depth testing, a free-flight
@@ -4644,6 +4651,9 @@ provenance concerns for this MIT-licensed public repository; no Asset
 Store, commercial, or restrictively-licensed content was used or
 considered.
 
+**Historical M9 path contract — superseded by M30 project-relative assets and
+M38 executable-relative packaged startup.** The following records the original setup:
+
 **Location and reproducibility**: `assets/models/`, `assets/textures/`,
 loaded via paths relative to the process's current working directory
 (`Application.cpp`'s `kBeaconModelPath`/`kBeaconTexturePath` —
@@ -4825,7 +4835,11 @@ The engine-level split, updated for this milestone:
   place that knows either planet's radius/center, the plank's geometry, or
   the test objects' spawn arrangement.
 
-## Input handling
+## Input handling (historical physical bindings; superseded by M35)
+
+M35's current logical input boundary is documented below; these physical-key
+descriptions record the earlier adapters. M41 owns authored modal UI input and
+M43 project reset queues a genuine scene reload, not a player-only reset.
 
 Unchanged since Milestone 4: the `Action` enum (`MoveForward`/
 `MoveBackward`/`StrafeLeft`/`StrafeRight`, bound to `W`/`Up`, `S`/`Down`,
@@ -5375,7 +5389,7 @@ window/GL needed), the light switch using the exact same interaction path
 as the door, and the interact key's input-ownership gating — see
 "Milestone 16, Automated evidence" for the full section breakdown.
 
-## Remaining limitations
+## Remaining limitations (historical milestone accounts; later repairs noted below)
 
 Recorded honestly rather than left implicit — these are known, deliberately
 deferred, not oversights:
@@ -5711,10 +5725,11 @@ deferred, not oversights:
   door that opens and closes and blocks the player when shut," not a
   physically-simulated hinge joint.
 
-## FUTURE CONSTRAINTS PRESERVED
+## FUTURE CONSTRAINTS PRESERVED (historical design notes)
 
 This section explains only how the current design avoids *unnecessarily*
-blocking known future requirements. None of these are implemented yet.
+blocking requirements that were future work when these notes were written.
+Later milestone notes identify fulfilled parts; this is not a current feature backlog.
 
 - **Multiple/composite gravity sources, true planetary systems** — the
   `GravityField` interface and its two current implementations
@@ -5773,9 +5788,12 @@ blocking known future requirements. None of these are implemented yet.
   raising (a spatial structure, not a constant) for meaningfully more
   bodies than this milestone actually uses.
 
-## DELIBERATELY NOT IMPLEMENTED
+## DELIBERATELY NOT IMPLEMENTED (historical milestone scope)
 
-Explicitly deferred, not forgotten:
+Explicitly deferred at the milestones described below, not forgotten. Later
+accepted work supplies audio (M34), controller/logical input (M35), prefabs (M36),
+export (M38), scripting (M40) and authored runtime UI (M41), among other additions.
+Unimplemented portions remain subject to their current documented scope.
 
 - Gravity-source registration, sphere-of-influence systems, or any
   generalized multi-source gravity FRAMEWORK — Milestone 7-Final's two
@@ -7647,7 +7665,7 @@ version 1 without verifiable baseline identity):
 
 ```
 JudasWorldState 2
-compatibility 1 sha256 <64 lowercase hex digits>
+compatibility 5 sha256 <64 lowercase hex digits>
 baseline "<scene name>"
 next-runtime-id <n>
 
@@ -7662,7 +7680,7 @@ door <id> true|false
 light-switch <id> true|false
 ```
 
-Only these changes exist: an authored entity whose physical state differs
+The core M29 delta records cover an authored entity whose physical state differs
 from its definition beyond the settling tolerances (1 cm, 2 cm/s, ~2.5°),
 a destroyed entity, a runtime-created entity with its full definition, and
 door/switch states. Fidelity is not stored — a delta says what the world
@@ -7674,10 +7692,13 @@ unused, definitions parse through the scene grammar) before applying any,
 so a bad file never half-modifies the live world. `CaptureWorldState` /
 `ApplyWorldState` are the engine operations; `F6`/`F7` and the editor's
 World menu are the demo's controls; `JUDAS_WORLD_STATE` selects the path.
+M40 additionally supports the optional versioned bounded script-state records
+documented below; this format example omits that extension.
 
 FTFT1 computes the baseline fingerprint once from the authored `Scene` on a
 successful `RuntimeWorld::Build`, before gameplay can mutate runtime state.
-Canonical schema 4 (M34 adds audio emitter/listener metadata; M33 added camera configuration and stable texture references;
+Canonical schema 5 (M36 adds hierarchy and prefab provenance/override metadata;
+M34 added audio emitter/listener metadata; M33 added camera configuration and stable texture references;
 FTFT9's schema 2 added cavity, player-fluid and update-rate settings)
 includes scene-format version, all serialized authored
 settings/components, stable IDs, allocator state, names, and object order
@@ -7686,8 +7707,10 @@ integers in a fixed byte order, normalizes signed zero, and length-prefixes
 strings. Unserialized inactive settings are excluded so scene round-trips keep
 the same identity. File location, whitespace, timestamps, runtime handles and
 runtime states are absent. SHA-256 uses no `std::hash` or locale-sensitive text.
-Asset references enter as stable IDs; external asset bytes and engine revisions
-are outside this scene-compatibility scheme.
+Asset references enter as stable IDs. M36 fingerprints the effective prefab-resolved
+scene; M40/M41 additionally hash registered project script/UI contents under their
+documented conditions. Other external asset bytes and engine revisions remain
+outside this scene-compatibility scheme.
 
 Loading first parses into temporary data, checks format/fingerprint versions,
 compares the fingerprint, and preflights every reference, state, identity counter,
@@ -7774,6 +7797,10 @@ classic 420-step harness is byte-identical to the M27 build and both
 scenes are byte-identical near/far origin.
 
 ### Known engine limitation exposed by M29 (pre-existing)
+
+**Historical M29 finding — superseded solver mechanism:** M32 introduced
+accumulated impulses and FTFT4 subsequently stabilized contact geometry/timing.
+The measured creep below records the old solver, not a current open repair.
 
 A box resting on static geometry creeps at roughly 5 mm/s with a small
 persistent spin. This is not M29's: the M27 build's harness shows the
@@ -8094,6 +8121,11 @@ scene before exiting.
 
 ### Limitations (documented, not hidden)
 
+**Historical M30 limits:** M31/FTFT2 supersede synchronous resource loading;
+M36 supplies parent-local hierarchies; M32/FTFT4 replace the old creep mechanism.
+M38 export and M40 scripting also supersede their exclusions in the scope list
+below. The remaining limits are not claimed fixed by those milestones.
+
 - **Picking is a bounding sphere per object.** A long thin plank picks as
   a large ball; overlapping spheres pick the nearer centre. Precise
   mesh/box picking is not implemented; the gizmo handles themselves are
@@ -8390,9 +8422,15 @@ stealing/task graphs, and arbitrary cross-thread mutation of engine
 objects. Each may consume the job system, the async IO contract and the
 residency boundary when a brief asks for it.
 
-## Milestone 32 — rigid-body portion extracted (operator review pending; M32 as scoped is NOT complete)
+## Milestone 32 — rigid-body portion extracted (historical checkpoint)
 
 ### Status, stated plainly
+
+**Later status:** the rigid checkpoint was accepted at `48385a7`; FTFT4 closes
+its measured geometry/timing defects and FTFT9 supplies accepted approximate
+production fluid coupling. The original full M32 scope is not
+retroactively claimed complete. The pending/deferred state and M31 behaviour
+below describe that original split, not current production.
 
 The Milestone 32 brief ("Judas learns why shit floats") asked for two
 things: a real rigid-body broadphase and accumulated-impulse contact
@@ -8536,7 +8574,7 @@ A genuinely isolated closing contact uses its authored restitution and
 Coulomb friction. A connected multi-contact event, induced contact, impact
 into persistent support or mixed-restitution island uses **zero normal
 restitution**. This is a deliberate game-engine approximation, not a general
-simultaneous-impact material law. The candidate `ImpactSolver` uses the same
+simultaneous-impact material law. The accepted `ImpactSolver` uses the same
 contact geometry and existing impulse machinery. A tentative energy-budget
 failure restores pre-impact velocities and retries with zero restitution
 and zero impact friction, counting `impactSafetyFallback`; persistent
@@ -8601,7 +8639,11 @@ Current results and measured limitations are linked above.
   dynamic bodies, which now rest and collide under the new solver.
   Editor autotests report the authored scene IDENTICAL after Play/Stop.
 
-### Liquid/solid coupling: what was tried, and why it is deferred
+### Historical M32 liquid/solid coupling: what was tried, and why it was deferred
+
+FTFT9 later adopted the documented approximate production hybrid described at
+the top of this document. These failures remain evidence; P1-C/P1-C-M/P1-PF
+remain separate protected research, not the production implementation.
 
 Displaced-volume buoyancy gave correct float/sink behaviour and
 density-ratio immersion, but the particle liquid (PBF) also supports a
@@ -8622,7 +8664,7 @@ architecture (for example analytic rigid-body hydrostatics against a
 resolved liquid surface, or a dedicated pressure solve), not from these
 variants.
 
-## M33 — authored render cameras (feature candidate)
+## M33 — authored render cameras (accepted checkpoint `bd22935`)
 
 [Camera-to-surface ownership and authoring](M33.md) extends the existing scene,
 RuntimeWorld and Renderer boundary. Optional cameras own presentation-only runtime
@@ -8643,8 +8685,9 @@ the lazy output device. RuntimeWorld owns authored emitter/listener bindings and
 releases voices on Play/Stop, disable/destruction and world teardown. InteractivePlay
 updates positions once per main frame using presented entity poses and full listener
 orientation, optionally from the active view; secondary render cameras do not tick audio.
-No gameplay-specific sounds, streaming or acoustics model is implied. Canonical
-authored schema 4 includes audio fields; prior save fingerprints are incompatible.
+No gameplay-specific sounds, streaming or acoustics model is implied. M34 introduced
+authored schema 4 with audio fields; M36 superseded it with current schema 5.
+Earlier-schema save fingerprints are incompatible.
 See [M34](M34.md) for exact settings, lifecycle, limits and listening acceptance.
 
 ## M35 current input boundary
