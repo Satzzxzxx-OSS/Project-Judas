@@ -88,6 +88,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    if(o.animation){const auto& a=*o.animation;w.Line("animation.enabled",B(a.enabled));w.Line("animation.play-on-start",B(a.playOnStart));w.Line("animation.loop",B(a.loop));w.Line("animation.clip",Quote(a.clip));w.Line("animation.speed",F(a.speed));w.Line("animation.time",F(a.time));}
     if(o.joint){const auto& j=*o.joint;const auto& s=j.settings;
         w.Line("joint",std::to_string(int(s.type)));w.Line("joint.body-a",std::to_string(j.bodyA));w.Line("joint.body-b",std::to_string(j.bodyB));
         w.Line("joint.anchor-a",V(s.anchorA));w.Line("joint.anchor-b",V(s.anchorB));w.Line("joint.frame-a",Q(s.frameA));w.Line("joint.frame-b",Q(s.frameB));
@@ -615,6 +616,10 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    if(p.Has("animation.enabled")){SceneAnimationComponent a;
+        if(!p.Bool("animation.enabled",a.enabled)||!p.Bool("animation.play-on-start",a.playOnStart)||!p.Bool("animation.loop",a.loop)||!p.String("animation.clip",a.clip)||!p.Float("animation.speed",a.speed)||!p.Float("animation.time",a.time)||a.time<0)return false;
+        o.animation=a;
+    }
     if(p.Has("joint")){SceneJointComponent j;auto& s=j.settings;int type=0;
         if(!p.Int("joint",type)||type<0||type>3||!p.Id("joint.body-a",j.bodyA)||!p.Id("joint.body-b",j.bodyB)||
            !p.Vec3("joint.anchor-a",s.anchorA)||!p.Vec3("joint.anchor-b",s.anchorB)||!p.Quat("joint.frame-a",s.frameA)||!p.Quat("joint.frame-b",s.frameB)||
@@ -932,6 +937,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         }
         o.playerStart = ps;
     }
+    if(o.animation&&(!o.render||o.render->shape!=SceneShape::Mesh))return reader.Fail("animation requires a mesh render component");
     if (o.render && (o.render->shape == SceneShape::Compound || o.render->shape == SceneShape::Terrain)) {
         if (!o.body || o.body->shape != o.render->shape) {
             return reader.Fail("a compound/terrain render component needs a body of the same shape");

@@ -164,7 +164,7 @@ public:
     // DrawSphere are now thin wrappers over.
     void DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::quat& rotation,
                   const glm::vec3& scale, TextureHandle texture, const glm::vec3& tintColor,
-                  float alpha = 1.0f);
+                  float alpha = 1.0f,const std::vector<glm::mat4>* skin = nullptr);
 
     // Draws a box mesh: `halfExtents` sets its size along each axis (the
     // local unit cube is scaled by 2*halfExtents), `rotation` its
@@ -316,12 +316,13 @@ private:
     // count/type information to issue the right draw call.
     struct GpuMesh {
         GLuint vao = 0;
-        GLuint vbo = 0;
+        GLuint vbo = 0,skinVbo=0;
         GLuint ebo = 0;          // 0 if non-indexed
         GLsizei vertexCount = 0;  // used when ebo == 0 (glDrawArrays)
         GLsizei indexCount = 0;   // used when ebo != 0 (glDrawElements)
         bool alive = false;
         VisualBounds bounds;
+        std::vector<glm::mat4> restSkin;
     };
     struct GpuTarget { GLuint framebuffer = 0, depth = 0; TextureHandle color; int width = 0, height = 0; };
     std::vector<GpuTarget> m_targets;
@@ -354,7 +355,7 @@ private:
     MeshHandle m_sphereMesh;
     TextureHandle m_whiteTexture;  // 1x1 white pixel — the "no real texture" fallback, see DrawMesh
 
-    GLint m_uModel = -1;
+    GLint m_uModel = -1,m_uSkinned=-1,m_uBones=-1;
     GLint m_uNormalMatrix = -1;
     GLint m_uView = -1;
     GLint m_uProjection = -1;
@@ -407,7 +408,7 @@ private:
     // read by every subsequent normal-mode DrawMesh call this same frame
     // (see DrawMesh's own comment).
     GLuint m_shadowShaderProgram = 0;
-    GLint m_uShadowModel = -1;
+    GLint m_uShadowModel = -1,m_uShadowSkinned=-1,m_uShadowBones=-1;
     GLint m_uShadowLightViewProj = -1;
     GLuint m_shadowFbo[kShadowMapCount] = {0, 0, 0};
     GLuint m_shadowMapTexture[kShadowMapCount] = {0, 0, 0};

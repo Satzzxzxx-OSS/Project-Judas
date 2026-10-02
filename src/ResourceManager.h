@@ -122,6 +122,7 @@ public:
     TextureHandle GetTexture(const AssetId& id, std::string& outError, JobPriority priority = JobPriority::Normal);
     // Pure lookups: a valid handle only if Ready; never start a load.
     MeshHandle TryGetMesh(const AssetId& id);
+    std::shared_ptr<const SkeletalAsset> TryGetSkeletal(const AssetId& id) const;
     TextureHandle TryGetTexture(const AssetId& id);
 
     // Terrain surfaces are engine-constructed (TerrainLibrary), keyed by
@@ -205,6 +206,7 @@ private:
         ResourceState state = ResourceState::Unloaded;
         AssetType type = AssetType::Mesh;
         MeshHandle mesh;
+        std::shared_ptr<const SkeletalAsset> skeletal;
         TextureHandle texture;
         AudioClipHandle audio;
         std::string error;

@@ -10,6 +10,7 @@ declare module "judas" {
     readonly classification:{renderLayer:number;collisionLayer:number;collisionMask:string};
     readonly camera:{enabled:boolean;width:number;height:number}|null;
     readonly audio:{enabled:boolean;playing:boolean;requested:boolean}|null;
+    readonly animation:Animation|null;
     destroy():boolean; hasTag(tag:string):boolean; addTag(tag:string):boolean; removeTag(tag:string):boolean;
     scriptState(slot:number|string):object|null;
     applyForce(force:Vec3):void; applyImpulse(impulse:Vec3):void; applyTorque(torque:Vec3):void;
@@ -86,4 +87,14 @@ declare module 'judas' {
     capsuleCast(pose:CastPose,radius:number,halfHeight:number,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
     boxCast(pose:CastPose,halfExtents:Vec3,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
   };
+}
+
+// M46: clips are pose producers; playback state belongs to an ordinary instance.
+declare module 'judas' {
+ export class Animation {
+  readonly info:{ready:boolean;playing:boolean;loop:boolean;speed:number;time:number;clip:string;clips:{name:string;duration:number}[]};
+  readonly clips:{name:string;duration:number}[]; readonly playing:boolean; readonly time:number;
+  speed:number; loop:boolean;
+  play(clip?:string):boolean;pause():boolean;resume():boolean;stop():boolean;seek(seconds:number):boolean;
+ }
 }

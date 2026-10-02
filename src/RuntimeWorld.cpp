@@ -286,6 +286,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
 
 bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     const FidelityPolicyContext& loadContext, std::string& outError) {
+    for(const auto& o:scene.Objects())if(o.animation)m_animationOwners.insert(o.id);
     for(const auto& o:scene.Objects())if(o.joint){m_jointOwners.insert(o.id);m_jointParticipants.insert(o.joint->bodyA);if(o.joint->bodyB)m_jointParticipants.insert(o.joint->bodyB);}
     const auto fail = [&](const SceneObject& o, const std::string& what) {
         outError = "object " + std::to_string(o.id) + " \"" + o.name + "\": " + what;
@@ -1147,6 +1148,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
+    m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
     m_scripts.reset();m_ui.reset();m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;
     EndAudio();

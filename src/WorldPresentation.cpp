@@ -50,11 +50,11 @@ const glm::vec3 kLoadingPlaceholderColor(0.55f, 0.55f, 0.58f);
 const glm::vec3 kFailedPlaceholderColor(0.95f, 0.15f, 0.85f);
 
 void DrawMeshOrPlaceholder(Renderer& r, ResourceManager* resources, const SceneRenderComponent& render,
-                           const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale, float alpha, TextureHandle generated = {}) {
+                           const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale, float alpha, TextureHandle generated = {},const std::vector<glm::mat4>* skin = nullptr) {
     const MeshHandle mesh = resources ? resources->TryGetMesh(render.meshAsset) : MeshHandle{};
     if (mesh.IsValid()) {
         const TextureHandle texture = render.textureCamera ? generated : (resources ? resources->TryGetTexture(render.textureAsset) : TextureHandle{});
-        r.DrawMesh(mesh, position, rotation, scale, texture, render.color, alpha);
+        r.DrawMesh(mesh, position, rotation, scale, texture, render.color, alpha,skin);
         return;
     }
     if (!resources) return;  // headless: nothing to draw
@@ -63,7 +63,7 @@ void DrawMeshOrPlaceholder(Renderer& r, ResourceManager* resources, const SceneR
 }
 
 void DrawRenderable(Renderer& r, ResourceManager* resources, const SceneRenderComponent& render,
-                    const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale, float alpha, TextureHandle generated = {}) {
+                    const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale, float alpha, TextureHandle generated = {},const std::vector<glm::mat4>* skin = nullptr) {
     switch (render.shape) {
         case SceneShape::Box:
             r.DrawBox(position, rotation, render.halfExtents, render.color, alpha, generated);
@@ -72,7 +72,7 @@ void DrawRenderable(Renderer& r, ResourceManager* resources, const SceneRenderCo
             r.DrawSphere(position, render.radius, render.color, alpha, generated);
             break;
         case SceneShape::Mesh:
-            DrawMeshOrPlaceholder(r, resources, render, position, rotation, scale, alpha, generated);
+            DrawMeshOrPlaceholder(r, resources, render, position, rotation, scale, alpha, generated,skin);
             break;
         case SceneShape::Compound:
         case SceneShape::Terrain:
@@ -86,7 +86,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
     for (const RuntimeWorld::StaticRenderable& s : world.StaticRenderables()) {
         r.SetRenderLayer(world.RenderLayerOf(s.id));
         const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,s.rotation,s.scale},alpha);
-        DrawRenderable(r, world.Resources(), s.render, t.position, t.rotation, t.scale, 1.0f, world.CameraTexture(s.render.textureCamera));
+        DrawRenderable(r, world.Resources(), s.render, t.position, t.rotation, t.scale, 1.0f, world.CameraTexture(s.render.textureCamera),world.AnimationSkin(s.id));
     }
     if (options.includeTerrain) {
         for (const RuntimeWorld::Terrain& t : world.Terrains()) {
@@ -139,7 +139,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
             }
             continue;
         }
-        DrawRenderable(r, world.Resources(), v.render, position, rotation, v.scale, 1.0f, world.CameraTexture(v.render.textureCamera));
+        DrawRenderable(r, world.Resources(), v.render, position, rotation, v.scale, 1.0f, world.CameraTexture(v.render.textureCamera),world.AnimationSkin(v.id));
     }
 
     r.SetRenderLayer(0);

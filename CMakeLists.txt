@@ -67,6 +67,8 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
+    src/WorldAnimation.cpp
+    src/GltfLoader.cpp
     src/WorldScripts.cpp
     src/RuntimeUI.cpp
     src/ScriptSystem.cpp
@@ -79,6 +81,7 @@ add_library(judas_engine STATIC
     src/Window.cpp
     src/InputSystem.cpp
     src/Renderer.cpp
+    src/SkeletalAnimation.cpp
     src/PlayerController.cpp
     src/PlayerView.cpp
     src/StepClimb.cpp
@@ -319,11 +322,9 @@ target_compile_options(judas_celestial_gravity_tests PRIVATE -Wall -Wextra)
 # Assets").
 add_executable(judas_asset_tests
     tests/AssetTests.cpp
-    src/ModelLoader.cpp
-    src/TextureLoader.cpp
 )
 target_include_directories(judas_asset_tests PRIVATE src)
-target_link_libraries(judas_asset_tests PRIVATE ${JUDAS_GLM})
+target_link_libraries(judas_asset_tests PRIVATE judas_engine)
 target_compile_options(judas_asset_tests PRIVATE -Wall -Wextra)
 
 # Milestone 10: headless tests for the step-up/step-down primitives (see
@@ -423,6 +424,7 @@ add_executable(judas_ui_tests
     src/PauseMenu.cpp
     src/HUD.cpp
     src/Renderer.cpp
+    src/SkeletalAnimation.cpp
     src/FontLoader.cpp
 )
 target_include_directories(judas_ui_tests PRIVATE src)
@@ -446,6 +448,7 @@ add_executable(judas_lighting_tests
     src/UIWidgets.cpp
     src/HUD.cpp
     src/Renderer.cpp
+    src/SkeletalAnimation.cpp
     src/FontLoader.cpp
 )
 target_include_directories(judas_lighting_tests PRIVATE src)
@@ -489,6 +492,7 @@ add_executable(judas_interactable_tests
     src/UIWidgets.cpp
     src/HUD.cpp
     src/Renderer.cpp
+    src/SkeletalAnimation.cpp
     src/FontLoader.cpp
     ${JUDAS_PHYSICS_SOURCES}
     src/PhysicsWorld.cpp
@@ -959,3 +963,12 @@ target_compile_options(judas_joint_authoring_tests PRIVATE -Wall -Wextra)
 add_executable(judas_joint_application_tests tests/JointApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_joint_application_tests PRIVATE judas_engine)
 target_compile_options(judas_joint_application_tests PRIVATE -Wall -Wextra)
+
+target_include_directories(judas_engine SYSTEM PRIVATE third_party/cgltf)
+
+add_executable(judas_skeletal_animation_tests tests/SkeletalAnimationTests.cpp)
+target_link_libraries(judas_skeletal_animation_tests PRIVATE judas_engine)
+target_compile_options(judas_skeletal_animation_tests PRIVATE -Wall -Wextra)
+add_executable(judas_animation_application_tests tests/AnimationApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_animation_application_tests PRIVATE judas_engine)
+target_compile_options(judas_animation_application_tests PRIVATE -Wall -Wextra)

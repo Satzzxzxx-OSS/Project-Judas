@@ -268,10 +268,13 @@ struct SceneScriptSlot {
     }
 };
 
+struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std::string clip;float speed=1,time=0;};
+
 struct SceneJointComponent {SceneObjectId bodyA=0,bodyB=0;JointSettings settings;};
 
 struct SceneObject {
     std::optional<SceneJointComponent> joint;
+    std::optional<SceneAnimationComponent> animation;
     std::vector<SceneScriptSlot> scripts;
     std::optional<SceneUIComponent> ui;
     CategoryMask tags = 0;

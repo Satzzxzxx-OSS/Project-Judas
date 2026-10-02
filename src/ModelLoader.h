@@ -30,3 +30,6 @@ bool LoadObjMesh(const std::string& path, MeshData& outMesh, std::string& outErr
 // ignored exactly as in LoadObjMesh.
 bool ParseObjMesh(const char* data, std::size_t size, const std::string& nameForErrors, MeshData& outMesh,
                   std::string& outError);
+
+bool ParseModelMesh(const char* bytes,std::size_t size,const std::string& name,MeshData&,std::string& error);
+bool LoadModelMesh(const std::string& path,MeshData&,std::string& error);

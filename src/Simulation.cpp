@@ -159,6 +159,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     AdvancePlayerForPiloting(vehicleControl, session.Attachment(), player, physics, window, gravity,
                              fixedDeltaTime);
     SyncDynamicBodiesFromPhysics(world.DynamicBodies(), physics);
+    world.UpdateAnimations(fixedDeltaTime);
     world.UpdateVisualParticles(fixedDeltaTime);
     world.AdvanceSimulationTime(fixedDeltaTime);
 

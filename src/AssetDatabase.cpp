@@ -99,7 +99,7 @@ bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     if(e==".judasui"){outType=AssetType::UI;return true;}
     if (e == ".js") { outType = AssetType::Script; return true; }
     if (e == ".judasprefab") { outType = AssetType::Prefab; return true; }
-    if (e == ".obj") { outType = AssetType::Mesh; return true; }
+    if (e == ".obj" || e == ".gltf" || e == ".glb") { outType = AssetType::Mesh; return true; }
     if (e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".bmp" || e == ".tga") { outType = AssetType::Texture; return true; }
     if (e == ".wav" || e == ".mp3" || e == ".flac") { outType = AssetType::Audio; return true; }
     if (e == ".ttf") { outType = AssetType::Font; return true; }
@@ -133,7 +133,7 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
     switch (type) {
         case AssetType::Mesh: {
             MeshData data;
-            return LoadObjMesh(path, data, outError);
+            return LoadModelMesh(path, data, outError);
         }
         case AssetType::Texture: {
             TextureData data;

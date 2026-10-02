@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <vector>
+#include <memory>
+struct SkeletalAsset;
 
 #include <glm/glm.hpp>
 
@@ -16,14 +18,20 @@
 // Deliberately minimal: position/normal/uv per vertex is exactly what this
 // milestone's lighting + texturing needs, nothing more (no tangents/
 // bitangents — no normal mapping exists to need them; no vertex color, bone
-// weights, or per-vertex material index).
+// weights in the static stream, or per-vertex material index). M46 skin
+// indices/weights live in a separate optional stream.
 struct MeshVertex {
     glm::vec3 position{0.0f};
     glm::vec3 normal{0.0f};
     glm::vec2 uv{0.0f};
+
 };
 
+struct MeshSkinVertex {glm::uvec4 joints{0};glm::vec4 weights{1,0,0,0};};
+
 struct MeshData {
+    std::vector<MeshSkinVertex> skinVertices;
+    std::shared_ptr<const SkeletalAsset> skeletal;
     std::vector<MeshVertex> vertices;
     // Empty means "draw non-indexed" (glDrawArrays) — Judas's existing
     // built-in cube/sphere primitives use this; an imported model always

@@ -331,6 +331,11 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
             w.Boolean(bool(o.renderCamera));if(o.renderCamera)w.U64(o.renderCamera->renderMask);
         }
     }
+    size_t animations=0;for(const auto& o:scene.Objects())if(o.animation)++animations;
+    if(animations){w.Text("Judas.SkeletalPlayback.1");w.U64(animations);for(const auto& o:scene.Objects())if(o.animation){const auto& a=*o.animation;
+        if(!o.render||o.render->shape!=SceneShape::Mesh||!std::isfinite(a.speed)||!std::isfinite(a.time)||a.time<0)w.Fail("invalid animation component");
+        w.U64(o.id);w.Boolean(a.enabled);w.Boolean(a.playOnStart);w.Boolean(a.loop);w.Text(a.clip);w.Number(a.speed);w.Number(a.time);
+    }}
     size_t joints=0;for(const auto& o:scene.Objects())if(o.joint)++joints;
     if(joints){w.Text("Judas.RigidJoints.1");w.U64(joints);for(const auto& o:scene.Objects())if(o.joint){const auto& j=*o.joint;const auto& s=j.settings;
         if(!ValidJointSettings(s))w.Fail("invalid joint settings");

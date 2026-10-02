@@ -183,6 +183,13 @@ void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     if (r.shape == SceneShape::Terrain) ImGui::TextDisabled("Geometry comes from the terrain body.");
 }
 
+void DrawAnimation(EditorDocument& doc,SceneObject& object,EditorPanelState&){
+    auto& a=*object.animation;Checkbox(doc,"Animation enabled",a.enabled);Checkbox(doc,"Play on start",a.playOnStart);Checkbox(doc,"Loop clip",a.loop);
+    TextField(doc,"Clip name (empty = first)",a.clip);DragScalar(doc,"Playback speed",a.speed);DragScalar(doc,"Start time (seconds)",a.time,.05f,0,100000);
+    ImGui::TextDisabled("Use a self-contained GLB/glTF mesh. Pose is independent of playback.");
+    if(!object.render||object.render->shape!=SceneShape::Mesh)ImGui::TextColored(ImVec4(1,.3f,.2f,1),"Requires a mesh Render component");
+}
+
 void DrawJoint(EditorDocument& doc, SceneObject& object, EditorPanelState&) {
     auto& joint=*object.joint;auto& settings=joint.settings;
     const char* names[]={"Fixed","Hinge","Ball/socket","Slider"};
@@ -405,6 +412,7 @@ const std::vector<ComponentEditor>& ComponentEditorRegistry() {
         Make<SceneAudioListenerComponent>("Audio listener", 'N', &SceneObject::audioListener, DrawAudioListener),
         Make<SceneRenderCameraComponent>("Render camera", 'K', &SceneObject::renderCamera, DrawRenderCamera),
         Make<SceneRenderComponent>("Render", 'R', &SceneObject::render, DrawRender),
+        Make<SceneAnimationComponent>("Animation",'A',&SceneObject::animation,DrawAnimation),
         Make<SceneJointComponent>("Joint",'J',&SceneObject::joint,DrawJoint),
         Make<SceneBodyComponent>("Body", 'B', &SceneObject::body, DrawBody),
         Make<SceneGravityComponent>("Gravity region", 'G', &SceneObject::gravity, DrawGravity),

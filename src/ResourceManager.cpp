@@ -5,6 +5,7 @@
 
 #include "AsyncFile.h"
 #include "ModelLoader.h"
+#include "SkeletalAnimation.h"
 #include "RadialTerrain.h"
 #include "TextureLoader.h"
 
@@ -29,8 +30,9 @@ ResourceManager::~ResourceManager() {
 }
 
 std::uint64_t ResourceManager::EstimateMeshBytes(const MeshData& data) {
-    return static_cast<std::uint64_t>(data.vertices.size()) * sizeof(MeshVertex) +
-           static_cast<std::uint64_t>(data.indices.size()) * sizeof(std::uint32_t);
+    uint64_t bytes=static_cast<uint64_t>(data.vertices.size())*sizeof(MeshVertex)+static_cast<uint64_t>(data.skinVertices.size())*sizeof(MeshSkinVertex)+static_cast<uint64_t>(data.indices.size())*sizeof(uint32_t);
+    if(data.skeletal){const auto& s=data.skeletal->skeleton;bytes+=s.rest.local.size()*sizeof(JointTransform)+(s.parents.size()+s.order.size()+s.skinNodes.size())*sizeof(int)+s.inverseBind.size()*sizeof(glm::mat4);for(const auto& name:s.names)bytes+=name.size();for(const auto& clip:data.skeletal->clips){bytes+=clip.name.size();for(const auto& track:clip.tracks)bytes+=track.times.size()*sizeof(float)+track.values.size()*sizeof(glm::vec4);}}
+    return bytes;
 }
 
 std::uint64_t ResourceManager::EstimateTextureBytes(const TextureData& data) {
@@ -94,7 +96,7 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
     task.decodeThread = std::this_thread::get_id();
     TraceTask(task, ResourceTracePoint::DecodeBegin, bytes.size());
     if (task.type == AssetType::Mesh) {
-        task.succeeded = ParseObjMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
+        task.succeeded = ParseModelMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
     } else if (task.type == AssetType::Audio) {
         task.succeeded = DecodeAudioFromMemory(bytes.data(),bytes.size(),task.audio,task.error);
     } else {
@@ -184,6 +186,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
     if (task->type == AssetType::Mesh) {
         if (m_renderer) entry.mesh = m_renderer->CreateMesh(task->mesh);
         entry.bytes = EstimateMeshBytes(task->mesh);
+        entry.skeletal=task->mesh.skeletal;
     } else if (task->type == AssetType::Audio) {
         entry.bytes=task->audio.samples.size()*sizeof(float);
         entry.audio=m_audio->CreateClip(std::move(task->audio));
@@ -398,6 +401,7 @@ void ResourceManager::DestroyGpu(Entry& entry) {
         m_stats.bytesResident -= std::min(m_stats.bytesResident, entry.bytes);
     }
     entry.mesh = MeshHandle{};
+    entry.skeletal.reset();
     entry.texture = TextureHandle{};
     entry.audio = AudioClipHandle{};
     entry.bytes = 0;
@@ -529,4 +533,8 @@ std::vector<ResourceManager::EntryView> ResourceManager::Entries() const {
         out.push_back(view);
     }
     return out;
+}
+
+std::shared_ptr<const SkeletalAsset> ResourceManager::TryGetSkeletal(const AssetId& id) const{
+ auto it=m_entries.find(id);return it!=m_entries.end()&&it->second.state==ResourceState::Ready?it->second.skeletal:nullptr;
 }

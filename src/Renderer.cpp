@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "SkeletalAnimation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,6 +29,10 @@ layout(location = 0) in vec3 aLocalPos;
 layout(location = 1) in vec3 aLocalNormal;
 layout(location = 2) in vec2 aUV;
 
+layout(location = 3) in uvec4 aJoints;
+layout(location = 4) in vec4 aWeights;
+uniform bool uSkinned;
+uniform mat4 uBones[48];
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
@@ -57,18 +62,23 @@ void main() {
     // once per draw call (see DrawMesh) — the standard correction so
     // normals stay perpendicular to their surface under non-uniform scale
     // (DrawBox's halfExtents are rarely a uniform scale), not just rotation.
-    vWorldNormal = uNormalMatrix * aLocalNormal;
+    mat4 skin=mat4(1.0);
+    if(uSkinned)skin=uBones[aJoints.x]*aWeights.x+uBones[aJoints.y]*aWeights.y+uBones[aJoints.z]*aWeights.z+uBones[aJoints.w]*aWeights.w;
+    vec4 localPosition=skin*vec4(aLocalPos,1.0);
+    mat3 linear=mat3(skin);
+    vec3 normal=abs(determinant(linear))>1e-8?transpose(inverse(linear))*aLocalNormal:linear*aLocalNormal;
+    vWorldNormal = uNormalMatrix * normal;
     // Milestone 14: the fragment's own world-space position, needed so the
     // fragment shader can compute a per-fragment vector TO each dynamic
     // point/spot light (distance-based attenuation, cone angle) — the
     // Milestone 9 directional light never needed this, since a directional
     // light's contribution doesn't depend on fragment position at all.
-    vWorldPos = vec3(uModel * vec4(aLocalPos, 1.0));
+    vWorldPos = vec3(uModel * localPosition);
     vUV = aUV;
     vDirLightSpacePos = uLightSpaceMatrix[0] * vec4(vWorldPos, 1.0);
     vTorchLightSpacePos = uLightSpaceMatrix[1] * vec4(vWorldPos, 1.0);
     vShipLightSpacePos = uLightSpaceMatrix[2] * vec4(vWorldPos, 1.0);
-    gl_Position = uProjection * uView * uModel * vec4(aLocalPos, 1.0);
+    gl_Position = uProjection * uView * uModel * localPosition;
 }
 )";
 
@@ -212,11 +222,17 @@ void main() {
 const char* kShadowVertexShaderSource = R"(#version 330 core
 layout(location = 0) in vec3 aLocalPos;
 
+layout(location = 3) in uvec4 aJoints;
+layout(location = 4) in vec4 aWeights;
+uniform bool uSkinned;
+uniform mat4 uBones[48];
 uniform mat4 uModel;
 uniform mat4 uLightViewProj;
 
 void main() {
-    gl_Position = uLightViewProj * uModel * vec4(aLocalPos, 1.0);
+    mat4 skin=mat4(1.0);
+    if(uSkinned)skin=uBones[aJoints.x]*aWeights.x+uBones[aJoints.y]*aWeights.y+uBones[aJoints.z]*aWeights.z+uBones[aJoints.w]*aWeights.w;
+    gl_Position = uLightViewProj * uModel * skin * vec4(aLocalPos, 1.0);
 }
 )";
 
@@ -482,6 +498,7 @@ bool Renderer::Init() {
     }
 
     m_uModel = glGetUniformLocation(m_shaderProgram, "uModel");
+    m_uSkinned=glGetUniformLocation(m_shaderProgram,"uSkinned");m_uBones=glGetUniformLocation(m_shaderProgram,"uBones[0]");
     m_uNormalMatrix = glGetUniformLocation(m_shaderProgram, "uNormalMatrix");
     m_uView = glGetUniformLocation(m_shaderProgram, "uView");
     m_uProjection = glGetUniformLocation(m_shaderProgram, "uProjection");
@@ -581,6 +598,7 @@ bool Renderer::Init() {
         return false;
     }
     m_uShadowModel = glGetUniformLocation(m_shadowShaderProgram, "uModel");
+    m_uShadowSkinned=glGetUniformLocation(m_shadowShaderProgram,"uSkinned");m_uShadowBones=glGetUniformLocation(m_shadowShaderProgram,"uBones[0]");
     m_uShadowLightViewProj = glGetUniformLocation(m_shadowShaderProgram, "uLightViewProj");
 
     // One depth-texture/FBO pair per shadow slot (src/Light.h), created
@@ -889,8 +907,17 @@ void Renderer::EndShadowPass() {
 }
 
 MeshHandle Renderer::CreateMesh(const MeshData& data) {
+    if (data.skeletal) {
+        const auto count=data.skeletal->skeleton.skinNodes.size();
+        if(count==0||count>48||data.skinVertices.size()!=data.vertices.size())return {};
+        for(const auto& v:data.skinVertices){float sum=0;
+            for(int i=0;i<4;++i){if(v.joints[i]>=count||!std::isfinite(v.weights[i])||v.weights[i]<0)return {};sum+=v.weights[i];}
+            if(std::abs(sum-1.f)>1e-4f)return {};
+        }
+    }else if(!data.skinVertices.empty())return {};
     GpuMesh mesh;
     mesh.alive = true;
+    if(data.skeletal)mesh.restSkin=ResolveSkinMatrices(data.skeletal->skeleton,data.skeletal->skeleton.rest);
     for(const auto& v:data.vertices)mesh.bounds.Include(v.position);
     mesh.vertexCount = static_cast<GLsizei>(data.vertices.size());
 
@@ -912,6 +939,12 @@ MeshHandle Renderer::CreateMesh(const MeshData& data) {
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex),
                            reinterpret_cast<const void*>(offsetof(MeshVertex, uv)));
     glEnableVertexAttribArray(2);
+    if(!data.skinVertices.empty()){
+        glGenBuffers(1,&mesh.skinVbo);glBindBuffer(GL_ARRAY_BUFFER,mesh.skinVbo);
+        glBufferData(GL_ARRAY_BUFFER,GLsizeiptr(data.skinVertices.size()*sizeof(MeshSkinVertex)),data.skinVertices.data(),GL_STATIC_DRAW);
+        glVertexAttribIPointer(3,4,GL_UNSIGNED_INT,sizeof(MeshSkinVertex),reinterpret_cast<void*>(offsetof(MeshSkinVertex,joints)));glEnableVertexAttribArray(3);
+        glVertexAttribPointer(4,4,GL_FLOAT,GL_FALSE,sizeof(MeshSkinVertex),reinterpret_cast<void*>(offsetof(MeshSkinVertex,weights)));glEnableVertexAttribArray(4);
+    }
 
     if (!data.indices.empty()) {
         mesh.indexCount = static_cast<GLsizei>(data.indices.size());
@@ -932,7 +965,7 @@ MeshHandle Renderer::CreateMesh(const MeshData& data) {
     handle.id = static_cast<unsigned int>(m_meshes.size());
     m_meshes.push_back(mesh);
     TraceResourceOperation(ResourceTracePoint::MeshCreated, handle.id,
-                           data.vertices.size() * sizeof(MeshVertex) + data.indices.size() * sizeof(std::uint32_t));
+                           data.vertices.size() * sizeof(MeshVertex) + data.indices.size() * sizeof(std::uint32_t) + data.skinVertices.size()*sizeof(MeshSkinVertex));
     return handle;
 }
 
@@ -960,6 +993,7 @@ void Renderer::DestroyMesh(MeshHandle handle) {
     if (!mesh) return;
     if (mesh->ebo) glDeleteBuffers(1, &mesh->ebo);
     glDeleteBuffers(1, &mesh->vbo);
+    if(mesh->skinVbo)glDeleteBuffers(1,&mesh->skinVbo);
     glDeleteVertexArrays(1, &mesh->vao);
     const std::size_t bytes = static_cast<std::size_t>(mesh->vertexCount) * sizeof(MeshVertex) +
                               static_cast<std::size_t>(mesh->indexCount) * sizeof(std::uint32_t);
@@ -1092,7 +1126,7 @@ GLuint Renderer::ResolveTexture(TextureHandle handle) const {
 
 void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::quat& rotation,
                          const glm::vec3& scale, TextureHandle texture,
-                         const glm::vec3& tintColor, float alpha) {
+                         const glm::vec3& tintColor, float alpha,const std::vector<glm::mat4>* skin) {
     GpuMesh* gpuMesh = GetMesh(mesh);
     if (!gpuMesh) return;
     if(!m_shadowPassActive&&!AllowsLayer(m_renderLayer)){++m_stats.layerRejectedDraws;return;}
@@ -1100,8 +1134,12 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
     const glm::mat4 model = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(rotation) *
                              glm::scale(glm::mat4(1.0f), scale);
 
+    const auto* palette=skin&&!skin->empty()?skin:&gpuMesh->restSkin;
+    if(palette->size()>48||palette->size()!=gpuMesh->restSkin.size())return;
+    VisualBounds bounds=gpuMesh->bounds;
+    if(!palette->empty()){bounds={};for(const auto& matrix:*palette){auto b=TransformBounds(gpuMesh->bounds,matrix);bounds.Include(b.min);bounds.Include(b.max);}}
     ++m_stats.renderablesConsidered;
-    if(!IsVisible(TransformBounds(gpuMesh->bounds,model))){++m_stats.renderablesCulled;return;}
+    if(!IsVisible(TransformBounds(bounds,model))){++m_stats.renderablesCulled;return;}
     ++m_stats.renderablesVisible;
 
     // Milestone 15: while a shadow pass is active (see BeginShadowPass),
@@ -1116,6 +1154,7 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
 
     if (m_shadowPassActive) {
         glUseProgram(m_shadowShaderProgram);
+        glUniform1i(m_uShadowSkinned,!palette->empty());if(!palette->empty())glUniformMatrix4fv(m_uShadowBones,GLsizei(palette->size()),GL_FALSE,glm::value_ptr(palette->front()));
         glUniformMatrix4fv(m_uShadowModel, 1, GL_FALSE, glm::value_ptr(model));
         glBindVertexArray(gpuMesh->vao);
         if (gpuMesh->ebo) {
@@ -1132,6 +1171,7 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
     const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(model));
 
     glUseProgram(m_shaderProgram);
+    glUniform1i(m_uSkinned,!palette->empty());if(!palette->empty())glUniformMatrix4fv(m_uBones,GLsizei(palette->size()),GL_FALSE,glm::value_ptr(palette->front()));
     glUniformMatrix4fv(m_uModel, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix3fv(m_uNormalMatrix, 1, GL_FALSE, glm::value_ptr(normalMatrix));
     glUniformMatrix4fv(m_uView, 1, GL_FALSE, glm::value_ptr(m_view));

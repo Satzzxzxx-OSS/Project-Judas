@@ -8804,6 +8804,25 @@ finite-resolution approximation; box-versus-terrain is unsupported, explicitly.
 simulation authority. Details and limits: `PHYSICS_QUERIES.md`; focused demo:
 `projects/query_demo`; executed evidence: `docs/evidence/m44`.
 
-## Milestone 45 — rigid-body joints (candidate)
+## Milestone 45 — rigid-body joints
 
 PhysicsWorld owns fixed, hinge, ball/socket and slider constraints. Body-local frames/anchors feed a shared accumulated impulse solver alternating with contact rows; joints do not overwrite poses. Hinge/slider limits, bounded motors and implicit spring/damping operate along their free coordinate. Coupled impact islands include passive joint rows under the existing inelastic island policy. Safe joint handles, ordinary scene references, prefab remapping, editor settings and `physics.joint(owner)` JavaScript controls expose the primitive without game-specific meaning. See [JOINTS.md](JOINTS.md). The compact `projects/joint_demo` physical door is body + hinge + JS; historical M16 remains preserved. Tagged joint fingerprint content extends canonical schema 5 without changing no-joint baselines. Runtime motor settings and impulse caches are transient.
+
+
+## Milestone 46 — skeletons, poses and visual clip playback (candidate)
+
+Judas owns `Skeleton` and `SkeletalPose`. Immutable mesh resources share rest
+hierarchy, skin palette, inverse binds and named clips imported with pinned MIT
+cgltf 1.15. The existing worker decode/main-thread GPU handoff also loads GLB
+and embedded-buffer glTF. Clip sampling produces joint-local pose data; the
+RuntimeWorld instance owns the final resolved pose and skin matrices. Playback
+is one producer, not the owner of bone transforms. `SetFinalPose` allows another
+producer to provide a pose at the resolution boundary; M46 has no blending,
+IK or physical bone mapping. Fixed-step visual playback updates once, and all
+cameras consume the same result. Renderer alone owns the optional skin stream
+and colour/shadow GPU skinning. Ordinary collision geometry remains separate.
+Scene animation settings, generic prefab overrides, editor controls and
+`entity.animation` JS playback use existing ownership and asset identity.
+Tagged animation settings extend canonical fingerprint schema 5; scenes with
+no animation retain their existing fingerprint. See [ANIMATION.md](ANIMATION.md)
+for supported import limits and the focused demo.

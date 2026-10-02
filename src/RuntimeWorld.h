@@ -28,6 +28,7 @@
 #include "Scene.h"
 #include "AudioSystem.h"
 #include "ScriptSystem.h"
+#include "SkeletalAnimation.h"
 #include "RuntimeUI.h"
 
 class SceneSession;
@@ -278,6 +279,12 @@ public:
     bool SetRuntimeTransform(EntityId id,const SceneTransform& transform);
     BodyHandle RuntimeBody(EntityId id) const;
     JointHandle RuntimeJoint(EntityId owner);
+    struct AnimationInstance {std::shared_ptr<const SkeletalAsset> asset;AnimationPlayback playback;SkeletalPose finalPose;std::vector<glm::mat4> skin;};
+    AnimationInstance* RuntimeAnimation(EntityId);
+    const std::vector<glm::mat4>* AnimationSkin(EntityId) const;
+    void UpdateAnimations(float dt);
+    bool SetFinalPose(EntityId,const SkeletalPose&,std::string& error);
+
     void SynchronizeJoints();
     bool EmitFluidParticle();
     std::size_t EmittedFluidParticles() const { return m_emittedParticles; }
@@ -399,6 +406,8 @@ private:
     bool AppendSceneObjects(const Scene& scene, bool authored, const FidelityPolicyContext& context, std::string& error);
     Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
     bool m_hasScripts=false;
+    std::set<EntityId> m_animationOwners;
+    std::map<EntityId,AnimationInstance> m_animationInstances;
     std::set<EntityId> m_jointOwners,m_jointParticipants;
     std::map<EntityId,JointHandle> m_runtimeJoints;
     std::unique_ptr<ScriptSystem> m_scripts;

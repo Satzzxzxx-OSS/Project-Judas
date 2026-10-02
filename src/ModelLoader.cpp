@@ -115,3 +115,21 @@ bool ConvertShapes(const tinyobj::attrib_t& attrib, const std::vector<tinyobj::s
     return true;
 }
 }  // namespace
+
+#include "GltfLoader.h"
+#include "AsyncFile.h"
+#include <filesystem>
+#include <cctype>
+bool ParseModelMesh(const char* bytes,std::size_t size,const std::string& name,MeshData& mesh,std::string& error){
+ auto extension=std::filesystem::path(name).extension().string();
+ for(auto& c:extension)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+ if(extension==".gltf"||extension==".glb")return ParseGltfMesh(bytes,size,mesh,error);
+ return ParseObjMesh(bytes,size,name,mesh,error);
+}
+bool LoadModelMesh(const std::string& path,MeshData& mesh,std::string& error){
+ auto extension=std::filesystem::path(path).extension().string();
+ for(auto& c:extension)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+ if(extension!=".gltf"&&extension!=".glb")return LoadObjMesh(path,mesh,error);
+ std::vector<uint8_t> bytes;if(!ReadWholeFile(path,bytes,error))return false;
+ return ParseGltfMesh(bytes.data(),bytes.size(),mesh,error);
+}
