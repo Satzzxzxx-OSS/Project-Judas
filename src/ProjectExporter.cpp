@@ -4,6 +4,7 @@
 #include "EnginePaths.h"
 #include "GamePackage.h"
 #include "Prefab.h"
+#include "RuntimeUI.h"
 #include "SceneFingerprint.h"
 #include "SceneSerialization.h"
 #include <chrono>
@@ -51,6 +52,7 @@ bool ReleaseRuntime(const fs::path& executable) {
     return WIFEXITED(status) && WEXITSTATUS(status) == 0 && text == "Judas runtime Linux Release\n";
 }
 void References(const Scene& scene, const AssetDatabase& assets, const ProjectClassification& categories) {
+    const auto checkUI=[&](const SceneObject& o){if(!o.ui)return;auto* r=assets.Find(o.ui->asset);UIDocument d;std::string error;Require(r&&!r->missing&&r->type==AssetType::UI,"Missing UI document "+o.ui->asset);Require(LoadUIDocument(r->path,d,error)&&ValidateUIAssets(d,assets,error),"UI: "+error);};
     const auto check = [&](const AssetId& id, AssetType type) {
         if (id.empty()) return;
         const auto* record = assets.Find(id);
@@ -58,6 +60,7 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
                 "Missing or wrong-type required " + std::string(AssetTypeName(type)) + " asset " + id);
     };
     for (const auto& object : scene.Objects()) {
+        checkUI(object);
         check(object.prefabAsset, AssetType::Prefab);
         if (object.render) {
             check(object.render->meshAsset, AssetType::Mesh);
@@ -73,6 +76,7 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
     std::string scripts;Require(ScriptSystem::SourceFingerprint(assets,resolved,scripts,error),"Scripts: "+error);
     // Overrides/source content must be validated too, not just placeholders.
     for (const auto& object : resolved.Objects()) {
+        checkUI(object);
         if (object.render) {
             check(object.render->meshAsset, AssetType::Mesh);
             check(object.render->textureAsset, AssetType::Texture);
@@ -145,6 +149,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             Require(Inside(fs::canonical(record.path), root), "Asset escapes project root: " + record.relativePath);
             const bool valid = AssetDatabase::ValidateAssetFile(record.path, record.type, detail);
             Require(valid, "Invalid asset " + record.relativePath + ": " + detail);
+            if(record.type==AssetType::UI){UIDocument d;Require(LoadUIDocument(record.path,d,detail)&&ValidateUIAssets(d,assets,detail),"UI dependency: "+detail);}
             if (record.type == AssetType::Prefab) {
                 Scene prefab; Require(LoadSceneFromFile(record.path, prefab, detail), detail);
                 References(prefab, assets, project.Settings().classification);

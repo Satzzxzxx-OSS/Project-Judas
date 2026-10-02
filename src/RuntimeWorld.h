@@ -27,6 +27,7 @@
 #include "Scene.h"
 #include "AudioSystem.h"
 #include "ScriptSystem.h"
+#include "RuntimeUI.h"
 
 class RadialTerrain;
 class ResourceManager;
@@ -260,7 +261,11 @@ public:
     void UpdateScripts(const InputSystem* input,float dt);
     void FixedScripts(const InputSystem* input,float dt);
     bool RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error);
-    void EndScripts(){m_scripts.reset();}
+    void EndScripts(){m_scripts.reset();m_ui.reset();}
+    RuntimeUI& UI(){if(!m_ui)m_ui=std::make_unique<RuntimeUI>(m_assets);return *m_ui;}
+    const RuntimeUI* UIIfLoaded()const{return m_ui.get();}
+    void UpdateUIScripts(InputSystem* input,float dt);
+    void DispatchUIEvents(const InputSystem* input,float dt);
     ScriptSystem* Scripts() const {return m_scripts.get();}
     std::vector<SceneObject> ScriptObjects() const;
     const SceneObject* RuntimeDefinition(EntityId id) const;
@@ -385,6 +390,7 @@ private:
     Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
     bool m_hasScripts=false;
     std::unique_ptr<ScriptSystem> m_scripts;
+    std::unique_ptr<RuntimeUI> m_ui;
     std::map<EntityId,SceneObject> m_scriptDefinitions;
     std::vector<EntityRecord> m_extraEntities; // normal non-dynamic runtime components
     SceneSettings m_settings;

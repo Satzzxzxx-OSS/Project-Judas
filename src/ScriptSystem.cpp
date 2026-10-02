@@ -64,6 +64,36 @@ export const world={entity,queryTags:(required=[],excluded=[])=>call('queryTags'
 export const input={held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
 export const time={get elapsed(){return call('elapsed')},get delta(){return call('delta')},get fixed(){return call('fixed')}};
 export const console={log:(...args)=>call('log',args.map(String).join(' '))};
+
+export class UIElement {
+ constructor(handle,id){this.handle=handle;this.id=id}
+ get text(){return call('uiGet',this.handle,this.id,'text')}
+ set text(v){call('uiSet',this.handle,this.id,'text',v)}
+ get visible(){return call('uiGet',this.handle,this.id,'visible')}
+ set visible(v){call('uiSet',this.handle,this.id,'visible',v)}
+ get enabled(){return call('uiGet',this.handle,this.id,'enabled')}
+ set enabled(v){call('uiSet',this.handle,this.id,'enabled',v)}
+ get value(){return call('uiGet',this.handle,this.id,'value')}
+ set value(v){call('uiSet',this.handle,this.id,'value',v)}
+ get texture(){return call('uiGet',this.handle,this.id,'texture')}
+ set texture(v){call('uiSet',this.handle,this.id,'texture',v)}
+}
+export class UIDocument {
+ constructor(handle){this.handle=handle}
+ get(id){call('uiGet',this.handle,id,'visible');return new UIElement(this.handle,id)}
+ get visible(){return call('uiGet',this.handle,'','visible')}
+ set visible(v){call('uiSet',this.handle,'','visible',v)}
+ get enabled(){return call('uiGet',this.handle,'','enabled')}
+ set enabled(v){call('uiSet',this.handle,'','enabled',v)}
+ get modal(){return call('uiGet',this.handle,'','modal')}
+ set modal(v){call('uiSet',this.handle,'','modal',v)}
+ show(){this.visible=true} hide(){this.visible=false}
+ unload(){call('uiUnload',this.handle)}
+}
+export const ui={get:name=>{const id=call('uiFind',name);return id?new UIDocument(id):null},
+ load:(asset,name)=>new UIDocument(call('uiLoad',asset,name)),quit:()=>call('uiQuit'),
+ get debugOverlayVisible(){return call('uiDiagnostics')},set debugOverlayVisible(v){call('uiDiagnostics',v)}};
+
 globalThis.console=console;
 )JS";
 }
@@ -76,7 +106,7 @@ struct ScriptSystem::Impl {
     std::map<std::string,JSModuleDef*> modules;
     std::vector<ScriptDiagnostic> diagnostics;
     const InputSystem* input=nullptr;bool fixed=false;float delta=0;
-    unsigned budget=10000,polls=0;bool stopping=false;
+    unsigned budget=10000,polls=0;bool stopping=false;SceneObjectId currentOwner=0;std::uint64_t currentSlot=0;
     std::map<std::pair<SceneObjectId,std::uint64_t>,std::string> restored;
     Impl(RuntimeWorld* w,const AssetDatabase* a):world(w),assets(a){
         rt=JS_NewRuntime();JS_SetMemoryLimit(rt,64*1024*1024);JS_SetMaxStackSize(rt,512*1024);
@@ -153,7 +183,7 @@ struct ScriptSystem::Impl {
         auto json=JS_JSONStringify(ctx,value,JS_UNDEFINED,JS_UNDEFINED);if(JS_IsException(json)){error=Exception(ctx);return false;}text=String(ctx,json);JS_FreeValue(ctx,json);
         if(text.size()>65536){error="state exceeds 64KiB";return false;}return true;
     }
-    void Callback(Instance& i,const char* name){if(i.fault)return;polls=0;auto fn=JS_GetPropertyStr(ctx,i.value,name);
+    void Callback(Instance& i,const char* name){if(i.fault)return;currentOwner=i.entity;currentSlot=i.slot.id;polls=0;auto fn=JS_GetPropertyStr(ctx,i.value,name);
         if(JS_IsException(fn)){Error(i,name);return;}if(JS_IsFunction(ctx,fn)){auto dt=JS_NewFloat64(ctx,delta);auto result=JS_Call(ctx,fn,i.value,1,&dt);if(JS_IsException(result))Error(i,name);else if(JS_PromiseState(ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(ctx,"async gameplay callbacks are unsupported");Error(i,name);}JS_FreeValue(ctx,result);}JS_FreeValue(ctx,fn);
     }
     void Stop(){if(stopping)return;stopping=true;std::vector<Instance*> order;
@@ -170,6 +200,23 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(op=="log"){std::fprintf(stdout,"JS: %s\n",String(c,arg(1)).c_str());return JS_UNDEFINED;}
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
+
+    if(op=="uiDiagnostics"){if(argc>1){if(!JS_IsBool(arg(1)))return JS_ThrowTypeError(c,"debug visibility requires boolean");world.UI().debugOverlayVisible=JS_ToBool(c,arg(1));}return JS_NewBool(c,world.UI().debugOverlayVisible);}
+    if(op=="uiFind")return JS_NewUint32(c,world.UI().Find(String(c,arg(1))));
+    if(op=="uiQuit"){world.UI().RequestQuit();return JS_UNDEFINED;}
+    if(op=="uiLoad"){std::string error;auto h=world.UI().Load(String(c,arg(1)),String(c,arg(2)),s->currentOwner,error,s->currentSlot);if(!h)return JS_ThrowTypeError(c,"UI: %s",error.c_str());return JS_NewUint32(c,h);}
+    if(op=="uiGet"||op=="uiSet"||op=="uiUnload"){
+        uint32_t h=0;JS_ToUint32(c,&h,arg(1));auto* d=world.UI().Document(h);if(!d)return JS_ThrowReferenceError(c,"stale/unloaded UI document");
+        if(op=="uiUnload"){world.UI().Unload(h);return JS_TRUE;}
+        auto id=String(c,arg(2)),key=String(c,arg(3));UIElement* e=id.empty()?nullptr:world.UI().Element(h,id);
+        if(!id.empty()&&!e)return JS_ThrowReferenceError(c,"unknown UI element %s",id.c_str());
+        bool* flag=key=="visible"?(e?&e->visible:&d->visible):key=="enabled"?(e?&e->enabled:&d->enabled):key=="modal"&&!e?&d->modal:nullptr;
+        if(flag){if(op=="uiSet"){if(!JS_IsBool(arg(4)))return JS_ThrowTypeError(c,"UI flag requires boolean");*flag=JS_ToBool(c,arg(4));}return JS_NewBool(c,*flag);}
+        if(e&&(key=="text"||key=="texture")){auto& value=key=="text"?e->text:e->texture;if(op=="uiSet"){if(!JS_IsString(arg(4)))return JS_ThrowTypeError(c,"UI string required");auto v=String(c,arg(4));if(v.size()>16384)return JS_ThrowTypeError(c,"UI text too long");if(key=="texture"&&!v.empty()){auto* a=s->assets?s->assets->Find(v):nullptr;if(!a||a->missing||a->type!=AssetType::Texture)return JS_ThrowTypeError(c,"invalid UI texture asset");}value=v;}return JS_NewString(c,value.c_str());}
+        if(e&&key=="value"){if(op=="uiSet"){double v;if(JS_ToFloat64(c,&v,arg(4))||!std::isfinite(v)||v<e->minimum||v>e->maximum)return JS_ThrowTypeError(c,"UI value outside authored range");e->value=float(v);}return JS_NewFloat64(c,e->value);}
+        return JS_ThrowTypeError(c,"unknown UI property");
+    }
+
     if(op=="elapsed")return JS_NewFloat64(c,world.SimulationTimeSeconds());
     if(op=="delta")return JS_NewFloat64(c,s->delta);
     if(op=="fixed")return JS_NewBool(c,s->fixed);
@@ -260,7 +307,7 @@ void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){m->Check
     std::set<std::pair<SceneObjectId,uint64_t>> alive;
     for(const auto& object:objects)for(const auto& slot:object.scripts)if(slot.enabled){auto key=std::make_pair(object.id,slot.id);alive.insert(key);
         if(m->instances.count(key))continue;
-        Impl::Instance i;i.order=&slot-object.scripts.data();i.entity=object.id;i.slot=slot;m->polls=0;
+        Impl::Instance i;i.order=&slot-object.scripts.data();i.entity=object.id;i.slot=slot;m->currentOwner=object.id;m->currentSlot=slot.id;m->polls=0;
         auto ns=m->Namespace(slot.asset);if(JS_IsException(ns)){m->Error(i,"module");m->instances.emplace(key,std::move(i));continue;}
         auto schema=JS_GetPropertyStr(m->ctx,ns,"properties");std::string schemaText="{}",schemaError;
         if(!JS_IsUndefined(schema))m->Json(schema,schemaText,schemaError);
@@ -281,7 +328,7 @@ void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){m->Check
             auto existing=JS_GetPropertyStr(m->ctx,i.value,"state");if(state!=m->restored.end()||JS_IsUndefined(existing))JS_SetPropertyStr(m->ctx,i.value,"state",JS_ParseJSON(m->ctx,text.data(),text.size(),"saved state"));JS_FreeValue(m->ctx,existing);}
         m->instances.emplace(key,std::move(i));
     }
-    for(auto it=m->instances.begin();it!=m->instances.end();)if(!alive.count(it->first)){m->Callback(it->second,"destroy");JS_FreeValue(m->ctx,it->second.value);it=m->instances.erase(it);}else ++it;
+    for(auto it=m->instances.begin();it!=m->instances.end();)if(!alive.count(it->first)){m->Callback(it->second,"destroy");if(m->world&&m->world->UIIfLoaded())m->world->UI().RemoveSlotOwner(it->first.first,it->first.second);JS_FreeValue(m->ctx,it->second.value);it=m->instances.erase(it);}else ++it;
 }
 void ScriptSystem::Frame(const InputSystem* input,float dt){m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     std::vector<std::pair<SceneObjectId,uint64_t>> order;for(const auto& entry:m->instances)order.push_back(entry.first);
@@ -341,4 +388,18 @@ bool ScriptSystem::SourceFingerprint(const AssetDatabase& assets,const Scene& sc
     for(const auto& entry:assets.Records())if(entry.second.type==AssetType::Script){const auto& record=entry.second;
         if(record.missing){sources[record.id]="MISSING";continue;}std::ifstream file(record.path);std::ostringstream data;data<<file.rdbuf();sources[record.id]=data.str();}
     std::string bytes="Judas.ScriptSources.1";for(const auto& entry:sources){bytes+=entry.first;bytes+=SceneFingerprintSha256(entry.second);}digest=SceneFingerprintSha256(bytes);error.clear();return true;
+}
+
+void ScriptSystem::UIFrame(const InputSystem* input,float dt){m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
+    for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end())continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}m->Callback(i,"uiUpdate");}
+}
+void ScriptSystem::UIEvents(const InputSystem* input,float dt){m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
+    if(!m->world->UIIfLoaded())return;
+    auto events=m->world->UI().TakeEvents();
+    for(const auto& event:events)for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||it->second.fault||!m->world->RuntimeDefinition(o.id))continue;
+        auto& i=it->second;m->polls=0;m->currentOwner=i.entity;m->currentSlot=i.slot.id;auto fn=JS_GetPropertyStr(m->ctx,i.value,"onUI");if(JS_IsException(fn)){m->Error(i,"onUI");JS_FreeValue(m->ctx,fn);continue;}if(JS_IsFunction(m->ctx,fn)){
+            auto e=JS_NewObject(m->ctx);JS_SetPropertyStr(m->ctx,e,"document",JS_NewString(m->ctx,event.document.c_str()));JS_SetPropertyStr(m->ctx,e,"element",JS_NewString(m->ctx,event.element.c_str()));JS_SetPropertyStr(m->ctx,e,"type",JS_NewString(m->ctx,event.type.c_str()));JS_SetPropertyStr(m->ctx,e,"value",JS_NewFloat64(m->ctx,event.value));
+            auto result=JS_Call(m->ctx,fn,i.value,1,&e);if(JS_IsException(result))m->Error(i,"onUI");else if(JS_PromiseState(m->ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(m->ctx,"async UI callback unsupported");m->Error(i,"onUI");}JS_FreeValue(m->ctx,result);JS_FreeValue(m->ctx,e);
+        }JS_FreeValue(m->ctx,fn);
+    }
 }

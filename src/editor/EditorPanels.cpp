@@ -1,7 +1,10 @@
 #include "EditorPanels.h"
 #include "Prefab.h"
+#include "RuntimeUI.h"
 #include "SceneSerialization.h"
 #include <filesystem>
+#include <set>
+#include <cstdio>
 
 #include <algorithm>
 #include <cstring>
@@ -411,6 +414,30 @@ void DrawSceneSettingsPanel(EditorDocument& doc, EditorPanelState& state) {
     ImGui::End();
 }
 
+namespace {
+void DrawUILayoutEditor(const AssetRecord& record,EditorPanelState& state){
+    static std::string path,error;static UIDocument source;static int selected=0;static bool loaded=false;
+    if(path!=record.path){path=record.path;loaded=LoadUIDocument(path,source,error);selected=0;}
+    if(!loaded){ImGui::TextWrapped("UI: %s",error.c_str());return;}
+    if(ImGui::Button("Save UI source")){if(SaveUIDocument(path,source,error))state.status="Saved UI source; restart Play to load it";else state.status=error;}
+    ImGui::SameLine();if(ImGui::Button("Reload UI source"))loaded=LoadUIDocument(path,source,error);
+    ImGui::InputFloat2("Reference resolution",&source.reference.x);ImGui::Checkbox("Initially visible",&source.visible);ImGui::SameLine();ImGui::Checkbox("Enabled document",&source.enabled);ImGui::Checkbox("Modal (pause gameplay)",&source.modal);
+    for(size_t i=0;i<source.elements.size();++i){ImGui::PushID(int(i));if(ImGui::Selectable(source.elements[i].id.c_str(),selected==int(i)))selected=int(i);ImGui::PopID();}
+    if(ImGui::Button("Add child panel")){UIElement e;e.id="element_"+std::to_string(source.elements.size()+1);while(std::any_of(source.elements.begin(),source.elements.end(),[&](const auto& x){return x.id==e.id;}))e.id+="_";e.parent=source.elements[selected].id;source.elements.push_back(e);selected=int(source.elements.size())-1;}
+    if(selected<0||selected>=int(source.elements.size()))selected=0;
+    auto& e=source.elements[selected];auto str=[](const char* label,std::string& s){char b[2048];std::snprintf(b,sizeof(b),"%s",s.c_str());if(ImGui::InputText(label,b,sizeof(b)))s=b;};
+    str("Stable element ID",e.id);if(selected)str("Parent ID",e.parent);
+    int kind=int(e.kind);if(selected&&ImGui::Combo("Element type",&kind,"Canvas\0Panel\0Text\0Image\0Button\0Slider\0Toggle\0"))e.kind=UIKind(kind);
+    int flow=int(e.flow);if(ImGui::Combo("Child layout",&flow,"Free\0Horizontal\0Vertical\0"))e.flow=UIFlow(flow);
+    ImGui::Checkbox("Visible",&e.visible);ImGui::SameLine();ImGui::Checkbox("Enabled",&e.enabled);ImGui::Checkbox("Clip children",&e.clip);
+    ImGui::InputFloat2("Anchor min",&e.anchorMin.x);ImGui::InputFloat2("Anchor max",&e.anchorMax.x);ImGui::InputFloat2("Offset",&e.offset.x);ImGui::InputFloat2("Fixed size",&e.size.x);ImGui::InputFloat2("Relative size",&e.relativeSize.x);ImGui::InputFloat2("Pivot alignment",&e.align.x);
+    ImGui::InputFloat4("Margins L T R B",&e.margin.x);ImGui::InputFloat4("Padding L T R B",&e.padding.x);ImGui::InputFloat("Spacing",&e.spacing);
+    ImGui::ColorEdit4("Background",&e.background.x);ImGui::ColorEdit4("Tint",&e.color.x);str("Text",e.text);str("Font asset ID",e.font);str("Texture asset ID",e.texture);ImGui::InputFloat("Font size",&e.fontSize);ImGui::InputFloat2("Text alignment",&e.textAlign.x);ImGui::Checkbox("Wrap text",&e.wrap);ImGui::Checkbox("Fit image",&e.fit);
+    ImGui::InputFloat("Value",&e.value);ImGui::InputFloat("Minimum",&e.minimum);ImGui::InputFloat("Maximum",&e.maximum);
+    if(selected&&ImGui::Button("Delete element subtree")){std::set<std::string> remove{e.id};for(const auto& x:source.elements)if(remove.count(x.parent))remove.insert(x.id);source.elements.erase(std::remove_if(source.elements.begin(),source.elements.end(),[&](const auto& x){return remove.count(x.id);}),source.elements.end());selected=0;}
+    if(!source.Validate(error))ImGui::TextWrapped("Cannot save: %s",error.c_str());
+}
+}
 void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorRequests& requests) {
     (void)doc;
     if (!state.showAssetBrowser) return;
@@ -424,6 +451,11 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
         return;
     }
     const AssetDatabase& db = *state.assets;
+    if(state.mode==EditorMode::Edit&&ImGui::Button("Create UI document")){
+        UIDocument d;UIElement root;root.id="canvas";root.kind=UIKind::Canvas;d.elements.push_back(root);UIElement panel;panel.id="panel";panel.parent="canvas";panel.background={.1f,.12f,.18f,.95f};d.elements.push_back(panel);
+        auto directory=std::filesystem::path(db.AssetsDir())/"ui";std::filesystem::create_directories(directory);auto path=directory/"layout.judasui";int n=2;while(std::filesystem::exists(path))path=directory/("layout"+std::to_string(n++)+".judasui");std::string error;
+        if(SaveUIDocument(path.string(),d,error))requests.trackAssetPath=path.string();else state.status=error;
+    }
     ImGui::TextDisabled("%s  (%zu assets, %zu untracked, %zu problems)", db.AssetsDir().c_str(), db.Records().size(),
                         db.Untracked().size(), db.Problems().size());
     ImGui::SameLine();
@@ -510,6 +542,7 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
         if (const AssetRecord* record = db.Find(state.browserSelection)) {
             ImGui::Separator();
             ImGui::Text("Selected: %s", record->relativePath.c_str());
+            if(record->type==AssetType::UI&&state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Edit UI document",ImGuiTreeNodeFlags_DefaultOpen))DrawUILayoutEditor(*record,state);
             if(record->type==AssetType::Prefab&&state.mode==EditorMode::Edit&&ImGui::Button("Place prefab instance")){
                 Scene source;std::string error;SceneObjectId root=0;
                 if(LoadPrefab(db,record->id,source,error)){

@@ -62,8 +62,8 @@ public:
     GameSession& Session() { return m_session; }
     const GameSession& Session() const { return m_session; }
     PauseMenu& Menu() { return m_pauseMenu; }
-    bool QuitRequested() const { return m_pauseMenu.QuitRequested(); }
-    bool IsPaused() const { return m_pauseMenu.IsOpen(); }
+    bool QuitRequested() const;
+    bool IsPaused() const;
     // Fixed steps since Begin or the last reset (M25's screenshot timer).
     std::size_t FixedStepsSinceReset() const { return m_fixedStepsSinceReset; }
     bool ConsumeResetOccurred();

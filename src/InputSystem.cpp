@@ -45,10 +45,10 @@ InputMap InputMap::Defaults(){
       {"pitch_up","I"},{"pitch_down","K"},{"yaw_left","J"},{"yaw_right","L"},{"roll_left","U"},{"roll_right","O"},
       {"prograde","P"},{"retrograde","M"},{"radial","N"},{"add_water","B"},{"igniter","C"},
       {"reset","R"},{"jump","Space"},{"control_toggle","F"},{"torch_toggle","T"},{"interact","G"},{"view_toggle","V"},{"throw","H"},{"sas_toggle","X"},
-      {"spawn","Z"},{"destroy","Y"},{"save_state","F6"},{"delete_state","F7"},{"pause","Escape"},{"ui_up","Up"},{"ui_down","Down"},{"ui_activate","Return"}};
+      {"spawn","Z"},{"destroy","Y"},{"save_state","F6"},{"delete_state","F7"},{"pause","Escape"},{"ui_up","Up"},{"ui_down","Down"},{"ui_activate","Return"},{"ui_left","Left"},{"ui_right","Right"}};
     for(auto a:actions){m.Add(a.first,false);m.AddBinding(a.first,{std::string("key:")+a.second});}
     for(auto a:{std::pair<const char*,const char*>{"move_forward","Up"},{"move_backward","Down"},{"strafe_left","Left"},{"strafe_right","Right"},{"ui_activate","Keypad Enter"}})m.AddBinding(a.first,{std::string("key:")+a.second});
-    for(auto a:{std::pair<const char*,const char*>{"jump","South"},{"interact","West"},{"pause","Start"},{"ui_activate","South"},{"ui_up","DpadUp"},{"ui_down","DpadDown"}})m.AddBinding(a.first,{std::string("pad:")+a.second});
+    for(auto a:{std::pair<const char*,const char*>{"jump","South"},{"interact","West"},{"pause","Start"},{"ui_activate","South"},{"ui_up","DpadUp"},{"ui_down","DpadDown"},{"ui_left","DpadLeft"},{"ui_right","DpadRight"}})m.AddBinding(a.first,{std::string("pad:")+a.second});
     m.Add("ui_click",false);m.AddBinding("ui_click",{"mouse:Left"});
     auto axis=[&](const char* name,const char* negative,const char* positive,const char* stick){m.Add(name,true);m.AddBinding(name,{std::string("key:")+negative,-1});m.AddBinding(name,{std::string("key:")+positive,1});if(stick)m.AddBinding(name,{std::string("stick:")+stick,1,.15f});};
     axis("move_x","A","D","LeftX");axis("move_y","S","W",nullptr);m.AddBinding("move_y",{"stick:LeftY",-1,.15f});
@@ -71,13 +71,21 @@ void InputSystem::Evaluate(){
         else {auto& s=m_actions[e.name];if(held!=s.held){s.pressed|=held;s.released|=!held;auto& p=m_pending[e.name];p.pressed|=held;p.released|=!held;}s.held=held;}
     }
 }
-void InputSystem::BeginFrame(){for(auto& p:m_actions){p.second.pressed=false;p.second.released=false;}for(const char* c:{"mouse:dx","mouse:dy","mouse:wheelX","mouse:wheelY"})m_raw[c]=0;Evaluate();}
+void InputSystem::BeginFrame(){m_consumed.clear();for(auto& p:m_actions){p.second.pressed=false;p.second.released=false;}for(const char* c:{"mouse:dx","mouse:dy","mouse:wheelX","mouse:wheelY"})m_raw[c]=0;Evaluate();}
 void InputSystem::SetPhysical(const std::string& c,float v){if(!std::isfinite(v))return;m_raw[c]=v;Evaluate();}
 void InputSystem::AddDelta(const std::string& c,float v){if(std::isfinite(v))SetPhysical(c,m_raw[c]+v);}
 void InputSystem::ClearDevice(const std::string& prefix){for(auto& p:m_raw)if(p.first.rfind(prefix,0)==0)p.second=0;Evaluate();}
-void InputSystem::Reset(){m_raw.clear();m_axes.clear();m_actions.clear();m_pending.clear();m_fixed.clear();Evaluate();DiscardPending();}
+void InputSystem::Reset(){m_consumed.clear();m_raw.clear();m_axes.clear();m_actions.clear();m_pending.clear();m_fixed.clear();Evaluate();DiscardPending();}
 void InputSystem::DiscardPending(){m_pending.clear();m_fixed.clear();for(auto& s:m_actions){s.second.pressed=false;s.second.released=false;}}
-InputActionState InputSystem::Action(const std::string& n)const{auto it=m_actions.find(n);return it==m_actions.end()?InputActionState{}:it->second;}
-float InputSystem::Axis(const std::string& n)const{auto it=m_axes.find(n);return it==m_axes.end()?0:it->second;}
+InputActionState InputSystem::Action(const std::string& n)const{if(std::find(m_consumed.begin(),m_consumed.end(),n)!=m_consumed.end())return {};auto it=m_actions.find(n);return it==m_actions.end()?InputActionState{}:it->second;}
+float InputSystem::Axis(const std::string& n)const{if(std::find(m_consumed.begin(),m_consumed.end(),n)!=m_consumed.end())return 0;auto it=m_axes.find(n);return it==m_axes.end()?0:it->second;}
 void InputSystem::BeginFixedStep()const{m_fixed=m_actions;for(auto& p:m_fixed){auto it=m_pending.find(p.first);p.second.pressed=it!=m_pending.end()&&it->second.pressed;p.second.released=it!=m_pending.end()&&it->second.released;}m_pending.clear();}
-InputActionState InputSystem::FixedAction(const std::string& n)const{auto it=m_fixed.find(n);return it==m_fixed.end()?InputActionState{}:it->second;}
+InputActionState InputSystem::FixedAction(const std::string& n)const{if(std::find(m_consumed.begin(),m_consumed.end(),n)!=m_consumed.end())return {};auto it=m_fixed.find(n);return it==m_fixed.end()?InputActionState{}:it->second;}
+
+void InputSystem::ConsumeBindings(const std::vector<std::string>& names){
+    std::set<std::string> controls;for(const auto& n:names)if(auto* e=m_map.Find(n))for(const auto& b:e->bindings)controls.insert(b.control);
+    for(const auto& e:m_map.entries)if(std::find(names.begin(),names.end(),e.name)!=names.end()||std::any_of(e.bindings.begin(),e.bindings.end(),[&](const auto& b){return controls.count(b.control);})){
+        if(std::find(m_consumed.begin(),m_consumed.end(),e.name)==m_consumed.end())m_consumed.push_back(e.name);
+        m_pending.erase(e.name);m_fixed.erase(e.name);
+    }
+}

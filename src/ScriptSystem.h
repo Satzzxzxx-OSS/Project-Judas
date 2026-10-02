@@ -18,6 +18,8 @@ public:
     void Synchronize(const std::vector<SceneObject>& objects);
     void Frame(const InputSystem* input,float dt);
     void Fixed(const InputSystem* input,float dt);
+    void UIFrame(const InputSystem* input,float dt);
+    void UIEvents(const InputSystem* input,float dt);
     void Stop();
     std::vector<ScriptStateRecord> Capture() const;
     bool Restore(const std::vector<ScriptStateRecord>& records,std::string& error);

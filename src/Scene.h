@@ -252,6 +252,8 @@ struct SceneAudioListenerComponent {
     bool followActiveView=false;
 };
 
+struct SceneUIComponent {std::string asset,name;bool enabled=true;};
+
 struct SceneScriptSlot {
     std::uint64_t id = 1;
     std::string asset;
@@ -265,6 +267,7 @@ struct SceneScriptSlot {
 
 struct SceneObject {
     std::vector<SceneScriptSlot> scripts;
+    std::optional<SceneUIComponent> ui;
     CategoryMask tags = 0;
     unsigned renderLayer = 0;
     SceneObjectId id = kInvalidSceneObjectId;

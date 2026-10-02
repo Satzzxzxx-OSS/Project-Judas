@@ -1393,3 +1393,10 @@ controlled saved state, and normal prefab-spawned instances. The embedded
 QuickJS-NG runtime exposes engine primitives instead of game-specific C++ rules.
 See [scripting](docs/SCRIPTING.md) and `projects/script_demo/script_demo.judasproj`.
 Human gameplay/visual/listening validation is pending operator review.
+
+### M41 candidate — authored runtime UI
+
+Projects can author menus/HUDs as UI assets and control them through JavaScript.
+Canvas/panels, text/images, buttons/sliders/toggles share reference-resolution
+layout, clipping and M35 focus/input ownership. See [runtime UI](docs/RUNTIME_UI.md)
+and `projects/ui_demo/ui_demo.judasproj`. Operator visual acceptance is pending.

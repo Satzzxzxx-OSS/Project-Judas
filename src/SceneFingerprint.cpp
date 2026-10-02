@@ -303,6 +303,8 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
             w.Text(e.textureAsset);w.U32(e.seed);
         }
     }
+    size_t uiCount=0;for(const auto& o:scene.Objects())if(o.ui)++uiCount;
+    if(uiCount){w.Text("Judas.RuntimeUI.1");w.U64(uiCount);for(const auto& o:scene.Objects())if(o.ui){if(!IsValidAssetId(o.ui->asset)||o.ui->name.empty())w.Fail("invalid UI asset/name");w.U64(o.id);w.Text(o.ui->asset);w.Text(o.ui->name);w.Boolean(o.ui->enabled);}}
     size_t scriptCount=0;for(const auto& o:scene.Objects())scriptCount+=o.scripts.size();
     if(scriptCount){w.Text("Judas.ScriptComponents.1");w.U64(scriptCount);
         for(const auto& o:scene.Objects()){std::set<uint64_t> slots;

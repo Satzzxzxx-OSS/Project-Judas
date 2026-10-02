@@ -95,7 +95,11 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     // Everything UI-related is handled here, before any gameplay system
     // sees this frame's input. Gameplay code is never told a menu exists;
     // it simply isn't called while one owns input.
-    if (window.ConsumeUIBackRequest()) m_pauseMenu.HandleBackRequest();
+    world.UpdateUIScripts(&window.Input(),frameDeltaTime);
+    const bool authoredUI=world.UIIfLoaded()&&!world.UIIfLoaded()->Empty();
+    bool uiOwned=false;
+    if(authoredUI){auto& ui=world.UI();uiOwned=ui.OwnsInput();int x,y;window.GetMousePosition(x,y);ui.Input(window.Input(),{x,y},!window.IsMouseCaptured(),window.Width(),window.Height());world.DispatchUIEvents(&window.Input(),frameDeltaTime);uiOwned|=ui.OwnsInput();}
+    if (window.ConsumeUIBackRequest()&&!authoredUI) m_pauseMenu.HandleBackRequest();
     const bool uiUp = window.ConsumeUINavigateUpRequest();
     const bool uiDown = window.ConsumeUINavigateDownRequest();
     const bool uiActivate = window.ConsumeUIActivateRequest();
@@ -113,9 +117,9 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
             m_pauseMenu.HandleMouseClick(glm::vec2(static_cast<float>(uiClickX), static_cast<float>(uiClickY)));
         }
     }
-    if (m_pauseMenu.IsOpen() != m_wasPauseMenuOpen) {
-        window.SetMouseCaptured(!m_pauseMenu.IsOpen());
-        m_wasPauseMenuOpen = m_pauseMenu.IsOpen();
+    if (IsPaused() != m_wasPauseMenuOpen) {
+        window.SetMouseCaptured(!IsPaused());
+        m_wasPauseMenuOpen = IsPaused();
     }
     // Edge requests are drained every frame regardless of pause state so a
     // press while the menu owns input can never fire on resume.
@@ -142,7 +146,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
 
     // Milestone 13 pause policy: while the menu is open nothing advances —
     // no input, no accumulator, no steps.
-    if (!m_pauseMenu.IsOpen()) {
+    if (!IsPaused()&&!uiOwned) {
         m_session.HandleFrameInput(window, torchToggleRequested, interactRequested, viewToggleRequested,
                                    throwRequested, sasToggleRequested, frameDeltaTime);
         if (m_session.ConsumeResetOccurred()) {
@@ -206,14 +210,18 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
 
     // Milestone 13: HUD + pause menu overlay, drawn last, on top.
     renderer.BeginUIFrame(window.Width(), window.Height());
-    if (drawHud && m_pauseMenu.IsHudVisible()) {
+    if (drawHud && m_pauseMenu.IsHudVisible() && (!authoredUI||world.UI().debugOverlayVisible)) {
         HUDViewData hud = BuildHudView(m_session, m_worldCoordinates, m_lastAerodynamicDrag);
         hud.worldStateInfo = m_worldStateStatus;
         hud.lifecycleMessage = m_session.LastLifecycleMessage();
         if (!hud.worldStateInfo.empty() || !hud.lifecycleMessage.empty()) hud.lifecycleAvailable = true;
         m_hud.Draw(renderer, window.Width(), window.Height(), hud);
     }
-    m_pauseMenu.Draw(renderer, window.Width(), window.Height());
+    if(!authoredUI)m_pauseMenu.Draw(renderer, window.Width(), window.Height());
+    if(authoredUI)world.UI().Draw(renderer,window.Width(),window.Height());
     renderer.EndUIFrame();
     return presentationAlpha;
 }
+
+bool InteractivePlay::IsPaused()const{return m_pauseMenu.IsOpen()||(m_session.IsActive()&&m_session.World().UIIfLoaded()&&m_session.World().UIIfLoaded()->Paused());}
+bool InteractivePlay::QuitRequested()const{return m_pauseMenu.QuitRequested()||(m_session.IsActive()&&m_session.World().UIIfLoaded()&&m_session.World().UIIfLoaded()->QuitRequested());}

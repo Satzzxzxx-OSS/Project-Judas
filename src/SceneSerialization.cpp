@@ -88,6 +88,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    if(o.ui){w.Line("ui.asset",Quote(o.ui->asset));w.Line("ui.name",Quote(o.ui->name));w.Line("ui.enabled",B(o.ui->enabled));}
     if(!o.scripts.empty()) {
         w.Line("scripts",std::to_string(o.scripts.size()));
         for(size_t i=0;i<o.scripts.size();++i){const auto& slot=o.scripts[i];auto key="script."+std::to_string(i)+".";
@@ -605,6 +606,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    if(p.Has("ui.asset")){SceneUIComponent u;if(!p.String("ui.asset",u.asset)||!p.String("ui.name",u.name)||!p.Bool("ui.enabled",u.enabled))return false;if(!IsValidAssetId(u.asset)||u.name.empty())return reader.Fail("invalid UI component");o.ui=u;}
     if(p.Has("scripts")) {
         int count=0;if(!p.Int("scripts",count)||count<0||count>64)return reader.Fail("invalid script slot count");
         std::set<SceneObjectId> ids;

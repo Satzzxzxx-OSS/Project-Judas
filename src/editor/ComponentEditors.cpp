@@ -61,6 +61,11 @@ void AssetField(EditorDocument& doc, const char* label, std::string& assetId, As
     }
 }
 
+void DrawUIComponent(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
+    auto& u=*o.ui;AssetField(doc,"UI document",u.asset,AssetType::UI,false,state);Checkbox(doc,"Enabled",u.enabled);
+    char name[128];std::snprintf(name,sizeof(name),"%s",u.name.c_str());if(ImGui::InputText("Runtime document name",name,sizeof(name))){doc.BeginEdit();u.name=name;doc.CommitEdit();}
+    ImGui::TextWrapped("Select the UI asset in the Asset Browser to edit its hierarchy. Runtime changes never edit this source.");
+}
 void DrawScripts(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
     size_t remove=o.scripts.size();
     for(size_t i=0;i<o.scripts.size();++i){auto& slot=o.scripts[i];ImGui::PushID(static_cast<int>(i));
@@ -362,6 +367,7 @@ ComponentEditor Make(const char* name, char indicator, std::optional<T> SceneObj
 
 const std::vector<ComponentEditor>& ComponentEditorRegistry() {
     static const std::vector<ComponentEditor> registry = {
+        Make<SceneUIComponent>("Runtime UI",'U',&SceneObject::ui,DrawUIComponent),
         {"Scripts",'J',[](const SceneObject& o){return !o.scripts.empty();},[](SceneObject& o){o.scripts.push_back({1,"",true,"{}"});},[](SceneObject& o){o.scripts.clear();},DrawScripts},
         Make<ParticleEmitterSettings>("Particle emitter", 'E', &SceneObject::particleEmitter, DrawParticleEmitter),
         Make<SceneAudioEmitterComponent>("Audio emitter", 'U', &SceneObject::audioEmitter, DrawAudioEmitter),

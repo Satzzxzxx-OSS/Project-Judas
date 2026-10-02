@@ -1,4 +1,6 @@
 #include "RuntimeWorld.h"
+#include <fstream>
+#include <sstream>
 #include "Prefab.h"
 #include <set>
 #include <sstream>
@@ -225,6 +227,12 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         std::string scripts;if(!ScriptSystem::SourceFingerprint(*resources->Assets(),scene,scripts,outError,false))return false;
         fingerprint=SceneFingerprintSha256(fingerprint+scripts);
     }
+    if(std::any_of(scene.Objects().begin(),scene.Objects().end(),[](const auto& o){return o.ui.has_value()||!o.scripts.empty();})&&resources&&resources->Assets()&&std::any_of(resources->Assets()->Records().begin(),resources->Assets()->Records().end(),[](const auto& p){return p.second.type==AssetType::UI;})){
+        if(!resources||!resources->Assets()){outError="UI scene requires project assets";return false;}
+        std::string bytes="Judas.UISources.1";
+        for(const auto& p:resources->Assets()->Records())if(p.second.type==AssetType::UI){std::ifstream file(p.second.path);std::ostringstream contents;contents<<file.rdbuf();bytes+=p.first+SceneFingerprintSha256(contents.str());}
+        fingerprint=SceneFingerprintSha256(fingerprint+SceneFingerprintSha256(bytes));
+    }
     Destroy();
     m_categories=selected;
     m_assets = resources;
@@ -281,6 +289,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     };
 
     for (const SceneObject& o : scene.Objects()) {
+        if(o.ui&&o.ui->enabled){std::string uiError;if(!UI().Load(o.ui->asset,o.ui->name,o.id,uiError))return fail(o,uiError);}
         m_hasScripts|=!o.scripts.empty();
         m_scriptDefinitions[o.id]=o;
         m_entityCategories[o.id]={o.tags,o.tags,o.renderLayer,{}};
@@ -651,8 +660,9 @@ bool RuntimeWorld::EmitFluidParticle() {
 }
 
 void RuntimeWorld::RestoreAuthoredState() {
-    m_scripts.reset();
+    m_scripts.reset();m_ui.reset();
     if (!m_built) return;
+    for(const auto& o:ScriptObjects())if(o.ui&&o.ui->enabled){std::string error;UI().Load(o.ui->asset,o.ui->name,o.id,error);}
     for(auto& [id,info]:m_entityCategories){(void)id;info.tags=info.authoredTags;m_physics.SetBodyTags(info.body,info.tags);}
     // Every surviving entity returns to its definition's state at Full
     // fidelity (the policy re-decides on the next step). Destroyed entities
@@ -871,6 +881,7 @@ bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
     }
     m_particleEmitters.erase(std::remove_if(m_particleEmitters.begin(),m_particleEmitters.end(),[&](const auto& e){return e.id==id;}),m_particleEmitters.end());
     if(m_audioSystem)for(auto& emitter:m_audioEmitters)if(emitter.id==id){m_audioSystem->DestroyVoice(emitter.voice);emitter.voice={};emitter.wantPlay=false;}
+    if(m_ui)m_ui->RemoveOwner(id);
     e->lifecycle = EntityLifecycle::Destroyed;
     if (m_cameraRenderer) for (auto& camera : m_renderCameras) {
         if (camera.id == id) { m_cameraRenderer->DestroyRenderTarget(camera.target); camera.target = {}; }
@@ -946,6 +957,12 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
 
 bool RuntimeWorld::ValidateEntityCreation(const SceneObject& definition, std::string& error) const {
     if (!m_built) { error = "no world"; return false; }
+    if(definition.ui&&definition.ui->enabled){
+        const auto* db=m_assets?m_assets->Assets():nullptr;const auto* asset=db?db->Find(definition.ui->asset):nullptr;UIDocument doc;
+        if(!asset||asset->missing||asset->type!=AssetType::UI){error="missing UI document asset";return false;}
+        if(!LoadUIDocument(asset->path,doc,error)||!ValidateUIAssets(doc,*db,error))return false;
+        if(m_ui&&m_ui->Find(definition.ui->name)){error="duplicate runtime UI document name";return false;}
+    }
     Scene classified;auto classifiedDefinition=definition;
     if(!classifiedDefinition.id)classifiedDefinition.id=1;
     classified.InsertObject(classifiedDefinition);
@@ -1115,7 +1132,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
-    m_scripts.reset();m_scriptDefinitions.clear();m_hasScripts=false;
+    m_scripts.reset();m_ui.reset();m_scriptDefinitions.clear();m_hasScripts=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;

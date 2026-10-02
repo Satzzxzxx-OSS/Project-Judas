@@ -786,7 +786,7 @@ void Renderer::Shutdown() {
     if (m_debugVbo) { glDeleteBuffers(1, &m_debugVbo); m_debugVbo = 0; }
     if (m_debugVao) { glDeleteVertexArrays(1, &m_debugVao); m_debugVao = 0; }
     if (m_debugShaderProgram) { glDeleteProgram(m_debugShaderProgram); m_debugShaderProgram = 0; }
-    m_fontLoaded = false;
+    m_fontLoaded = false; m_uiFonts.clear();m_defaultUIFont.clear();
     TraceResourceOperation(ResourceTracePoint::RendererShutdownEnd);
 }
 
@@ -968,7 +968,7 @@ void Renderer::DestroyMesh(MeshHandle handle) {
 }
 
 TextureHandle Renderer::CreateTexture(const TextureData& data) {
-    GpuTexture texture;
+    GpuTexture texture;texture.width=data.width;texture.height=data.height;
     texture.alive = true;
     texture.uploadedBytes = data.pixels.size();
 
@@ -1219,10 +1219,17 @@ void Renderer::EndFrame() {
 
 bool Renderer::LoadFont(const char* path, float pixelHeight, std::string& outError) {
     FontAtlasData atlasData;
-    if (!LoadFontAtlas(path, pixelHeight, atlasData, outError)) {
-        return false;
+    auto it=m_uiFonts.find(path);
+    if(it==m_uiFonts.end()){
+        if(m_uiFonts.size()>=64){outError="UI font cache capacity (64) reached";return false;}
+        if (!LoadFontAtlas(path, pixelHeight, atlasData, outError)) return false;
+        auto texture=CreateTexture(atlasData.atlasTexture);
+        atlasData.atlasTexture.pixels.clear();atlasData.atlasTexture.pixels.shrink_to_fit();
+        it=m_uiFonts.emplace(path,UIFont{atlasData,texture}).first;
+        if(m_defaultUIFont.empty())m_defaultUIFont=path;
     }
-    m_fontAtlasTexture = CreateTexture(atlasData.atlasTexture);
+    atlasData=it->second.data;
+    m_fontAtlasTexture = it->second.texture;
     for (int i = 0; i < kFontGlyphCount; ++i) {
         m_fontGlyphs[i] = atlasData.glyphs[i];
     }
@@ -1234,6 +1241,7 @@ bool Renderer::LoadFont(const char* path, float pixelHeight, std::string& outErr
 }
 
 void Renderer::BeginUIFrame(int windowWidth, int windowHeight) {
+    m_uiDrawCalls=0;
     m_uiScreenSize = glm::vec2(static_cast<float>(std::max(windowWidth, 1)),
                                 static_cast<float>(std::max(windowHeight, 1)));
     glDisable(GL_DEPTH_TEST);
@@ -1252,7 +1260,7 @@ void Renderer::DrawUIRect(const glm::vec2& position, const glm::vec2& size,
     glUniform2f(m_uiUUVOffset, 0.0f, 0.0f);
     glUniform2f(m_uiUUVScale, 1.0f, 1.0f);
     glBindTexture(GL_TEXTURE_2D, ResolveTexture(m_whiteTexture));
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glDrawArrays(GL_TRIANGLES, 0, 6);++m_uiDrawCalls;
 }
 
 void Renderer::DrawUIText(const std::string& text, const glm::vec2& position, float scale,
@@ -1284,7 +1292,7 @@ void Renderer::DrawUIText(const std::string& text, const glm::vec2& position, fl
             glUniform2f(m_uiUSize, glyphSize.x, glyphSize.y);
             glUniform2f(m_uiUUVOffset, glyph.u0, glyph.v0);
             glUniform2f(m_uiUUVScale, glyph.u1 - glyph.u0, glyph.v1 - glyph.v0);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glDrawArrays(GL_TRIANGLES, 0, 6);++m_uiDrawCalls;
         }
         penX += glyph.advanceX * scale;
     }
@@ -1307,6 +1315,7 @@ float Renderer::GetUITextLineHeight(float scale) const {
 }
 
 void Renderer::EndUIFrame() {
+    ClearUIClip();
     glBindVertexArray(0);
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
@@ -1322,7 +1331,7 @@ RenderTargetHandle Renderer::CreateRenderTarget(int width, int height, std::stri
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw); glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture); glGetIntegerv(GL_RENDERBUFFER_BINDING, &depth);
     GpuTarget target; target.width = width; target.height = height;
-    GpuTexture color; color.uploadedBytes = static_cast<std::size_t>(width) * height * 4;
+    GpuTexture color;color.width=width;color.height=height; color.uploadedBytes = static_cast<std::size_t>(width) * height * 4;
     glGenTextures(1, &color.textureId); glBindTexture(GL_TEXTURE_2D, color.textureId);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1461,4 +1470,22 @@ void main(){result=texture(image,texcoord)*tint;})";
     glDepthMask(depthMask);if(cull)glEnable(GL_CULL_FACE);if(!blend)glDisable(GL_BLEND);glBlendFuncSeparate(srcRgb,dstRgb,srcAlpha,dstAlpha);
     glBindVertexArray(0);glBindBuffer(GL_ARRAY_BUFFER,0);
     ++m_stats.drawCalls;m_stats.triangles+=static_cast<unsigned>(particles.size()*2);m_stats.particlesSubmitted+=static_cast<unsigned>(particles.size());
+}
+
+bool Renderer::SelectUIFont(const std::string& path,std::string& error){
+    auto selected=path.empty()?m_defaultUIFont:path;if(selected.empty())return false;
+    return LoadFont(selected.c_str(),48,error);
+}
+void Renderer::SetUIClip(glm::vec2 position,glm::vec2 size){
+    auto lo=glm::max(glm::vec2(0),position),hi=glm::min(m_uiScreenSize,position+size);
+    glEnable(GL_SCISSOR_TEST);glScissor(int(std::floor(lo.x)),int(std::floor(m_uiScreenSize.y-hi.y)),std::max(0,int(std::ceil(hi.x)-std::floor(lo.x))),std::max(0,int(std::ceil(hi.y)-std::floor(lo.y))));
+}
+void Renderer::ClearUIClip(){glDisable(GL_SCISSOR_TEST);}
+void Renderer::DrawUIImage(glm::vec2 position,glm::vec2 size,TextureHandle texture,glm::vec4 tint,bool fit){
+    if(!texture.IsValid())return;
+    if(fit){const auto* image=texture.id<m_textures.size()&&m_textures[texture.id].alive?&m_textures[texture.id]:nullptr;
+        if(image&&image->width>0&&image->height>0){auto scaled=glm::vec2(image->width,image->height);scaled*=std::min(size.x/scaled.x,size.y/scaled.y);position+=(size-scaled)*.5f;size=scaled;}}
+    glUniform2f(m_uiUPosition,position.x,position.y);glUniform2f(m_uiUSize,size.x,size.y);
+    glUniform4f(m_uiUColor,tint.r,tint.g,tint.b,tint.a);glUniform2f(m_uiUUVOffset,0,0);glUniform2f(m_uiUUVScale,1,1);
+    glBindTexture(GL_TEXTURE_2D,ResolveTexture(texture));glDrawArrays(GL_TRIANGLES,0,6);++m_uiDrawCalls;
 }

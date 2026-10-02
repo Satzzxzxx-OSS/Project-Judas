@@ -8721,3 +8721,14 @@ M29 gains an optional versioned script-state extension; script-free fingerprints
 and saves retain their previous bytes. Scripted baselines strictly include all
 registered project JavaScript content. See [SCRIPTING.md](SCRIPTING.md) for APIs,
 limits, scheduling, persistence and the operator demo.
+
+## M41 — authored runtime UI
+
+RuntimeWorld owns document instances; projects register `.judasui` hierarchy assets.
+Renderer's existing screen-space pass draws panels/text/images with rectangular
+clipping. Layout/focus/input run before gameplay; modal documents preserve the
+existing fixed-step pause boundary. Script `uiUpdate/onUI` can operate while paused,
+while ordinary frame/fixed gameplay callbacks remain paused. Handles validate live
+document IDs; source is never rewritten by runtime. UI menus/HUD behaviour lives
+in project JS, with the legacy engine menu retained only as a no-document fallback.
+See [RUNTIME_UI.md](RUNTIME_UI.md) for authoring, scaling, APIs and limits.

@@ -41,6 +41,9 @@ public:
     void ClearDevice(const std::string& prefix);
     void Reset();
     void DiscardPending();
+    // Consume logical inputs and every action/axis sharing their physical bindings.
+    // Suppression persists through catch-up fixed steps until BeginFrame.
+    void ConsumeBindings(const std::vector<std::string>& names);
     InputActionState Action(const std::string& name) const;
     float Axis(const std::string& name) const;
     // All consumers see the same snapshot. Edges accumulate across zero-step
@@ -50,6 +53,7 @@ public:
     static float Deadzone(float value,float deadzone);
 private:
     void Evaluate();
+    std::vector<std::string> m_consumed;
     InputMap m_map;
     std::map<std::string,float> m_raw,m_axes;
     std::map<std::string,InputActionState> m_actions;

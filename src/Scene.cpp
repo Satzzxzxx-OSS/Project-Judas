@@ -84,6 +84,7 @@ bool OptEq(const std::optional<T>& a, const std::optional<T>& b, F&& equal) {
 
 bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
     if(a.scripts!=b.scripts)return false;
+    if(!OptEq(a.ui,b.ui,[](const auto& x,const auto& y){return x.asset==y.asset&&x.name==y.name&&x.enabled==y.enabled;}))return false;
     if (a.tags != b.tags || a.renderLayer != b.renderLayer) return false;
     if (a.id != b.id || a.name != b.name || a.parent != b.parent ||
         a.prefabAsset != b.prefabAsset || a.prefabRoot != b.prefabRoot ||

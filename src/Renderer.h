@@ -12,6 +12,7 @@
 #include "MeshData.h"
 #include "DebugDraw.h"
 #include "TextureData.h"
+#include <map>
 #include "ResourceTrace.h"
 #include "Visibility.h"
 #include "VisualParticles.h"
@@ -295,6 +296,11 @@ public:
     // once after the last DrawUIRect/DrawUIText this frame, before
     // SwapBuffers.
     void EndUIFrame();
+    void SetUIClip(glm::vec2 position,glm::vec2 size);
+    void ClearUIClip();
+    void DrawUIImage(glm::vec2 position,glm::vec2 size,TextureHandle texture,glm::vec4 tint,bool fit);
+    bool SelectUIFont(const std::string& path,std::string& error);
+    unsigned UIDrawCalls()const{return m_uiDrawCalls;}
 
     // Reads back the current color buffer as tightly-packed 8-bit RGB rows,
     // top row first (`glReadPixels` itself returns bottom row first — this
@@ -328,6 +334,7 @@ private:
 
     struct GpuTexture {
         GLuint textureId = 0;
+        int width=0,height=0;
         std::size_t uploadedBytes = 0;  // base-level RGBA payload, excluding generated mipmaps
         bool alive = false;
     };
@@ -427,6 +434,7 @@ private:
     GLint m_uiUUVOffset = -1;
     GLint m_uiUUVScale = -1;
     glm::vec2 m_uiScreenSize{0.0f, 0.0f};
+    unsigned m_uiDrawCalls=0;
 
     // --- Milestone 30: debug lines + stats ---
     GLuint m_debugShaderProgram = 0;
@@ -435,6 +443,9 @@ private:
     GLint m_debugUViewProjection = -1;
     RenderStats m_stats;
 
+    struct UIFont {FontAtlasData data;TextureHandle texture;};
+    std::map<std::string,UIFont> m_uiFonts;
+    std::string m_defaultUIFont;
     TextureHandle m_fontAtlasTexture;
     FontGlyph m_fontGlyphs[kFontGlyphCount];
     float m_fontPixelHeight = 0.0f;

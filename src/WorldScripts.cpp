@@ -1,5 +1,6 @@
 #include "RuntimeWorld.h"
 #include "ResourceManager.h"
+#include "InputSystem.h"
 #include <cmath>
 #include <limits>
 
@@ -54,3 +55,10 @@ bool RuntimeWorld::RestoreScriptState(const std::vector<ScriptStateRecord>& reco
     if(!m_scripts)m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);
     return m_scripts->Restore(records,error);
 }
+
+void RuntimeWorld::UpdateUIScripts(InputSystem* input,float dt){
+    if(!m_scripts){if(!m_hasScripts)return;m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);}
+    bool wasPaused=m_ui&&m_ui->Paused();m_scripts->Synchronize(ScriptObjects());m_scripts->UIFrame(input,dt);
+    if(input&&!wasPaused&&m_ui&&m_ui->Paused())input->ConsumeBindings({"pause"});
+}
+void RuntimeWorld::DispatchUIEvents(const InputSystem* input,float dt){if(m_scripts)m_scripts->UIEvents(input,dt);}

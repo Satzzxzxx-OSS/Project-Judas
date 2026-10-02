@@ -66,6 +66,7 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
     src/WorldScripts.cpp
+    src/RuntimeUI.cpp
     src/ScriptSystem.cpp
     src/Classification.cpp
     src/GamePackage.cpp
@@ -917,3 +918,10 @@ target_compile_options(judas_script_tests PRIVATE -Wall -Wextra)
 add_executable(judas_script_application_tests tests/ScriptApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_script_application_tests PRIVATE judas_engine)
 target_compile_options(judas_script_application_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_runtime_ui_tests tests/RuntimeUITests.cpp)
+target_link_libraries(judas_runtime_ui_tests PRIVATE judas_engine)
+target_compile_options(judas_runtime_ui_tests PRIVATE -Wall -Wextra)
+add_executable(judas_runtime_ui_application_tests tests/RuntimeUIApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_runtime_ui_application_tests PRIVATE judas_engine)
+target_compile_options(judas_runtime_ui_application_tests PRIVATE -Wall -Wextra)

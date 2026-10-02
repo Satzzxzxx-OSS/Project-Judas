@@ -28,3 +28,11 @@ declare module "judas" {
   export const time:{readonly elapsed:number;readonly delta:number;readonly fixed:boolean};
   export const console:{log(...values:unknown[]):void};
 }
+
+// M41 extends the same virtual module; event handlers are synchronous.
+declare module 'judas' {
+  export interface UIEvent { document:string; element:string; type:'click'|'change'|'focus'|'back'; value:number; }
+  export class UIElement { readonly handle:number; readonly id:string; text:string; visible:boolean; enabled:boolean; texture:string; value:number; }
+  export class UIDocument { readonly handle:number; visible:boolean; enabled:boolean; modal:boolean; get(id:string):UIElement; show():void; hide():void; unload():void; }
+  export const ui:{get(name:string):UIDocument|null;load(asset:string,name:string):UIDocument;quit():void;debugOverlayVisible:boolean};
+}
