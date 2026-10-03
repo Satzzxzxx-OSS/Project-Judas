@@ -155,6 +155,12 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
 void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSession* session, float alpha) {
     const std::vector<DynamicBody>& bodies = world.DynamicBodies();
     const std::vector<RuntimeWorld::DynamicVisual>& visuals = world.DynamicVisuals();
+    if(!world.Liquids().States().empty()){
+      r.BeginTransparentPass();
+      for(const auto& [id,s]:world.Liquids().States())if(s.enabled&&s.equilibriumValid&&s.volume>0){MeshData mesh=s.surface;auto pose=s.pose;if(s.container)if(auto* o=world.RuntimeDefinition(s.entity))pose=world.PresentedTransform(s.entity,o->transform,alpha);for(auto& v:mesh.vertices){v.position=pose.position+pose.rotation*v.position;v.normal=pose.rotation*v.normal;}r.SetRenderLayer(world.RenderLayerOf(s.entity));r.DrawTransientSurface(mesh,{.035f,.34f,.72f},.76f);}
+      r.SetRenderLayer(0);for(const auto& [id,p]:world.Liquids().Parcels())r.DrawSphere(p.position,float(std::cbrt(3*p.volume/(4*3.141592653589793))),{.05f,.5f,.9f},.85f);
+      r.EndTransparentPass();
+    }
 
     bool anyCompound = false;
     for (const RuntimeWorld::DynamicVisual& v : visuals) {

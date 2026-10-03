@@ -414,6 +414,7 @@ std::string EditorApplication::WorldStatePathFor(const std::string& scenePath) c
 }
 
 bool EditorApplication::OpenScene(const std::string& path, std::string& outError) {
+    m_panels.liquidPreview.Clear();
     const std::string resolved = ResolveScenePath(path);
     Scene authored, resolvedPrefabs;
     if(!LoadSceneFromFile(resolved,authored,outError)||!ResolvePrefabs(authored,&m_host->Assets(),resolvedPrefabs,outError))return false;
@@ -763,6 +764,7 @@ void EditorApplication::DrawEditOverlay(Renderer& renderer, const Scene& scene) 
     m_debugLines.Clear();
     BuildAuthoredDebugLines(scene, m_panels.debug, m_debugLines);
     if(m_panels.debug.navigation)m_debugLines.Append(m_panels.navigationPreview);
+    m_debugLines.Append(m_panels.liquidPreview);
     if (const SceneObject* selected = scene.Find(m_document.Selected())) BuildSelectionLines(*selected, m_debugLines);
     renderer.DrawDebugLines(m_debugLines.Lines(), /*depthTest=*/true);
     renderer.DrawDebugLines(m_gizmoLines.Lines(), /*depthTest=*/false);
@@ -974,6 +976,7 @@ int EditorApplication::Run(int argc, char** argv) {
     const char* autotest = std::getenv("JUDAS_EDITOR_AUTOTEST");
     int autotestFrame = 0;
     std::string autotestBaseline;
+    if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_LIQUID_BAKE")){std::vector<SceneObjectId> ids;for(const auto& o:m_document.GetScene().Objects())if(o.liquidBasin)ids.push_back(o.id);for(auto id:ids){bool ok=BakeEditorLiquid(m_document,id,m_panels);std::fprintf(stderr,"[editor autotest] liquid bake %llu: %s: %s\n",static_cast<unsigned long long>(id),ok?"PASS":"FAIL",m_panels.status.c_str());}}
     if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_NAV_BAKE")){std::vector<SceneObjectId> surfaces;for(const auto& o:m_document.GetScene().Objects())if(o.navigationSurface)surfaces.push_back(o.id);for(auto id:surfaces){bool ok=BakeEditorNavigation(m_document,id,m_panels);std::fprintf(stderr,"[editor autotest] navigation bake %llu: %s: %s\n",static_cast<unsigned long long>(id),ok?"PASS":"FAIL",m_panels.status.c_str());}}
     if (autotest) SaveSceneToString(m_document.GetScene(), autotestBaseline);
     const auto screenshot = [&](const std::string& path) {

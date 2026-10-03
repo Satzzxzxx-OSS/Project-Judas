@@ -804,6 +804,7 @@ void Renderer::Shutdown() {
     if (m_debugVbo) { glDeleteBuffers(1, &m_debugVbo); m_debugVbo = 0; }
     if (m_debugVao) { glDeleteVertexArrays(1, &m_debugVao); m_debugVao = 0; }
     if (m_debugShaderProgram) { glDeleteProgram(m_debugShaderProgram); m_debugShaderProgram = 0; }
+    m_transientSurface={};
     m_fontLoaded = false; m_uiFonts.clear();m_defaultUIFont.clear();
     TraceResourceOperation(ResourceTracePoint::RendererShutdownEnd);
 }
@@ -1528,4 +1529,12 @@ void Renderer::DrawUIImage(glm::vec2 position,glm::vec2 size,TextureHandle textu
     glUniform2f(m_uiUPosition,position.x,position.y);glUniform2f(m_uiUSize,size.x,size.y);
     glUniform4f(m_uiUColor,tint.r,tint.g,tint.b,tint.a);glUniform2f(m_uiUUVOffset,0,0);glUniform2f(m_uiUUVScale,1,1);
     glBindTexture(GL_TEXTURE_2D,ResolveTexture(texture));glDrawArrays(GL_TRIANGLES,0,6);++m_uiDrawCalls;
+}
+
+void Renderer::DrawTransientSurface(const MeshData& data,const glm::vec3& tint,float alpha){
+ if(m_shadowPassActive||data.vertices.empty())return;
+ if(!m_transientSurface.IsValid())m_transientSurface=CreateMesh(data);else UpdateMeshVertices(m_transientSurface,data.vertices);
+ GLboolean cull=glIsEnabled(GL_CULL_FACE);glDisable(GL_CULL_FACE);
+ DrawMesh(m_transientSurface,{0,0,0},{1,0,0,0},{1,1,1},{},tint,alpha);
+ if(cull)glEnable(GL_CULL_FACE);
 }

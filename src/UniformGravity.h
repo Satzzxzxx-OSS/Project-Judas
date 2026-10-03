@@ -17,6 +17,7 @@ class UniformGravity : public GravityField {
 public:
     explicit UniformGravity(const glm::vec3& acceleration) : m_acceleration(acceleration) {}
 
+    bool Equilibrium(const glm::vec3&,GravityEquilibrium& out)const override {double g=glm::length(m_acceleration);if(g<1e-8)return false;out={};out.magnitude=g;out.up=-glm::dvec3(m_acceleration)/g;return true;}
     glm::vec3 Sample(const glm::vec3&) const override { return m_acceleration; }
 
 private:

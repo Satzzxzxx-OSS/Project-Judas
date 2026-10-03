@@ -181,6 +181,8 @@ public:
     // A small world-space transparent pass for viewing fluid through a
     // cup's ordinary solid walls. Depth is tested but not written; calls
     // must follow opaque geometry and be followed by EndTransparentPass.
+    // Generic transient CPU geometry; Renderer retains/reuses its GPU buffer.
+    void DrawTransientSurface(const MeshData&,const glm::vec3& tint,float alpha);
     void BeginTransparentPass();
     void EndTransparentPass();
     bool IsShadowPass() const { return m_shadowPassActive; }
@@ -352,6 +354,7 @@ private:
     GLuint m_shaderProgram = 0;
 
     MeshHandle m_cubeMesh;
+    MeshHandle m_transientSurface;
     MeshHandle m_sphereMesh;
     TextureHandle m_whiteTexture;  // 1x1 white pixel — the "no real texture" fallback, see DrawMesh
 

@@ -26,6 +26,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     const bool legacy = session.UsesLegacyGameplay();
     world.UpdateNavigation(fixedDeltaTime);
     world.FixedScripts(&window.Input(),fixedDeltaTime);
+    world.UpdateLiquids(fixedDeltaTime);
     PhysicsWorld& physics = world.Physics();
     const GravityField& gravity = world.Gravity();
     FlyingPrimitiveControl& vehicleControl = session.VehicleControl();

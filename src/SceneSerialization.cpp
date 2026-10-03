@@ -88,6 +88,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    for(const auto& [key,value]:LiquidProperties(o))w.Line(key,Quote(value));
     for(const auto& [key,value]:NavigationProperties(o))w.Line(key,Quote(value));
     if(o.characterMotor){const auto& m=*o.characterMotor;
         w.Line("motor.enabled",B(m.enabled));
@@ -644,6 +645,9 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    std::map<std::string,std::string> liquidFields;
+    for(const auto& [key,tokens]:block.values)if(key.rfind("liquid.",0)==0){std::string value;if(!p.String(key,value))return false;liquidFields[key]=value;}
+    // Decode after all collider components: liquid validation depends on them.
     std::map<std::string,std::string> navFields;
     for(const auto& [key,tokens]:block.values)if(key.rfind("nav.",0)==0){std::string value;if(!p.String(key,value))return false;navFields[key]=value;}
     std::string navError;if(!ApplyNavigationProperties(navFields,o,navError))return reader.Fail(navError);
@@ -990,6 +994,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
             return reader.Fail("a compound/terrain render component needs a body of the same shape");
         }
     }
+    std::string liquidError;if(!ApplyLiquidProperties(liquidFields,o,liquidError))return reader.Fail(liquidError);
     return p.CheckNoUnknown();
 }
 

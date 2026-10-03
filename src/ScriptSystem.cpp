@@ -42,6 +42,7 @@ export class Entity {
  removeTag(tag){return call('removeTag',this.id,tag)}
  get classification(){return call('classification',this.id)}
  get animation(){return call('animationExists',this.id)?new Animation(this.id):null}
+ get liquid(){const h=call("liquidOwner",this.id);return h?new LiquidVolume(h):null}
  get navigationObstacle(){return call("navObstacleInfo",this.id)}
  get navigationLink(){return call("navLinkInfo",this.id)}
  setNavigationEnabled(component,enabled){return call("navEnabled",this.id,component,enabled)}
@@ -92,6 +93,20 @@ export class Character {
  accelerate(v){return call('characterAcceleration',this.id,v)}
  ignore(entities){return call('characterIgnore',this.id,entities.map(e=>e.id))}
 }
+export class LiquidVolume {
+ constructor(handle){this.handle=handle}
+ get valid(){return call('liquidValid',this.handle)}
+ get state(){const v=call('liquidState',this.handle);return {...v,entity:entity(v.entityId)}}
+ set enabled(value){call('liquidEnabled',this.handle,value)}
+ transferTo(destination,volume){return call('liquidTransfer',this.handle,destination.handle,volume)}
+}
+export const liquid={
+ sample:point=>{const v=call('liquidSample',point);return v?{...v,entity:entity(v.entityId)}:null},
+ accounting:(material='water')=>call('liquidAccounting',material),
+ get errors(){return call('liquidErrors')},
+ get connections(){return call('liquidConnections')},
+ submerged:target=>call('liquidSubmerged',target.id)
+};
 export class NavigationAgent {
  constructor(id){this.id=id}
  get state(){const s=call('navAgentState',this.id);return {...s,link:entity(s.linkId)}}
@@ -300,6 +315,21 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
 
+    auto liquidHandle=[&](JSValueConst value){LiquidHandle h;std::istringstream text(String(c,value));char separator=0;if(!(text>>h.generation>>separator>>h.id)||separator!=':')return LiquidHandle{};text>>std::ws;return text.eof()?h:LiquidHandle{};};
+    if(op=="liquidValid")return JS_NewBool(c,world.Liquids().Get(liquidHandle(arg(1)))!=nullptr);
+    if(op=="liquidState"||op=="liquidEnabled"||op=="liquidTransfer"){
+      auto h=liquidHandle(arg(1));auto* state=world.Liquids().Get(h);if(!state)return JS_ThrowReferenceError(c,"stale liquid handle");
+      if(op=="liquidEnabled"){if(!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.Liquids().SetEnabled(h,JS_ToBool(c,arg(2))));}
+      if(op=="liquidTransfer"){if(!s->fixed)return JS_ThrowTypeError(c,"liquid transfer belongs in fixedUpdate");auto other=liquidHandle(arg(2));if(!world.Liquids().Get(other))return JS_ThrowReferenceError(c,"stale destination");double volume;if(JS_ToFloat64(c,&volume,arg(3))||!std::isfinite(volume)||volume<0)return JS_ThrowTypeError(c,"finite nonnegative volume required");return JS_NewFloat64(c,world.Liquids().Transfer(h,other,volume));}
+      auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"entityId",JS_NewString(c,std::to_string(state->entity).c_str()));JS_SetPropertyStr(c,v,"enabled",JS_NewBool(c,state->enabled));JS_SetPropertyStr(c,v,"container",JS_NewBool(c,state->container));JS_SetPropertyStr(c,v,"equilibriumValid",JS_NewBool(c,state->equilibriumValid));JS_SetPropertyStr(c,v,"material",JS_NewString(c,state->material.id.c_str()));JS_SetPropertyStr(c,v,"density",JS_NewFloat64(c,state->material.density));JS_SetPropertyStr(c,v,"volume",JS_NewFloat64(c,state->volume));JS_SetPropertyStr(c,v,"capacity",JS_NewFloat64(c,state->capacity));JS_SetPropertyStr(c,v,"stableCapacity",JS_NewFloat64(c,state->stableCapacity));JS_SetPropertyStr(c,v,"coordinate",JS_NewFloat64(c,state->q));return v;
+    }
+    if(op=="liquidAccounting"){auto a=world.Liquids().Accounting(String(c,arg(1)));auto v=JS_NewObject(c);
+      for(auto field:{std::pair<const char*,double>{"reservoirs",a.reservoirs},{"containers",a.containers},{"detached",a.detached},{"total",a.total},{"expected",a.expected},{"error",a.error},{"tolerance",a.tolerance}}){JS_SetPropertyStr(c,v,field.first,JS_NewFloat64(c,field.second));}
+      return v;
+    }
+    if(op=="liquidSample"){glm::vec3 p;if(!ReadVec(c,arg(1),p))return JS_ThrowTypeError(c,"finite point required");auto sample=world.Liquids().Sample(p);if(!sample)return JS_NULL;auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"entityId",JS_NewString(c,std::to_string(sample->entity).c_str()));JS_SetPropertyStr(c,v,"material",JS_NewString(c,sample->material.id.c_str()));JS_SetPropertyStr(c,v,"density",JS_NewFloat64(c,sample->material.density));JS_SetPropertyStr(c,v,"depth",JS_NewFloat64(c,sample->depth));JS_SetPropertyStr(c,v,"coordinate",JS_NewFloat64(c,sample->coordinate));JS_SetPropertyStr(c,v,"surfacePoint",Vec(c,sample->surfacePoint));JS_SetPropertyStr(c,v,"normal",Vec(c,sample->normal));JS_SetPropertyStr(c,v,"velocity",Vec(c,sample->velocity));return v;}
+    if(op=="liquidErrors"||op=="liquidConnections"){auto v=JS_NewArray(c);uint32_t i=0;if(op=="liquidErrors")for(auto [id,error]:world.Liquids().Errors()){auto e=JS_NewObject(c);JS_SetPropertyStr(c,e,"entityId",JS_NewString(c,std::to_string(id).c_str()));JS_SetPropertyStr(c,e,"message",JS_NewString(c,error.c_str()));JS_SetPropertyUint32(c,v,i++,e);}else for(auto [id,active]:world.Liquids().Connections()){auto e=JS_NewObject(c);JS_SetPropertyStr(c,e,"entityId",JS_NewString(c,std::to_string(id).c_str()));JS_SetPropertyStr(c,e,"active",JS_NewBool(c,active));JS_SetPropertyUint32(c,v,i++,e);}return v;}
+    if(op=="liquidSubmerged"){EntityId id=0;try{id=std::stoull(String(c,arg(1)));}catch(...){return JS_ThrowReferenceError(c,"invalid entity");}auto* o=world.RuntimeDefinition(id);if(!o||!o->body)return JS_ThrowReferenceError(c,"missing collider");auto h=world.RuntimeBody(id);if(!h.IsValid())return JS_ThrowReferenceError(c,"stale collider");if(!world.Physics().IsBodyEnabled(h)){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"volume",JS_NewFloat64(c,0));JS_SetPropertyStr(c,v,"center",Vec(c,glm::vec3(0)));JS_SetPropertyStr(c,v,"buoyancy",Vec(c,glm::vec3(0)));return v;}auto pose=world.Physics().GetTransform(h);LiquidGeometry geometry;if(o->body->shape==SceneShape::Box)geometry=LiquidBox(-glm::dvec3(o->body->halfExtents),glm::dvec3(o->body->halfExtents));else if(o->body->shape==SceneShape::Compound)for(auto box:o->body->compoundBoxes){auto g=LiquidBox(glm::dvec3(box.localCenter-box.halfExtents),glm::dvec3(box.localCenter+box.halfExtents));geometry.cells.insert(geometry.cells.end(),g.cells.begin(),g.cells.end());}else return JS_ThrowTypeError(c,"submerged supports box/compound colliders");for(auto& t:geometry.cells)for(auto& p:t)p=glm::dvec3(pose.position)+glm::dquat(pose.rotation)*p;auto a=world.Liquids().Submerged(geometry);auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"volume",JS_NewFloat64(c,a.volume));JS_SetPropertyStr(c,v,"center",Vec(c,a.center));JS_SetPropertyStr(c,v,"buoyancy",Vec(c,a.buoyancy));return v;}
     auto navPath=[&](const NavigationPath& path){auto v=JS_NewObject(c);const char* status=path.status==NavigationPath::Status::Complete?"complete":path.status==NavigationPath::Status::Partial?"partial":"failed";JS_SetPropertyStr(c,v,"status",JS_NewString(c,status));JS_SetPropertyStr(c,v,"distance",JS_NewFloat64(c,path.distance));JS_SetPropertyStr(c,v,"revision",JS_NewUint32(c,path.revision));auto corners=JS_NewArray(c);uint32_t i=0;for(auto p:path.corners){auto corner=JS_NewObject(c);JS_SetPropertyStr(c,corner,"position",Vec(c,p.position));JS_SetPropertyStr(c,corner,"linkId",JS_NewString(c,std::to_string(p.link).c_str()));JS_SetPropertyStr(c,corner,"linkEnd",Vec(c,p.linkEnd));JS_SetPropertyUint32(c,corners,i++,corner);}JS_SetPropertyStr(c,v,"corners",corners);auto areas=JS_NewArray(c);i=0;for(auto id:path.areas)JS_SetPropertyUint32(c,areas,i++,JS_NewUint32(c,id));JS_SetPropertyStr(c,v,"areas",areas);return v;};
     auto navFilter=[&](JSValueConst options,NavigationFilter& f){const auto& config=world.Navigation().Configuration();auto p=JS_GetPropertyStr(c,options,"profile");if(!JS_IsUndefined(p)){if(JS_IsString(p)){auto name=String(c,p);bool found=false;for(auto [id,profile]:config.profiles)if(profile.name==name){f.profile=id;found=true;}if(!found){JS_FreeValue(c,p);return false;}}else if(JS_ToUint32(c,&f.profile,p)!=0){JS_FreeValue(c,p);return false;}}JS_FreeValue(c,p);if(!config.profiles.count(f.profile))return false;
         for(auto entry:{std::pair<const char*,CategoryMask*>{"includeAreas",&f.include},{"excludeAreas",&f.exclude}}){auto list=JS_GetPropertyStr(c,options,entry.first);if(!JS_IsUndefined(list)){if(!JS_IsArray(list)){JS_FreeValue(c,list);return false;}auto len=JS_GetPropertyStr(c,list,"length");uint32_t n=0;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);*entry.second=0;if(n>62){JS_FreeValue(c,list);return false;}for(uint32_t i=0;i<n;++i){auto v=JS_GetPropertyUint32(c,list,i);int id=config.areas.Find(String(c,v));JS_FreeValue(c,v);if(id<0){JS_FreeValue(c,list);return false;}*entry.second|=CategoryBit(id);}}JS_FreeValue(c,list);}
@@ -494,6 +524,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     const auto* definition=world.RuntimeDefinition(id);
     if(op=="valid")return JS_NewBool(c,definition!=nullptr);
     if(!definition)return JS_ThrowReferenceError(c,"stale or invalid entity %llu",(unsigned long long)id);
+    if(op=="liquidOwner"){auto h=world.Liquids().Handle(id);if(!world.Liquids().Get(h))return JS_NULL;return JS_NewString(c,(std::to_string(h.generation)+":"+std::to_string(h.id)).c_str());}
     if(op=="navEnabled"){if(!JS_IsBool(arg(3)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.SetNavigationEnabled(id,String(c,arg(2)),JS_ToBool(c,arg(3))));}
     if(op=="navObstacleInfo"){if(!definition->navigationObstacle)return JS_NULL;const auto& n=*definition->navigationObstacle;auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"enabled",JS_NewBool(c,n.enabled));JS_SetPropertyStr(c,v,"cylinder",JS_NewBool(c,n.cylinder));JS_SetPropertyStr(c,v,"halfExtents",Vec(c,n.halfExtents));JS_SetPropertyStr(c,v,"radius",JS_NewFloat64(c,n.radius));JS_SetPropertyStr(c,v,"height",JS_NewFloat64(c,n.height));return v;}
     if(op=="navLinkInfo"){if(!definition->navigationLink)return JS_NULL;const auto& n=*definition->navigationLink;auto t=world.PresentedTransform(id,definition->transform,1);auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"enabled",JS_NewBool(c,n.enabled));JS_SetPropertyStr(c,v,"bidirectional",JS_NewBool(c,n.bidirectional));JS_SetPropertyStr(c,v,"start",Vec(c,t.position+t.rotation*n.start));JS_SetPropertyStr(c,v,"end",Vec(c,t.position+t.rotation*n.end));JS_SetPropertyStr(c,v,"area",JS_NewUint32(c,n.area));return v;}

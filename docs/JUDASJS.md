@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M52)
+# JudasJS — current API reference (M54)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M53, based on
-M51 checkpoint `73698d1a1f928c7210679e58fdb5259d2a196c7b`. It is not an
+This reference describes the public virtual `judas` module through M54, based on
+M53 checkpoint `16f7d59fa3289e7e7c43aaeb7e88471be6fe348f`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
@@ -25,6 +25,8 @@ through `Entity.presentedTransform` / `presentationUpdate(dt, alpha)`; the
 | scenes, session, script state, safe handles | [Lifetime/state](judasjs/scenes-state.md) |
 | Animation.crossFade/layers, Ragdoll | [Animation/ragdolls](judasjs/animation-ragdolls.md) |
 | entity.character / CharacterMotor | [Character](judasjs/character.md) |
+| navigation / NavigationAgent | [Navigation](judasjs/navigation.md) |
+| liquid / LiquidVolume / conserved reservoirs | [Liquid](judasjs/liquid.md) |
 | Executed scripts | [Cookbook](judasjs/cookbook.md) |
 | JSDoc, editor setup, practical conventions | [Practices](judasjs/practices.md) |
 

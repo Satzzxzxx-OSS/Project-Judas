@@ -1,6 +1,7 @@
 #pragma once
 #include "Classification.h"
 #include "NavigationTypes.h"
+#include "LiquidTypes.h"
 #include "AudioTypes.h"
 #include "JointTypes.h"
 #include "PoseComposition.h"
@@ -277,6 +278,10 @@ struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std
 struct SceneJointComponent {SceneObjectId bodyA=0,bodyB=0;JointSettings settings;};
 
 struct SceneObject {
+    std::optional<LiquidBasinSettings> liquidBasin;
+    std::optional<LiquidContainerSettings> liquidContainer;
+    std::optional<LiquidConnectionSettings> liquidConnection;
+    std::optional<LiquidInteractionSettings> liquidInteraction;
     std::optional<NavigationSurfaceSettings> navigationSurface;
     std::optional<NavigationAgentSettings> navigationAgent;
     std::optional<NavigationObstacleSettings> navigationObstacle;

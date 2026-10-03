@@ -77,3 +77,7 @@ acceleration gives a world torque; it does not add a controller or holding polic
 ## Navigation components
 
 `Entity.navigation`, `navigationObstacle`, `navigationLink` and `setNavigationEnabled` are described in [Navigation](navigation.md). They remain distinct from character movement and physical collision.
+
+## `Entity.liquid` (M54)
+
+Nullable generation-safe [LiquidVolume](liquid.md) owner after resource loading and fixed-step registration. It exposes conserved quantity/capacity/material snapshots and paired transfers. It is separate from the legacy PBF `world.fluidSample` API.

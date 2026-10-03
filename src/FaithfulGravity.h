@@ -14,5 +14,6 @@
 // FaithfulGravity is intentionally the simple case, not the general one.
 class FaithfulGravity : public GravityField {
 public:
+    bool Equilibrium(const glm::vec3&,GravityEquilibrium& out)const override {out={};out.magnitude=9.81;return true;}
     glm::vec3 Sample(const glm::vec3& worldPosition) const override;
 };

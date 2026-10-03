@@ -45,10 +45,12 @@ PrefabProperties ObjectProperties(const SceneObject& object) {
     auto o=object;StripLink(o);o.parent=0;
     std::string text;WriteSceneObjectBlock(o,text); PrefabProperties p;
     std::ostringstream name;name<<std::quoted(o.name);p["_name"]=name.str();
+    std::map<std::string,unsigned> repeated;
     for(const auto& line:Lines(text)){
         std::istringstream in(line);std::string key;in>>key;
         if(key.empty()||key=="object"||key=="end")continue;
         std::string value;std::getline(in,value);auto first=value.find_first_not_of(" \t");
+        if(key=="body.compound-box"||key=="body.fluid-cavity")key+="."+std::to_string(repeated[key]++);
         p[key]=first==std::string::npos?"":value.substr(first);
     }
     return p;
@@ -65,7 +67,7 @@ bool ApplyObjectProperties(SceneObject& o,const PrefabProperties& properties,std
         }else p[pair.first]=pair.second;
     }
     std::string text="object "+std::to_string(o.id)+" "+p["_name"]+"\n";
-    for(const auto& pair:p)if(pair.first!="_name")text+="  "+pair.first+" "+pair.second+"\n";
+    for(const auto& pair:p)if(pair.first!="_name"){auto key=pair.first;for(const char* repeated:{"body.compound-box.","body.fluid-cavity."})if(key.rfind(repeated,0)==0)key=std::string(repeated).substr(0,std::string(repeated).size()-1);text+="  "+key+" "+pair.second+"\n";}
     text+="end\n";auto lines=Lines(text);size_t index=0;SceneObject parsed;
     if(!ParseSceneObjectBlock(lines,index,parsed,error))return false;
     parsed.parent=o.parent;parsed.prefabAsset=o.prefabAsset;parsed.prefabRoot=o.prefabRoot;
@@ -101,6 +103,7 @@ bool FlattenHierarchy(const Scene& scene,Scene& flattened,std::string& error) {
 bool ValidatePrefab(const Scene& prefab,std::string& error) {
     if(prefab.Objects().empty()||!ValidateHierarchy(prefab,error)){if(error.empty())error="empty prefab";return false;}
     for(const auto& o:prefab.Objects())if(o.joint){auto a=prefab.Find(o.joint->bodyA),b=prefab.Find(o.joint->bodyB);if(!a||!a->body||(o.joint->bodyB&&(!b||!b->body))){error="prefab joint references missing body";return false;}}
+    for(const auto& o:prefab.Objects())if(o.liquidConnection){auto a=prefab.Find(o.liquidConnection->source),b=prefab.Find(o.liquidConnection->destination);if(!a||!b||!a->liquidBasin||!b->liquidBasin){error="prefab liquid connection references missing basin";return false;}}
     int roots=0;for(const auto& o:prefab.Objects()){
         roots+=!o.parent;
         if(o.prefabRoot||!o.prefabAsset.empty()){error="nested prefab references are unsupported in M36";return false;}
@@ -139,6 +142,7 @@ bool InstantiatePrefab(Scene& scene,const Scene& prefab,const AssetId& asset,con
         auto copy=o;copy.id=ids.at(o.id);copy.parent=o.parent?ids.at(o.parent):0;
         copy.prefabRoot=root;copy.prefabSource=o.id;
         if(copy.render&&copy.render->textureCamera)copy.render->textureCamera=ids.at(copy.render->textureCamera);
+        if(copy.liquidConnection){copy.liquidConnection->source=ids.at(copy.liquidConnection->source);copy.liquidConnection->destination=ids.at(copy.liquidConnection->destination);}
         if(copy.joint){copy.joint->bodyA=ids.at(copy.joint->bodyA);if(copy.joint->bodyB)copy.joint->bodyB=ids.at(copy.joint->bodyB);}
         if(o.id==sourceRoot){copy.prefabAsset=asset;copy.prefabIds=ids;copy.transform=placement;}
         *result.Find(copy.id)=copy;
@@ -172,6 +176,7 @@ bool ResolvePrefabs(const Scene& scene,const AssetDatabase* assets,Scene& resolv
             copy.id=mapping.at(o.id);copy.parent=o.parent?mapping.at(o.parent):root.parent;
             copy.prefabRoot=root.id;copy.prefabSource=o.id;
             if(copy.render&&copy.render->textureCamera){auto it=mapping.find(copy.render->textureCamera);if(it==mapping.end()){error="prefab camera reference outside source";return false;}copy.render->textureCamera=it->second;}
+            if(copy.liquidConnection){auto a=mapping.find(copy.liquidConnection->source),b=mapping.find(copy.liquidConnection->destination);if(a==mapping.end()||b==mapping.end()){error="prefab liquid connection outside source";return false;}copy.liquidConnection->source=a->second;copy.liquidConnection->destination=b->second;}
             if(copy.joint){auto a=mapping.find(copy.joint->bodyA),b=mapping.find(copy.joint->bodyB);if(a==mapping.end()||(copy.joint->bodyB&&b==mapping.end())){error="prefab joint reference outside source";return false;}copy.joint->bodyA=a->second;if(copy.joint->bodyB)copy.joint->bodyB=b->second;}
             if(o.id==root.prefabSource){copy.prefabAsset=root.prefabAsset;copy.prefabIds=mapping;copy.transform=root.transform;}
             // Keep original scene order and gravity precedence. New children append.
@@ -195,6 +200,7 @@ void CapturePrefabEdits(const Scene& before,Scene& after) {
             if(copy.render&&copy.render->textureCamera){const auto* root=after.Find(o.prefabRoot);
                 if(root)for(const auto& pair:root->prefabIds)if(pair.second==copy.render->textureCamera)copy.render->textureCamera=pair.first;}
             if(copy.joint){const auto* root=after.Find(o.prefabRoot);if(root){const auto a=copy.joint->bodyA,b=copy.joint->bodyB;for(const auto& pair:root->prefabIds){if(pair.second==a)copy.joint->bodyA=pair.first;if(pair.second==b)copy.joint->bodyB=pair.first;}}}
+            if(copy.liquidConnection){const auto* root=after.Find(o.prefabRoot);if(root){auto a=copy.liquidConnection->source,b=copy.liquidConnection->destination;for(const auto& pair:root->prefabIds){if(pair.second==a)copy.liquidConnection->source=pair.first;if(pair.second==b)copy.liquidConnection->destination=pair.first;}}}
             return ObjectProperties(copy);};
         auto a=normalized(*previous),b=normalized(o);
         if(o.prefabRoot==o.id)for(const char* key:{"position","rotation","scale"}){a.erase(key);b.erase(key);}

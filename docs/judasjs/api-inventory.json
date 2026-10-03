@@ -1,5 +1,5 @@
 {
-  "checkpoint": "3c52b13765a0721fa6a1fea0038505326359326b",
+  "checkpoint": "16f7d59fa3289e7e7c43aaeb7e88471be6fe348f",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -540,6 +540,17 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.liquid",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "liquidOwner"
+      ],
+      "type": "docs/judas.d.ts:Entity.liquid",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
       "symbol": "Entity.mass",
       "kinds": [
         "get"
@@ -866,6 +877,77 @@
       ],
       "type": "docs/judas.d.ts:Joint.valid",
       "reference": "docs/judasjs/physics.md"
+    },
+    {
+      "symbol": "LiquidVolume",
+      "kinds": [
+        "class"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:LiquidVolume",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "LiquidVolume.constructor",
+      "kinds": [
+        "call"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:LiquidVolume.constructor",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "LiquidVolume.enabled",
+      "kinds": [
+        "set"
+      ],
+      "native": [
+        "liquidEnabled"
+      ],
+      "type": "docs/judas.d.ts:LiquidVolume.enabled",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "LiquidVolume.handle",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:LiquidVolume.handle",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "LiquidVolume.state",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "liquidState"
+      ],
+      "type": "docs/judas.d.ts:LiquidVolume.state",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "LiquidVolume.transferTo",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "liquidTransfer"
+      ],
+      "type": "docs/judas.d.ts:LiquidVolume.transferTo",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "LiquidVolume.valid",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "liquidValid"
+      ],
+      "type": "docs/judas.d.ts:LiquidVolume.valid",
+      "reference": "docs/judasjs/liquid.md"
     },
     {
       "symbol": "NavigationAgent",
@@ -1375,6 +1457,70 @@
       "reference": "docs/judasjs/input.md"
     },
     {
+      "symbol": "liquid",
+      "kinds": [
+        "namespace"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:liquid",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "liquid.accounting",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "liquidAccounting"
+      ],
+      "type": "docs/judas.d.ts:liquid.accounting",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "liquid.connections",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "liquidConnections"
+      ],
+      "type": "docs/judas.d.ts:liquid.connections",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "liquid.errors",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "liquidErrors"
+      ],
+      "type": "docs/judas.d.ts:liquid.errors",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "liquid.sample",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "liquidSample"
+      ],
+      "type": "docs/judas.d.ts:liquid.sample",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "liquid.submerged",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "liquidSubmerged"
+      ],
+      "type": "docs/judas.d.ts:liquid.submerged",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
       "symbol": "navigation",
       "kinds": [
         "namespace"
@@ -1857,6 +2003,16 @@
     "jointSet",
     "jointState",
     "jointValid",
+    "liquidAccounting",
+    "liquidConnections",
+    "liquidEnabled",
+    "liquidErrors",
+    "liquidOwner",
+    "liquidSample",
+    "liquidState",
+    "liquidSubmerged",
+    "liquidTransfer",
+    "liquidValid",
     "log",
     "mass",
     "navAgentExists",

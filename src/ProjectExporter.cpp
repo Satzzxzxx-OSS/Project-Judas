@@ -1,4 +1,5 @@
 #include "NavigationAsset.h"
+#include "LiquidTypes.h"
 #include "ProjectExporter.h"
 #include "ScriptSystem.h"
 #include "AssetDatabase.h"
@@ -78,6 +79,8 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
     // Overrides/source content must be validated too, not just placeholders.
     Scene flattened;Require(FlattenHierarchy(resolved,flattened,error),error);
     for (const auto& object : flattened.Objects()) {
+        if(object.liquidBasin){check(object.liquidBasin->geometry,AssetType::Liquid);check(object.liquidBasin->asset,AssetType::Liquid);auto* r=assets.Find(object.liquidBasin->asset);LiquidBasinData b;Require(r&&LoadLiquidBasin(r->path,b,error),"Liquid basin: "+error);Require(LiquidSourceFingerprint(flattened,object,assets,error)==b.fingerprint,"Stale liquid basin: "+error);}
+        if(object.liquidContainer){check(object.liquidContainer->geometry,AssetType::Liquid);auto* r=assets.Find(object.liquidContainer->geometry);LiquidGeometry g;Require(r&&LoadLiquidGeometry(r->path,g,error),"Container cavity: "+error);double capacity=0;for(auto& t:g.cells)capacity+=LiquidClip(t,{0,0,0,0},1).volume;Require(object.liquidContainer->initialVolume<=capacity,"Container initial volume exceeds capacity");}
         if(object.navigationSurface && object.navigationSurface->enabled){check(object.navigationSurface->asset,AssetType::Navigation);const auto* record=assets.Find(object.navigationSurface->asset);NavigationData data;NavigationGeometry geometry;Require(record&&LoadNavigation(record->path,data,error),"Navigation: "+error);Require(CollectNavigationGeometry(flattened,object,navigation,geometry,error)&&geometry.fingerprint==data.fingerprint,"Stale navigation bake: "+error);}
         checkUI(object);
         if (object.render) {

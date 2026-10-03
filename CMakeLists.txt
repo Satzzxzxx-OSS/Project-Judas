@@ -78,6 +78,9 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
+    src/LiquidGeometry.cpp
+    src/LiquidTypes.cpp
+    src/LiquidSystem.cpp
     src/NavigationSystem.cpp
     src/NavigationTypes.cpp
     src/NavigationAsset.cpp
@@ -1053,3 +1056,11 @@ add_executable(judas_navigation_tests tests/NavigationTests.cpp)
 target_link_libraries(judas_navigation_tests PRIVATE judas_navigation_baker)
 add_executable(judas_navigation_game_tests tests/NavigationGameTests.cpp)
 target_link_libraries(judas_navigation_game_tests PRIVATE judas_engine)
+
+add_executable(judas_liquid_tests tests/LiquidTests.cpp)
+target_link_libraries(judas_liquid_tests PRIVATE judas_engine)
+add_executable(judas_liquid_bake tools/LiquidBake.cpp)
+target_link_libraries(judas_liquid_bake PRIVATE judas_engine)
+
+add_executable(judas_liquid_application_tests tests/LiquidApplicationTests.cpp)
+target_link_libraries(judas_liquid_application_tests PRIVATE judas_engine)

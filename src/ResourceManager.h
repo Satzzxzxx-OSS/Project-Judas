@@ -12,6 +12,7 @@
 #include "AssetDatabase.h"
 #include "AudioSystem.h"
 #include "NavigationAsset.h"
+#include "LiquidTypes.h"
 #include "JobSystem.h"
 #include "MeshData.h"
 #include "Renderer.h"
@@ -111,6 +112,8 @@ public:
 
     // Non-blocking demand: starts (or joins) the load and returns the
     // state now. Ready is answered from cache (a hit).
+    ResourceState RequestLiquid(const AssetId&,JobPriority priority=JobPriority::Normal);
+    std::shared_ptr<const LiquidResource> GetLiquid(const AssetId&,std::string& error);
     ResourceState RequestNavigation(const AssetId&,JobPriority priority=JobPriority::Normal);
     std::shared_ptr<const NavigationData> GetNavigation(const AssetId&,std::string& error);
     ResourceState RequestAudio(const AssetId& id, JobPriority priority = JobPriority::Normal);
@@ -202,6 +205,7 @@ private:
         TextureData texture;
         AudioData audio;
         std::shared_ptr<NavigationData> navigation;
+        std::shared_ptr<LiquidResource> liquid;
         std::thread::id decodeThread;
         ResourceTrace trace;
         JobHandle job;
@@ -215,6 +219,7 @@ private:
         TextureHandle texture;
         AudioClipHandle audio;
         std::shared_ptr<const NavigationData> navigation;
+        std::shared_ptr<const LiquidResource> liquid;
         std::string error;
         unsigned int generation = 0;
         unsigned int refs = 0;

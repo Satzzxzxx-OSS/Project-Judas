@@ -51,6 +51,7 @@ public:
     // that for you.
     void AddRegion(GravityField& field, const GravityVolume& volume);
 
+    bool Equilibrium(const glm::vec3&,GravityEquilibrium&) const override;
     glm::vec3 Sample(const glm::vec3& worldPosition) const override;
 
 private:

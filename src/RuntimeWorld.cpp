@@ -46,12 +46,15 @@ RuntimeWorld::~RuntimeWorld() {
 }
 
 bool RuntimeWorld::EntityRequiresFull(const SceneObject& o) {
-    if (o.vehicle || o.combustible || o.characterMotor || !o.scripts.empty()) return true;
+    if (o.vehicle || o.combustible || o.characterMotor || o.liquidContainer || o.liquidInteraction || !o.scripts.empty()) return true;
     if (o.body && o.body->shape == SceneShape::Compound) return true;
     return false;
 }
 
 bool RuntimeWorld::ValidateVisualAssets(const SceneObject& o, std::string& error) const {
+    if(o.liquidBasin||o.liquidContainer){const auto* db=m_assets?m_assets->Assets():nullptr;for(auto id:o.liquidBasin?std::vector<std::string>{o.liquidBasin->geometry,o.liquidBasin->asset}:std::vector<std::string>{o.liquidContainer->geometry}){const auto* a=db?db->Find(id):nullptr;LiquidResource resource;if(!a||a->missing||a->type!=AssetType::Liquid){error="missing/wrong-type liquid asset";return false;}std::ifstream file(a->path,std::ios::binary);std::vector<unsigned char> bytes{std::istreambuf_iterator<char>(file),{}};if(!DecodeLiquidResource(bytes,resource,error))return false;}}
+
+    if(o.liquidContainer){const auto* db=m_assets?m_assets->Assets():nullptr;const auto* a=db?db->Find(o.liquidContainer->geometry):nullptr;LiquidGeometry geometry;if(!a||!LoadLiquidGeometry(a->path,geometry,error))return false;double capacity=0;for(auto& t:geometry.cells)capacity+=LiquidClip(t,{0,0,0,0},1).volume;if(o.liquidContainer->initialVolume>capacity){error="initial container volume exceeds physical capacity";return false;}}
     if (!o.render || o.render->shape != SceneShape::Mesh || !m_assets) return true;
     const AssetDatabase* db = m_assets->Assets();
     const auto check = [&](const AssetId& id, AssetType type) {
@@ -237,6 +240,8 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         fingerprint=SceneFingerprintSha256(fingerprint+SceneFingerprintSha256(bytes));
     }
     if(resources&&resources->Assets()){std::string navBytes="Judas.NavSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.navigationSurface){has=true;auto* asset=resources->Assets()->Find(o.navigationSurface->asset);if(asset){std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();navBytes+=asset->id+SceneFingerprintSha256(contents.str());}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+navBytes);}
+    if(resources&&resources->Assets()){std::string liquidBytes="Judas.LiquidSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.liquidBasin||o.liquidContainer){has=true;std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){auto* asset=resources->Assets()->Find(id);if(!asset||asset->missing||asset->type!=AssetType::Liquid){outError="missing/wrong-type liquid asset";return false;}std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();liquidBytes+=id+SceneFingerprintSha256(contents.str());}if(o.liquidBasin){LiquidBasinData data;auto* asset=resources->Assets()->Find(o.liquidBasin->asset);if(!LoadLiquidBasin(asset->path,data,outError)||LiquidSourceFingerprint(scene,o,*resources->Assets(),outError)!=data.fingerprint){outError="stale/invalid liquid bake: "+outError;return false;}}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+liquidBytes);}
+    for(const auto& o:scene.Objects())if(!ValidateLiquidComponents(o,outError))return false;
     Destroy();
     m_categories=selected;
     m_navigation=std::make_unique<NavigationSystem>(navigation?*navigation:ProjectNavigation{});
@@ -278,7 +283,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
 
     if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
     SynchronizeJoints();
-    for(const auto& o:scene.Objects())if((m_hasScripts||o.animation||o.ragdoll||o.characterMotor||!NavigationProperties(o).empty())&&!FindEntity(o.id)){
+    for(const auto& o:scene.Objects())if((m_hasScripts||o.animation||o.ragdoll||o.characterMotor||!NavigationProperties(o).empty()||!LiquidProperties(o).empty())&&!FindEntity(o.id)){
         std::string unsupported;
         if(o.scripts.empty()&&!ValidateEntityDefinition(o,unsupported))continue;
         EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
@@ -301,6 +306,8 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     for (const SceneObject& o : scene.Objects()) {
         if(o.ui&&o.ui->enabled){std::string uiError;if(!UI().Load(o.ui->asset,o.ui->name,o.id,uiError))return fail(o,uiError);}
         m_hasScripts|=!o.scripts.empty();
+        m_hasLiquid|=!LiquidProperties(o).empty();
+        if((o.liquidBasin||o.liquidContainer)&&m_assets){std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){m_assets->AddRef(id);m_referencedAssets.push_back(id);m_assets->RequestLiquid(id);}}
         m_hasNavigation|=o.navigationSurface.has_value()||o.navigationAgent.has_value()||o.navigationObstacle.has_value()||o.navigationLink.has_value()||o.navigationModifier.has_value();
         m_scriptDefinitions[o.id]=o;
         m_entityCategories[o.id]={o.tags,o.tags,o.renderLayer,{}};
@@ -733,6 +740,7 @@ void RuntimeWorld::RestoreAuthoredState() {
     ++m_entityVersion;
     RebuildCelestialParticipants();
     m_combustion.Reset();
+    m_liquid=std::make_unique<LiquidSystem>();
     PopulateFluid();
 }
 
@@ -899,6 +907,7 @@ bool RuntimeWorld::ValidateEntityDestruction(EntityId id, std::string& error) co
 bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
     std::string error;
     if (!ValidateEntityDestruction(id, error)) { if (outError) *outError = error; return false; }
+    m_liquid->Remove(m_liquid->Handle(id));
     LeaveRagdoll(id,0,error);
     EntityRecord* e = FindEntity(id);
     if (e->lifecycle == EntityLifecycle::Destroyed) return true;
@@ -1182,7 +1191,7 @@ void RuntimeWorld::Destroy() {
     ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
-    m_scripts.reset();m_navigation.reset();m_ui.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
+    m_scripts.reset();m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;

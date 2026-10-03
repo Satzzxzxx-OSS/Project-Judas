@@ -310,6 +310,8 @@ void BuildAuthoredDebugLines(const Scene& scene, const DebugViewOptions& options
             out.Sphere(position, o.atmosphere->referenceRadius, kAtmosphereColor, 48);
             out.Sphere(position, o.atmosphere->topRadius, kAtmosphereColor * 0.6f, 48);
         }
+        if(options.fluidParticles&&o.liquidContainer){const auto& p=o.liquidContainer->opening;for(size_t i=0;i<p.size();++i)out.Line(position+rotation*glm::vec3(p[i]),position+rotation*glm::vec3(p[(i+1)%p.size()]),kFluidColor);}
+        if(options.fluidParticles&&o.liquidConnection){out.Cross(position,.15f,kFluidColor);for(auto id:{o.liquidConnection->source,o.liquidConnection->destination})if(auto* basin=scene.Find(id))out.Line(position,basin->transform.position,kFluidColor);}
         if (options.fluidParticles && o.fluidVolume) {
             const SceneFluidVolumeComponent& f = *o.fluidVolume;
             const glm::vec3 half(0.5f * f.spacing * static_cast<float>(f.countX), 0.5f * f.spacing * static_cast<float>(f.countY),

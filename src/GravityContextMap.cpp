@@ -18,3 +18,8 @@ glm::vec3 GravityContextMap::Sample(const glm::vec3& worldPosition) const {
     // sampled exactly at its center).
     return glm::vec3(0.0f);
 }
+
+bool GravityContextMap::Equilibrium(const glm::vec3& p,GravityEquilibrium& out)const {
+ for(const Region& r:m_regions)if(r.volume->Contains(p))return r.field->Equilibrium(p,out);
+ return false;
+}

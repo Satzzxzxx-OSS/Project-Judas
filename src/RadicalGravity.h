@@ -16,6 +16,7 @@ class RadicalGravity : public GravityField {
 public:
     RadicalGravity(const glm::vec3& center, float magnitude);
 
+    bool Equilibrium(const glm::vec3&,GravityEquilibrium& out)const override {if(m_magnitude<=0)return false;out={};out.kind=GravityEquilibrium::Kind::Radius;out.center=m_center;out.magnitude=m_magnitude;return true;}
     glm::vec3 Sample(const glm::vec3& worldPosition) const override;
 
 private:

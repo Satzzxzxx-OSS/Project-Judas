@@ -96,6 +96,7 @@ struct EditorPanelState {
     std::string worldStatePath;
     bool playPaused = false;
     DebugLineList navigationPreview;
+    DebugLineList liquidPreview;
     std::string status;
     std::string pathInput;  // Open / Save As text field
     std::vector<std::string> terrainSurfaces;

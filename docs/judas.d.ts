@@ -1,8 +1,13 @@
-/** Current JudasJS through M53; reviewed against ScriptSystem.cpp based on M52
- * 3c52b13765a0721fa6a1fea0038505326359326b. Tooling only, no TS runtime.
+/** Current JudasJS through M54; reviewed against ScriptSystem.cpp based on M53
+ * 16f7d59fa3289e7e7c43aaeb7e88471be6fe348f. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
+  export interface LiquidState {entityId:EntityId;entity:Entity|null;enabled:boolean;equilibriumValid:boolean;container:boolean;material:string;density:number;volume:number;capacity:number;stableCapacity:number;coordinate:number}
+  export interface LiquidAccounting {reservoirs:number;containers:number;detached:number;total:number;expected:number;error:number;tolerance:number}
+  export interface LiquidSample {entityId:EntityId;entity:Entity|null;material:string;density:number;depth:number;coordinate:number;surfacePoint:Vec3;normal:Vec3;velocity:Vec3}
+  export class LiquidVolume {constructor(handle:string);handle:string;readonly valid:boolean;readonly state:LiquidState;set enabled(value:boolean);transferTo(destination:LiquidVolume,volume:number):number}
+  export const liquid:{sample(point:Vec3):LiquidSample|null;accounting(material?:string):LiquidAccounting;readonly errors:{entityId:EntityId;message:string}[];readonly connections:{entityId:EntityId;active:boolean}[];submerged(target:Entity):{volume:number;center:Vec3;buoyancy:Vec3}};
   export type EntityId = string;
   export type AssetId = string;
   export type JSONValue = null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
@@ -30,6 +35,7 @@ declare module "judas" {
   export interface FluidSample { immersion: number; density: number; velocity: Vec3; acceleration: Vec3 }
   /** Plain wrappers reacquire native state. Treat the writable ID as opaque. */
   export class Entity {
+    readonly liquid:LiquidVolume|null;
     constructor(id: string | number | bigint);
     id: EntityId;
     readonly valid: boolean;

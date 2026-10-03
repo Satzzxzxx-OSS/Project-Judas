@@ -8932,3 +8932,11 @@ whole-planet navigation. Dynamic blockers carve incremental cache tiles independ
 of physical colliders. Expanded Spring Range composes these primitives through
 ordinary chase/health/score scripts, not a native Enemy/AI system. See
 [NAVIGATION.md](NAVIGATION.md) and the [public API](judasjs/navigation.md).
+
+## M54 — conserved implicit liquid foundation
+
+Candidate foundation alongside preserved production PBF; no dynamic waves/free-surface solver. RuntimeWorld owns double-volume reservoir/container/detached ledgers. Quantity is authoritative; surface geometry is downstream and owns no duplicate mass. Paired bounded transactions, generation-safe handles and fixed-step opening/connection/parcel updates keep accounting separate from geometric tolerance.
+
+Static physical tetrahedral basins bake adaptive monotonic capacity assets; runtime inversion is O(log N). Optional GravityField conservative equilibrium descriptors use the existing zone resolver: arbitrary uniform planes and the actual constant-magnitude radial equipotentials. Modest vented rotating containers clip their cavity against locally sampled gravity; authored openings drive real scoop/spill transport. Existing M44 queries constrain ballistic parcels; unsupported landings retain owned volume. Box/compound hydrostatic interaction is opt-in; M54-owned bodies are excluded from legacy PBF loading. No new swimming policy, particle-bulk fill, world-Y fallback or origin rebasing.
+
+Normal assets/resources/editor/scene/prefab/export and JudasJS integrate this path. Fingerprint schema remains 5; relevant physical and baked bytes contribute without machine paths. The existing saved-delta format does not persist this new liquid ledger; quantities are runtime-session state. Dry body mass/inertia are not automatically rewritten by contained water. Current authoring, gravity/geometry error bounds, limitations and human lab/radial checks: [LIQUID_RESERVOIRS.md](LIQUID_RESERVOIRS.md).

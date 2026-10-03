@@ -52,6 +52,8 @@ struct ProductionFluidCoupling::Impl {
         bodies.clear();
         for(const EntityRecord& e:world.Entities()) {
             if(e.lifecycle!=EntityLifecycle::Active || e.fidelity!=SimulationFidelity::Full || !e.definition.body) continue;
+            // Explicit conserved-liquid ownership excludes legacy PBF loading.
+            if(e.definition.liquidInteraction||e.definition.liquidContainer)continue;
             const auto& definition=*e.definition.body;
             const auto handle=world.DynamicBodies()[e.slot].Handle();
             if(!world.Physics().IsDynamicBody(handle)) continue;

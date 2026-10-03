@@ -97,6 +97,7 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
     TraceTask(task, ResourceTracePoint::DecodeBegin, bytes.size());
     if (task.type == AssetType::Mesh) {
         task.succeeded = ParseModelMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
+    } else if(task.type==AssetType::Liquid){task.liquid=std::make_shared<LiquidResource>();task.succeeded=DecodeLiquidResource(bytes,*task.liquid,task.error);
     } else if (task.type == AssetType::Navigation) {
         task.navigation=std::make_shared<NavigationData>();task.succeeded=DecodeNavigation(bytes,*task.navigation,task.error);
     } else if (task.type == AssetType::Audio) {
@@ -127,7 +128,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     ++m_stats.misses;
     entry.error.clear();
     if (m_shutDown) { Fail(entry, "resource manager is shut down"); return entry; }
-    if (expected != AssetType::Navigation && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
+    if (expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
     std::string path;
     if (!Resolve(id, expected, entry, path)) return entry;
 
@@ -184,11 +185,12 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         Fail(entry, task->error.empty() ? std::string("load failed") : task->error);
         return;
     }
-    if (task->type != AssetType::Navigation && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
+    if (task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
     if (task->type == AssetType::Mesh) {
         if (m_renderer) entry.mesh = m_renderer->CreateMesh(task->mesh);
         entry.bytes = EstimateMeshBytes(task->mesh);
         entry.skeletal=task->mesh.skeletal;
+    } else if(task->type==AssetType::Liquid){entry.liquid=task->liquid;entry.bytes=entry.liquid->geometry.cells.size()*sizeof(LiquidTet);if(entry.liquid->basin)entry.bytes+=entry.liquid->basin->geometry.cells.size()*sizeof(LiquidTet)+entry.liquid->basin->curve.size()*sizeof(LiquidCurvePoint);
     } else if (task->type == AssetType::Navigation) {
         entry.navigation=task->navigation;entry.bytes=0;for(auto& layer:entry.navigation->layers)entry.bytes+=layer.size();
     } else if (task->type == AssetType::Audio) {
@@ -202,7 +204,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
     entry.state = ResourceState::Ready;
     entry.loadMilliseconds =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - task->requested).count();
-    if(task->type!=AssetType::Navigation)++m_stats.uploads;
+    if(task->type!=AssetType::Navigation&&task->type!=AssetType::Liquid)++m_stats.uploads;
     m_stats.bytesResident += entry.bytes;
     m_stats.peakBytesResident = std::max(m_stats.peakBytesResident, m_stats.bytesResident);
 }
@@ -405,7 +407,7 @@ void ResourceManager::DestroyGpu(Entry& entry) {
         m_stats.bytesResident -= std::min(m_stats.bytesResident, entry.bytes);
     }
     entry.mesh = MeshHandle{};
-    entry.skeletal.reset();entry.navigation.reset();
+    entry.skeletal.reset();entry.navigation.reset();entry.liquid.reset();
     entry.texture = TextureHandle{};
     entry.audio = AudioClipHandle{};
     entry.bytes = 0;
@@ -547,3 +549,6 @@ std::shared_ptr<const SkeletalAsset> ResourceManager::TryGetSkeletal(const Asset
 
 ResourceState ResourceManager::RequestNavigation(const AssetId& id,JobPriority p){auto& e=Begin(id,AssetType::Navigation,p);return TypeMismatch(e.state,e.type,AssetType::Navigation)?ResourceState::Failed:e.state;}
 std::shared_ptr<const NavigationData> ResourceManager::GetNavigation(const AssetId& id,std::string& error){auto& e=Begin(id,AssetType::Navigation,JobPriority::Normal);if(e.type!=AssetType::Navigation){error="asset is not navigation";return nullptr;}if(e.state!=ResourceState::Ready){error=e.state==ResourceState::Failed?e.error:"loading";return nullptr;}error.clear();return e.navigation;}
+
+ResourceState ResourceManager::RequestLiquid(const AssetId& id,JobPriority p){auto& e=Begin(id,AssetType::Liquid,p);return TypeMismatch(e.state,e.type,AssetType::Liquid)?ResourceState::Failed:e.state;}
+std::shared_ptr<const LiquidResource> ResourceManager::GetLiquid(const AssetId& id,std::string& error){auto& e=Begin(id,AssetType::Liquid,JobPriority::Normal);if(e.type!=AssetType::Liquid){error="asset is not liquid data";return nullptr;}if(e.state!=ResourceState::Ready){error=e.state==ResourceState::Failed?e.error:"loading";return nullptr;}error.clear();return e.liquid;}

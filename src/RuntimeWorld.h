@@ -1,4 +1,5 @@
 #include "NavigationSystem.h"
+#include "LiquidSystem.h"
 #pragma once
 
 #include <memory>
@@ -288,6 +289,9 @@ public:
     JointHandle RuntimeJoint(EntityId owner);
     CharacterMotor* RuntimeCharacter(EntityId id);
     void UpdateCharacters(float dt);
+    LiquidSystem& Liquids(){return *m_liquid;}
+    const LiquidSystem& Liquids()const{return *m_liquid;}
+    void UpdateLiquids(double dt){if(m_liquid&&m_hasLiquid)m_liquid->Update(*this,dt);}
     NavigationSystem& Navigation(){return *m_navigation;}
     const NavigationSystem& Navigation()const{return *m_navigation;}
     bool SetNavigationEnabled(EntityId id,const std::string& kind,bool enabled);
@@ -436,6 +440,8 @@ private:
     struct EntityCategories {CategoryMask tags=0, authoredTags=0;unsigned renderLayer=0;BodyHandle body;};
     ProjectClassification m_categories;
     std::unique_ptr<NavigationSystem> m_navigation;
+    std::unique_ptr<LiquidSystem> m_liquid=std::make_unique<LiquidSystem>();
+    bool m_hasLiquid=false;
     std::map<EntityId,EntityCategories> m_entityCategories;
     bool m_built = false;
     PhysicsWorld m_physics;

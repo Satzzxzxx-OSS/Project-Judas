@@ -41,3 +41,5 @@ void DrawCategoryMask(EditorDocument&,const char*,CategoryMask&,const CategoryRe
 
 // Shared inspector Bake command and editor automation entry point.
 bool BakeEditorNavigation(EditorDocument&,SceneObjectId,EditorPanelState&);
+
+bool BakeEditorLiquid(EditorDocument&,SceneObjectId,EditorPanelState&);

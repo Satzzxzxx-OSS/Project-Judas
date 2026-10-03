@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M53 review of the registered virtual module based on M52 checkpoint `3c52b13765a0721fa6a1fea0038505326359326b`.
+M54 review of the registered virtual module based on M53 checkpoint `16f7d59fa3289e7e7c43aaeb7e88471be6fe348f`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -58,6 +58,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.hasTag` | `hasTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.inertiaWorld` | `inertiaWorld` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.liquid` | `liquidOwner` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.mass` | `mass` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.navigation` | `navAgentExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.navigationLink` | `navLinkInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -88,6 +89,13 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Joint.setSpring` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.state` | `jointState` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.valid` | `jointValid` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `LiquidVolume` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.enabled` | `liquidEnabled` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.handle` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.state` | `liquidState` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.transferTo` | `liquidTransfer` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.valid` | `liquidValid` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `NavigationAgent` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `NavigationAgent.clear` | `navClear` | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `NavigationAgent.completeLink` | `navCompleteLink` | [declaration](../judas.d.ts) | [reference](navigation.md) |
@@ -136,6 +144,12 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `input.pointerCapture` | `pointerCapture`, `setPointerCapture` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.pressed` | `pressed` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.released` | `released` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `liquid` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `liquid.accounting` | `liquidAccounting` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `liquid.connections` | `liquidConnections` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `liquid.errors` | `liquidErrors` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `liquid.sample` | `liquidSample` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `liquid.submerged` | `liquidSubmerged` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `navigation` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `navigation.areas` | `navAreas` | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `navigation.errors` | `navErrors` | [declaration](../judas.d.ts) | [reference](navigation.md) |
