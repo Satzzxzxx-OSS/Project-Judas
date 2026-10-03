@@ -1,5 +1,7 @@
 # M42 collision and sensor events
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Judas reports contact; project JavaScript decides what it means. Scene body
 inspectors expose **Sensor (events, no response)** and **Collider enabled**.
 These optional authored fields serialize through scenes and normal prefab

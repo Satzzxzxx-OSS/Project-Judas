@@ -1424,3 +1424,9 @@ Open `projects/character_demo/character_demo.judasproj`: F1 flat course, F2 radi
 planet, F3 JS swimming on the existing pool content. Generic capsule motion and
 support belong to Judas; input, launch, swimming and camera behaviour are project
 JavaScript. See [M49 authoring/API and checklist](docs/M49_CHARACTER_MOTOR.md).
+
+### JudasJS developer reference (M50)
+
+Start with [JUDASJS.md](docs/JUDASJS.md) for the current API, lifecycle, safe handles,
+copyable executed examples and offline editor setup. [judas.d.ts](docs/judas.d.ts)
+provides completion/type information without a TypeScript runtime dependency.

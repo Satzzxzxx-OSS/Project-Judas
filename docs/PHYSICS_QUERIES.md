@@ -1,5 +1,7 @@
 # M44 — runtime raycasts and shape casts
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Judas answers geometric questions; project JavaScript gives the answers meaning.
 These are **read-only queries of resolved colliders**, separate from M42 events,
 player locomotion sweeps and the impact solver.
@@ -20,7 +22,7 @@ const hit = physics.raycast({x:0,y:2,z:5}, {x:0,y:0,z:-1}, 100, {
   includeLayers:['Default'], excludedTags:['IgnoreQuery'],
   ignored:[world.entity('5')], includeSensors:false
 });
-if (hit && hit.entity.valid) console.log(hit.point, hit.normal, hit.distance);
+if (hit && hit.entity?.valid) console.log(hit.point, hit.normal, hit.distance);
 
 physics.sphereCast(origin, radius, direction, maximum, filter);
 physics.capsuleCast({position:origin, rotation:{w:1,x:0,y:0,z:0}},

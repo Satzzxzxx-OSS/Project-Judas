@@ -1,5 +1,7 @@
 # M48 — articulated physics as a pose producer
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 A Ragdoll component is an ordered, parent-first mapping from imported skeleton
 joint hierarchy keys (or unique names) to ordinary runtime rigid bodies. There
 is exactly one mapped physical root; not every skeleton node needs a body.

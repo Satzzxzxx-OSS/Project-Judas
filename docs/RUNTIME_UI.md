@@ -1,5 +1,7 @@
 # M41 authored runtime UI
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Judas owns layout/rendering/input. Project `.judasui` assets own the hierarchy;
 JavaScript owns menus, HUD meaning and reactions. No browser or gameplay UI classes.
 

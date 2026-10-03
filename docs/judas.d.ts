@@ -1,100 +1,228 @@
+/** Current JudasJS through M50; reviewed against ScriptSystem.cpp at M49
+ * 19613298a55a2095cc856a7462f5c0babe4c1b17. Tooling only, no TS runtime.
+ * See JUDASJS.md. Ordinary returned objects are detached snapshots.
+ */
 declare module "judas" {
-  export interface Vec3 { x:number; y:number; z:number }
-  export interface Quat extends Vec3 { w:number }
-  export interface Transform { position:Vec3; rotation:Quat; scale:Vec3 }
-  export interface QueryFilter { includeLayers?:string[]; excludeLayers?:string[]; requiredTags?:string[]; excludedTags?:string[]; ignored?:Entity[]; includeSensors?:boolean }
+  export type EntityId = string;
+  export type AssetId = string;
+  export type JSONValue = null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
+  export interface Vec3 { x: number; y: number; z: number }
+  export interface Quat extends Vec3 { w: number }
+  export interface Transform { position: Vec3; rotation: Quat; scale: Vec3 }
+  export interface TransformPatch { position?: Vec3; rotation?: Quat; scale?: Vec3 }
+  export interface CastPose { position: Vec3; rotation?: Quat }
+  export interface Ray { origin: Vec3; direction: Vec3 }
+  export interface QueryFilter {
+    includeLayers?: string[]; excludeLayers?: string[];
+    requiredTags?: string[]; excludedTags?: string[];
+    ignored?: Entity[]; includeSensors?: boolean;
+  }
+  export interface Classification { renderLayer: number; collisionLayer: number; collisionMask: string }
+  export interface CameraInfo { enabled: boolean; width: number; height: number }
+  export interface AudioInfo { enabled: boolean; playing: boolean; requested: boolean }
+  export interface ParticleSettingsPatch { enabled?: boolean; rate?: number }
+  export interface CastHit {
+    entity: Entity | null; entityId: EntityId; bodyId: number;
+    point: Vec3; normal: Vec3; distance: number; fraction: number;
+    primitiveIndex: number; initialOverlap: boolean; shape: "sphere" | "box" | "terrain";
+  }
+  export interface LegacySweepHit { hit: boolean; distance: number; normal: Vec3; entityId: EntityId }
+  export interface FluidSample { immersion: number; density: number; velocity: Vec3; acceleration: Vec3 }
+  /** Plain wrappers reacquire native state. Treat the writable ID as opaque. */
   export class Entity {
-    constructor(id:string);
-    readonly id:string; readonly valid:boolean;
-    transform:Transform; readonly parent:Entity|null; readonly children:Entity[];
-    readonly classification:{renderLayer:number;collisionLayer:number;collisionMask:string};
-    readonly camera:{enabled:boolean;width:number;height:number}|null;
-    readonly audio:{enabled:boolean;playing:boolean;requested:boolean}|null;
-    readonly animation:Animation|null;
-    destroy():boolean; hasTag(tag:string):boolean; addTag(tag:string):boolean; removeTag(tag:string):boolean;
-    scriptState(slot:number|string):object|null;
-    applyForce(force:Vec3):void; applyImpulse(impulse:Vec3):void; applyTorque(torque:Vec3):void;
-    velocity:Vec3; angularVelocity:Vec3;
-    playAudio():boolean; stopAudio():boolean; pauseAudio():boolean; resumeAudio():boolean;
-    setAudioEnabled(enabled:boolean):boolean; burst(count:number):boolean;
-    setParticles(settings:{enabled?:boolean;rate?:number}):boolean;
-    setCameraEnabled(enabled:boolean):boolean;
+    constructor(id: string | number | bigint);
+    id: EntityId;
+    readonly valid: boolean;
+    get transform(): Transform;
+    set transform(value: TransformPatch);
+    readonly parent: Entity | null;
+    readonly children: Entity[];
+    setColliderEnabled(enabled: boolean): boolean;
+    destroy(): boolean;
+    hasTag(tag: string): boolean;
+    addTag(tag: string): boolean;
+    removeTag(tag: string): boolean;
+    readonly classification: Classification;
+    readonly animation: Animation | null;
+    readonly character: Character | null;
+    readonly ragdoll: Ragdoll | null;
+    readonly audio: AudioInfo | null;
+    setAudioEnabled(enabled: boolean): boolean;
+    readonly camera: CameraInfo | null;
+    scriptState(slot: string | number): JSONValue;
+    applyForce(value: Vec3): void;
+    applyImpulse(value: Vec3): void;
+    applyTorque(value: Vec3): void;
+    velocity: Vec3;
+    angularVelocity: Vec3;
+    playAudio(): boolean;
+    stopAudio(): boolean;
+    pauseAudio(): boolean;
+    resumeAudio(): boolean;
+    burst(count: number): boolean;
+    setParticles(settings: ParticleSettingsPatch): boolean;
+    setCameraEnabled(enabled: boolean): boolean;
   }
-  export function entity(id:string):Entity|null;
-  export const world:{readonly viewRay:{origin:Vec3;direction:Vec3}|null;entity:typeof entity;queryTags(required?:string[],excluded?:string[]):Entity[];
-    spawnPrefab(asset:string,transform:Partial<Transform>):Entity;
-    overlap(min:Vec3,max:Vec3,filter?:QueryFilter):Entity[];
-    sweepCapsule(from:Vec3,displacement:Vec3,rotation?:Quat,filter?:QueryFilter):{hit:boolean;distance:number;normal:Vec3;entityId:string}};
-  export const input:{held(name:string):boolean;pressed(name:string):boolean;released(name:string):boolean;axis(name:string):number};
-  export const time:{readonly elapsed:number;readonly delta:number;readonly fixed:boolean};
-  export const console:{log(...values:unknown[]):void};
-}
-
-// M41 extends the same virtual module; event handlers are synchronous.
-declare module 'judas' {
-  export interface UIEvent { document:string; element:string; type:'click'|'change'|'focus'|'back'; value:number; }
-  export class UIElement { readonly handle:number; readonly id:string; text:string; visible:boolean; enabled:boolean; texture:string; value:number; }
-  export class UIDocument { readonly handle:number; visible:boolean; enabled:boolean; modal:boolean; get(id:string):UIElement; show():void; hide():void; unload():void; }
-  export const ui:{get(name:string):UIDocument|null;load(asset:string,name:string):UIDocument;quit():void;debugOverlayVisible:boolean};
-}
-
-// M42 fixed-step contact snapshots. Normals point toward the recipient.
-declare module 'judas' {
-  interface ContactEvent {
-    other: Entity;
-    point: {x:number;y:number;z:number};
-    normal: {x:number;y:number;z:number};
-    relativeVelocity: {x:number;y:number;z:number};
-    normalImpulse: number|null;
+  /** Does not check existence; null for absent/falsy input or string "0". Use .valid. */
+  export function entity(id: string | number | bigint | null | undefined): Entity | null;
+  export const world: {
+    entity: typeof entity;
+    setView(pose: TransformPatch, fov?: number): boolean;
+    clearView(): boolean;
+    fluidSample(point: Vec3, up: Vec3, halfHeight: number, radius: number, tangent: Vec3): FluidSample;
+    readonly viewRay: Ray | null;
+    queryTags(required?: string[], excluded?: string[]): Entity[];
+    spawnPrefab(asset: AssetId, transform: TransformPatch): Entity;
+    /** Conservative broadphase candidates, not exact overlap results. */
+    overlap(min: Vec3, max: Vec3, filter?: QueryFilter): Entity[];
+    /** Legacy fixed player-sized capsule; prefer physics.capsuleCast for explicit dimensions. */
+    sweepCapsule(from: Vec3, displacement: Vec3, rotation?: Quat, filter?: QueryFilter): LegacySweepHit;
+  };
+  export interface CharacterSettingsPatch {
+    radius?: number; halfHeight?: number; offset?: Vec3;
+    stepHeight?: number; supportDistance?: number; skin?: number; maxSlopeDegrees?: number;
+    gravityScale?: number; reorientationDegreesPerSecond?: number;
+    interactionMass?: number; maxPushImpulse?: number;
+    collisionLayer?: string; collisionMask?: string[]; requiredTags?: string[]; excludedTags?: string[];
   }
-  interface Entity { setColliderEnabled(enabled:boolean): boolean; }
-}
-
-declare module "judas" {
-/** M43: project-relative registered scenes; first valid request wins this frame. */
-export const scenes: {
+  export interface CharacterState {
+    velocity: Vec3; actualDisplacement: Vec3; supportNormal: Vec3; supportVelocity: Vec3;
+    gravity: Vec3; up: Vec3; supported: boolean; collided: boolean;
+    supportEntityId: EntityId; supportEntity: Entity | null;
+  }
+  export class Character {
+    constructor(id: EntityId);
+    id: EntityId;
+    readonly state: CharacterState;
+    get velocity(): Vec3;
+    set velocity(value: Vec3);
+    readonly supported: boolean;
+    readonly supportNormal: Vec3;
+    readonly supportVelocity: Vec3;
+    readonly actualDisplacement: Vec3;
+    readonly gravity: Vec3;
+    readonly up: Vec3;
+    /** Setter only in JS; reading returns undefined. TS cannot enforce write-only access. */
+    set enabled(value: boolean);
+    configure(settings: CharacterSettingsPatch): boolean;
+    accelerate(value: Vec3): boolean;
+    ignore(entities: Entity[]): boolean;
+  }
+  export class Ragdoll {
+    constructor(id: EntityId);
+    id: EntityId;
+    readonly active: boolean;
+    enter(): boolean;
+    leave(seconds?: number): boolean;
+    /** Setter only; read is undefined. */
+    set enabled(value: boolean);
+    body(joint: string): Entity | null;
+  }
+  export interface ClipInfo { name: string; duration: number }
+  export interface AnimationLayerInfo { id: string; clip: string; weight: number; enabled: boolean; additive: boolean }
+  export interface AnimationInfo {
+    ready: boolean; playing: boolean; loop: boolean; speed: number; time: number; clip: string;
+    clips: ClipInfo[]; transitioning: boolean; transitionFraction: number; error: string;
+    joints: string[]; layers: AnimationLayerInfo[];
+  }
+  export interface AnimationLayerPatch {
+    clip?: string; referenceClip?: string; weight?: number; speed?: number; time?: number;
+    referenceTime?: number; enabled?: boolean; additive?: boolean; mask?: string[];
+  }
+  export class Animation {
+    constructor(entityId: EntityId);
+    entityId: EntityId;
+    readonly info: AnimationInfo;
+    readonly clips: ClipInfo[];
+    readonly playing: boolean;
+    readonly time: number;
+    speed: number;
+    loop: boolean;
+    play(clip?: string): boolean;
+    pause(): boolean;
+    resume(): boolean;
+    stop(): boolean;
+    seek(time: number): boolean;
+    crossFade(clip: string, seconds?: number): boolean;
+    readonly layers: AnimationLayerInfo[];
+    layer(id: string, settings: AnimationLayerPatch): boolean;
+    removeLayer(id: string): boolean;
+  }
+  export interface JointState { active: boolean; enabled: boolean; coordinate: number; motorImpulse: number; type: 0 | 1 | 2 | 3 }
+  export class Joint {
+    constructor(id: string | number | bigint);
+    id: string;
+    readonly valid: boolean;
+    readonly state: JointState;
+    setEnabled(enabled: boolean): boolean;
+    setLimits(lower: number, upper: number, limits?: boolean): boolean;
+    setMotor(speed: number, maxForce: number, motor?: boolean): boolean;
+    setSpring(rest: number, stiffness: number, damping: number, spring?: boolean): boolean;
+  }
+  export const physics: {
+    joint(owner: Entity): Joint | null;
+    raycast(origin: Vec3, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
+    sphereCast(origin: Vec3, radius: number, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
+    capsuleCast(pose: CastPose, radius: number, halfHeight: number, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
+    boxCast(pose: CastPose, halfExtents: Vec3, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
+  };
+  export const scenes: {
     readonly current: string;
     readonly registered: string[];
-    load(scene: string): boolean;
+    load(name: string): boolean;
     reload(): boolean;
-};
-/** Detached, bounded JSON values. Survives scene changes, ends with Play/session. */
-export const session: {
-    get(key: string): unknown;
-    set(key: string, value: unknown): void;
-    delete(key: string): void;
-};
-}
-
-// M44: explicit read-only snapshot queries, independent of physical collision masks.
-declare module 'judas' {
-  export interface CastPose {position:Vec3;rotation?:Quat}
-  export interface CastHit {entity:Entity|null;entityId:string;bodyId:number;point:Vec3;normal:Vec3;
-    distance:number;fraction:number;initialOverlap:boolean;primitiveIndex:number;shape:'sphere'|'box'|'terrain'}
-  export class Joint {
-    readonly id:string;
-    readonly valid:boolean;
-    readonly state:{active:boolean;enabled:boolean;coordinate:number;motorImpulse:number;type:number};
-    setEnabled(enabled:boolean):boolean;
-    setLimits(lower:number,upper:number,enabled?:boolean):boolean;
-    setMotor(speed:number,maxForce:number,enabled?:boolean):boolean;
-    setSpring(rest:number,stiffness:number,damping:number,enabled?:boolean):boolean;
-  }
-  export const physics:{
-    joint(owner:Entity):Joint|null;
-    raycast(origin:Vec3,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
-    sphereCast(origin:Vec3,radius:number,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
-    capsuleCast(pose:CastPose,radius:number,halfHeight:number,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
-    boxCast(pose:CastPose,halfExtents:Vec3,direction:Vec3,maximum:number,filter?:QueryFilter):CastHit|null;
   };
-}
-
-// M46: clips are pose producers; playback state belongs to an ordinary instance.
-declare module 'judas' {
- export class Animation {
-  readonly info:{ready:boolean;playing:boolean;loop:boolean;speed:number;time:number;clip:string;clips:{name:string;duration:number}[]};
-  readonly clips:{name:string;duration:number}[]; readonly playing:boolean; readonly time:number;
-  speed:number; loop:boolean;
-  play(clip?:string):boolean;pause():boolean;resume():boolean;stop():boolean;seek(seconds:number):boolean;
- }
+  export const session: { get(key: string): JSONValue; set(key: string, value: JSONValue): void; delete(key: string): void };
+  export const input: { held(name: string): boolean; pressed(name: string): boolean; released(name: string): boolean; axis(name: string): number };
+  export const time: { readonly elapsed: number; readonly delta: number; readonly fixed: boolean };
+  export const console: { log(...args: unknown[]): void };
+  export class UIElement {
+    constructor(handle: number, id: string);
+    handle: number;
+    id: string;
+    text: string;
+    visible: boolean;
+    enabled: boolean;
+    value: number;
+    texture: AssetId;
+  }
+  export class UIDocument {
+    constructor(handle: number);
+    handle: number;
+    get(id: string): UIElement;
+    visible: boolean;
+    enabled: boolean;
+    modal: boolean;
+    show(): void;
+    hide(): void;
+    unload(): void;
+  }
+  export const ui: {
+    get(name: string): UIDocument | null;
+    load(asset: AssetId, name: string): UIDocument;
+    quit(): void;
+    debugOverlayVisible: boolean;
+  };
+  export interface UIEvent { document: string; element: string; type: "click" | "change" | "focus" | "back"; value: number }
+  export interface ContactEvent { other: Entity | null; point: Vec3; normal: Vec3; relativeVelocity: Vec3; normalImpulse: number | null }
+  export type ScriptProperties = Record<string, number | boolean | string>;
+  export type PropertySchema = Record<string,
+    { type: "number"; default?: number } | { type: "boolean"; default?: boolean } | { type: "string"; default?: string }>;
+  export interface ScriptContext<P extends ScriptProperties = ScriptProperties> { entity: Entity; properties: P }
+  /** Structural tooling interface, not a runtime-exported base class. */
+  export interface ScriptBehaviour {
+    state?: JSONValue;
+    start?(dt: number): void;
+    update?(dt: number): void;
+    fixedUpdate?(dt: number): void;
+    uiUpdate?(dt: number): void;
+    destroy?(dt: number): void;
+    onUI?(event: UIEvent): void;
+    onCollisionEnter?(event: ContactEvent): void;
+    onCollisionStay?(event: ContactEvent): void;
+    onCollisionExit?(event: ContactEvent): void;
+    onTriggerEnter?(event: ContactEvent): void;
+    onTriggerStay?(event: ContactEvent): void;
+    onTriggerExit?(event: ContactEvent): void;
+  }
 }

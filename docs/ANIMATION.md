@@ -1,5 +1,7 @@
 # M46 — skeletal-animation foundation
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 ## Ownership and pipeline
 
 `Skeleton` stores the full node hierarchy/rest local transforms and a skin

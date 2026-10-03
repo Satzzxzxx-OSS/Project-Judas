@@ -1,5 +1,7 @@
 # M45 — rigid-body joints
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Judas provides physical relationships between bodies. JavaScript decides what those relationships represent.
 
 ## Solver and ownership

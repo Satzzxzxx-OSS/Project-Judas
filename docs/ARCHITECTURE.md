@@ -8877,3 +8877,14 @@ character project uses JS movement/launch and existing liquid-field queries for
 swimming; production fluid mechanics and protected evidence remain unchanged.
 Legacy scenes retain their compatibility controller. See
 [M49 detailed contract and limitations](M49_CHARACTER_MOTOR.md).
+
+## M50 — current JudasJS developer reference
+
+[JUDASJS.md](JUDASJS.md) is the current public JavaScript reference. Declarations,
+source/runtime API inventory and copyable examples are developer tooling; they do
+not change the VM or engine semantics. The focused drift check compares the actual
+registered module, type surface and real-VM enumeration. Type-only interfaces are
+not runtime exports; native dispatcher details and behavioural-validation limits
+are explicit inventory exceptions. M38 runtime packages do not bundle this whole
+documentation tree; developers obtain the offline reference/types from the matching
+engine checkout. Historical milestone records/evidence retain their original scope.

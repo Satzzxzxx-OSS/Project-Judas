@@ -1,5 +1,7 @@
 # Runtime scene transitions (M43)
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Judas owns world lifetime. Project JavaScript chooses when to change scenes.
 
 ```js

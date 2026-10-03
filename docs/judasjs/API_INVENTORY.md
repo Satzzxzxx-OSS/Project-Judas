@@ -1,0 +1,165 @@
+# Current public JudasJS inventory
+
+M50 review of the registered virtual module at M49 checkpoint `19613298a55a2095cc856a7462f5c0babe4c1b17`.
+Each row is a runtime export/member (constructors and plain handle fields included).
+Native dispatcher operations are implementation details, not additional JS APIs.
+
+| Runtime symbol | Native bridge operation | Type | Reference |
+|---|---|---|---|
+| `Animation` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.clips` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.crossFade` | `animationFade` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.entityId` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.info` | `animationInfo` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.layer` | `animationLayer` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.layers` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.loop` | `animationSet` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.pause` | `animationPause` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.play` | `animationPlay` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.playing` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.removeLayer` | `animationRemoveLayer` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.resume` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.seek` | `animationSeek` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.speed` | `animationSet` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.stop` | `animationStop` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.time` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Character` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.accelerate` | `characterAcceleration` | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.actualDisplacement` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.configure` | `characterConfigure` | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.enabled` | `characterEnabled` | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.gravity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.ignore` | `characterIgnore` | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.state` | `characterState` | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.supportNormal` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.supportVelocity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.supported` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.up` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Character.velocity` | `characterVelocity` | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Entity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.addTag` | `addTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.angularVelocity` | `angularVelocity`, `setAngularVelocity` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.animation` | `animationExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.applyForce` | `force` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.applyImpulse` | `impulse` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.applyTorque` | `torque` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.audio` | `audioInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.burst` | `burst` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.camera` | `cameraInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.character` | `characterExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.children` | `children` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.classification` | `classification` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.destroy` | `destroy` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.hasTag` | `hasTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.parent` | `parent` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.pauseAudio` | `pauseAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.playAudio` | `playAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.ragdoll` | `ragdollExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.removeTag` | `removeTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.resumeAudio` | `resumeAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.scriptState` | `scriptState` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.setAudioEnabled` | `audioEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.setCameraEnabled` | `camera` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.setColliderEnabled` | `colliderEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.setParticles` | `particles` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.stopAudio` | `stopAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.transform` | `setTransform`, `transform` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.valid` | `valid` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.velocity` | `setVelocity`, `velocity` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Joint` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.setEnabled` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.setLimits` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.setMotor` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.setSpring` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.state` | `jointState` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.valid` | `jointValid` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Ragdoll` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Ragdoll.active` | `ragdollActive` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Ragdoll.body` | `ragdollBody` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Ragdoll.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Ragdoll.enabled` | `ragdollEnabled` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Ragdoll.enter` | `ragdollEnter` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Ragdoll.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Ragdoll.leave` | `ragdollLeave` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `UIDocument` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.enabled` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.get` | `uiGet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.handle` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.hide` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.modal` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.show` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.unload` | `uiUnload` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIDocument.visible` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.enabled` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.handle` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.text` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.texture` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.value` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.visible` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `console` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](input.md) |
+| `console.log` | `log` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `entity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `input` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](input.md) |
+| `input.axis` | `axis` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `input.held` | `held` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `input.pressed` | `pressed` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `input.released` | `released` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `physics` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.boxCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.capsuleCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.joint` | `joint` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.raycast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.sphereCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `scenes` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.current` | `sceneCurrent` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.load` | `sceneLoad` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.registered` | `sceneList` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.reload` | `sceneReload` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `session` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `session.delete` | `sessionDelete` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `session.get` | `sessionGet` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `session.set` | `sessionSet` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `time` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](input.md) |
+| `time.delta` | `delta` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `time.elapsed` | `elapsed` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `time.fixed` | `fixed` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `ui` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `ui.debugOverlayVisible` | `uiDiagnostics` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `ui.get` | `uiFind` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `ui.load` | `uiLoad` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `ui.quit` | `uiQuit` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `world` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.clearView` | `clearView` | [declaration](../judas.d.ts) | [reference](effects-camera.md) |
+| `world.entity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.fluidSample` | `fluidSample` | [declaration](../judas.d.ts) | [reference](effects-camera.md) |
+| `world.overlap` | `overlap` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.queryTags` | `queryTags` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.setView` | `setView` | [declaration](../judas.d.ts) | [reference](effects-camera.md) |
+| `world.spawnPrefab` | `spawn` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.sweepCapsule` | `sweep` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.viewRay` | `viewRay` | [declaration](../judas.d.ts) | [reference](effects-camera.md) |
+
+## Lifecycle and dynamic exceptions
+
+`start`, `update`, `fixedUpdate`, `uiUpdate`, `destroy`, `onUI`, `onCollisionEnter`, `onCollisionStay`, `onCollisionExit`, `onTriggerEnter`, `onTriggerStay`, `onTriggerExit` are structural ScriptBehaviour callbacks, not module exports.
+
+- **globalThis.__judas**: Internal native dispatcher; unsupported, not a public API declaration.
+- **globalThis.console**: Alias of exported console; no extra API.
+- **result objects / config / property schema**: Native structured fields and value validation reviewed manually; representative runtime/type examples cover shapes, not every invalid value.
+- **types-only exports**: Interfaces/type aliases are tooling only; runtime export comparison excludes them.
+- **setter-only accessors**: TypeScript cannot prohibit reads; docs state these return undefined.
+- **callback ordering / phases**: Implementation traced manually; no AST checker proves temporal semantics.
+
+The machine check fails missing/phantom exports/members, getter/setter drift and inventory drift.
+Structured return/configuration types and behavioural semantics require source review; it is not full semantic certification.

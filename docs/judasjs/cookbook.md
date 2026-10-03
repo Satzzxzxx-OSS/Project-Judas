@@ -1,0 +1,37 @@
+# Copyable, executed examples
+
+[Index](../JUDASJS.md) · [Practices](practices.md)
+
+These are ordinary default-exported scripts, not pseudocode or hidden test paths.
+Import/track a script in Assets, attach an enabled slot to an appropriate entity,
+and set its properties in the inspector. Relative imports must also be tracked.
+The focused `judasjs_examples_tests` target executes these files through the normal
+QuickJS/RuntimeWorld path with the fixtures below. It does not replace the renderer,
+physics or VM. Example names/IDs are content, not engine-owned semantics.
+
+| File | Required setup / task |
+|---|---|
+| [minimal.js](examples/minimal.js) | Any entity; lifecycle/properties/state. |
+| [input-motion.js](examples/input-motion.js) | Any movable visual entity; `move_x` axis. Explicit teleport example, not collision locomotion. |
+| [spawn.js](examples/spawn.js) | Registered prefab ID property; constructs independent hierarchy. |
+| [queries.js](examples/queries.js) | Floor below origin, colliders; ray and sphere cast, ignore owner. |
+| [contacts.js](examples/contacts.js) | Dynamic collider resting on floor; enter/stay/exit reactions. Use same script on authored sensor for triggers. |
+| [audio.js](examples/audio.js) | Authored AudioEmitter; play/pause/resume/stop requests. |
+| [particles.js](examples/particles.js) | Authored visual ParticleEmitter. |
+| [ui.js](examples/ui.js) | Registered `.judasui` ID property with `counter`, `start`; runtime loading and UI broadcast filtering. |
+| [scene-session.js](examples/scene-session.js) | Ordinary registered project; stores session facts and requests reload once. |
+| [joint.js](examples/joint.js) | Owner of authored hinge/slider joint; bounded motor. |
+| [animation.js](examples/animation.js) | Skinned asset with Wave/Stretch clips and Root/Elbow/Tip keys (change properties/content for your skeleton). |
+| [ragdoll.js](examples/ragdoll.js) | Authored animation + mapping; physical entry, impulse, visual return. |
+| [character.js](examples/character.js) | CharacterMotor, `move_x/move_y/jump` map; generic JS acceleration/launch. No camera ownership. |
+| [stale-handle.js](examples/stale-handle.js) | Prefab ID; validates stale Entity and retained Character behaviour. UI/Joint lifetime differences are documented separately. |
+| [surface.js](examples/surface.js) | Any entity; reflects actual module/class surface for drift verification, not game behaviour. |
+
+Development command: `python3 scripts/m50_validation.py --typescript /path/to/typescript/lib/typescript.js`.
+Supply `--node /path/to/node` if Node is not on PATH; choose a fresh `--output`
+directory for a later run. An installed TypeScript package can replace the explicit path.
+It builds only the new focused test target against the existing Release engine,
+checks declaration/example types and source/runtime coverage, then runs one current
+character-project startup and real outer-frame scene/session reload smoke.
+No production-suite rerun for documentation.
+Results: [M50 evidence](../evidence/m50/README.md). Human review still matters.

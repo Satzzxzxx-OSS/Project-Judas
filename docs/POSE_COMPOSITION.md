@@ -1,5 +1,7 @@
 # M47 pose composition
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Skeleton/clip assets remain immutable and shared. Each RuntimeWorld animation instance owns its playback clocks, mixer, ordered layers, external contributions, source pose and final resolved local pose. The Renderer only consumes the resulting skin palette.
 
 The base mixer advances all live clip contributors. Crossfades use normalized weighted TRS sampling with shortest-path normalized quaternion interpolation. An interrupted fade retains the current weighted contributors and their clocks. Zero-duration fades replace immediately; completed sources retire. At most 16 interrupted outgoing contributors are supported; further interruptions fail explicitly until the transition finishes.

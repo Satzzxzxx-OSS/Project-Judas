@@ -1009,3 +1009,8 @@ target_compile_options(judas_character_motor_tests PRIVATE -Wall -Wextra)
 add_executable(judas_character_motor_application_tests tests/CharacterMotorApplicationTests.cpp)
 target_link_libraries(judas_character_motor_application_tests PRIVATE judas_engine)
 target_compile_options(judas_character_motor_application_tests PRIVATE -Wall -Wextra)
+
+# M50 developer documentation examples; uses the normal engine/QuickJS runtime.
+add_executable(judasjs_examples_tests tests/JudasJSExamplesTests.cpp)
+target_link_libraries(judasjs_examples_tests PRIVATE judas_engine)
+target_compile_options(judasjs_examples_tests PRIVATE -Wall -Wextra)

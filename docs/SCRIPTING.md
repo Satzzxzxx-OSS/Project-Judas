@@ -1,5 +1,7 @@
 # M40 JavaScript gameplay
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Judas embeds **QuickJS-NG v0.17.0** (MIT). Core sources and the complete
 license are under `third_party/quickjs`; runtime exports include its credits
 and license in `engine/third_party/RUNTIME_NOTICES.txt` through the existing
@@ -43,7 +45,7 @@ Asynchronous callbacks/top-level await are unsupported; no promise scheduler.
 One engine-owned `ScriptSystem` lives in each played `RuntimeWorld`. Calls run on
 the runtime/main thread, outside renderer/physics ownership. Both standalone and
 editor Play call the same `GameSession` frame and `StepPlayedWorld` fixed boundaries.
-Menus pause callbacks. Fixed input uses M35's latched snapshot, including short
+Menus pause gameplay callbacks; M41 uiUpdate/onUI remain active for UI. Fixed input uses M35's latched snapshot, including short
 presses across zero-step frames, without consuming another system's snapshot.
 Entities run by stable ID, then authored slot order. Spawns join at the next
 callback boundary; destruction invalidates handles immediately. Stop destroys
@@ -69,8 +71,8 @@ body pointer or native lifetime; physics calls reacquire generation-checked hand
 - Named input held/pressed/released/axis; time delta, fixed flag, authoritative
   fixed simulation elapsed time. No physical SDL keys or wall clock.
 - Authored audio play/stop/pause/resume/enable and status; particles burst/enable/rate;
-  existing render-target camera inspection/enable. No new main-camera switching
-  mechanism: gameplay already owns the existing player view modes.
+  existing render-target camera inspection/enable. M49 additionally exposes world.setView/clearView for independent script-owned main-view intent;
+  see the current camera reference.
 - Query include/exclude layer names, required/excluded tags and ignored entities.
   Overlaps are **conservative broadphase candidates**, not exact intersections.
 

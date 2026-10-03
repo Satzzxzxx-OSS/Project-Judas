@@ -1,5 +1,7 @@
 # M49 — Scriptable character motor (candidate)
 
+Current public JavaScript signatures, examples and lifetime rules: [JudasJS reference](JUDASJS.md). This document retains milestone architecture and evidence context.
+
 Judas owns collision-aware motion primitives. JavaScript owns character behaviour.
 
 ## Ownership and motion

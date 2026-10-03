@@ -1,0 +1,76 @@
+# Scene/session/state and safe lifetimes
+
+[Index](../JUDASJS.md) · [Lifecycle](lifecycle.md) · [Entities](entities.md)
+
+## scenes
+
+`scenes.current` is project-relative scene name; `registered` is sorted unique
+registered startup/Scenes-directory `.judas` paths. `load(name)`/`reload()` return
+true for an accepted request, or throw TypeError when unregistered/session ending.
+A later valid request while one is pending also returns true but does not replace
+it: **first valid request wins** until the safe outer application boundary.
+Acceptance is not synchronous load completion. Invalid candidate builds preserve
+the live world and report failure through normal application diagnostics.
+
+Replacement builds a fresh normal RuntimeWorld, ends the old Play/VM/audio/UI,
+then starts the new world. Reload reconstructs authored state, not an automatic
+save overlay. No old entities, closures, UI, animation mixer or ragdoll state survive.
+There is no additive scenes/world streaming API. Scene operations require an active
+project SceneSession; isolated no-session worlds throw.
+
+## session
+
+`get(key)` returns a detached JSON value or null if absent. `set(key,value)` and
+`delete(key)` return undefined. Keys are strings; set requires 1..128 bytes,
+maximum 256 keys/64 KiB combined. Values obey the same bounded plain-data checks
+below. Invalid values/budgets throw TypeError. get/delete missing keys are safe.
+Session data survives scene replacement/reload but ends when Play/application
+session ends. It is NOT disk persistence. Re-fetch values after modification:
+mutating `session.get('x')` does not update the stored value.
+
+## this.state and disk persistence
+
+An instance receives `{}` if no state is set; explicit constructor state survives
+unless saved state replaces it. Store bounded plain JSON: null/booleans/finite
+numbers/strings/arrays/plain objects (null prototype allowed), depth <=16,
+<=4096 visited values, <=64 KiB serialized per slot. No functions/accessors/symbols,
+cycles/custom prototypes, Entity/UI wrappers, BigInt or VM pointers. Save state root
+must be an object/array for restore; prefer an object. Do not put handles in state;
+store IDs and reacquire/validate, or game facts.
+
+Engine M29 captures `this.state`, keyed by entity/slot, validates the authored
+baseline and restores before `start`. Invalid captured state prevents valid save
+serialization; faulted slots are omitted. `entity.scriptState(slot)` reads a
+detached JSON snapshot or null. This is not live inter-script object sharing.
+
+**No JS save/load-disk binding exists.** The runtime/editor's existing save controls
+are separate. Session is not saved automatically. Private instance fields/module
+globals/animation mixer/active ragdoll/UI/live voices are not VM-persisted. Authored
+script/UI/prefab content contributes strict content fingerprints; don't assume
+save compatibility after changing source. [Persistence architecture](../SCRIPTING.md).
+
+## Safe handle rules
+
+| Surface | Missing/stale behaviour |
+|---|---|
+| `entity(id)` / `world.entity(id)` | Null for falsy/"0", otherwise constructs even if stale. `.valid` checks existence. |
+| Entity operations | Stale generally ReferenceError; dynamic-body methods TypeError if no dynamic body. |
+| `entity.character` | Null if stale/missing motor; retained Character operations ReferenceError. |
+| `entity.animation` / `.ragdoll` | Null if valid owner lacks component; stale owner throws. Retained facades throw. |
+| `physics.joint(owner)` | Null if no live joint; `.valid` false on stale Joint; state/mutations throw. |
+| `ui.get(name)` | Null if absent. Document/element stale accesses throw; no valid flag. |
+| Query hits/support/collision other | Historical data and wrappers can go stale; test `entity && entity.valid`. |
+| Component commands | Valid owner but absent audio/particles/camera often false/null; see reference. |
+
+Entity wrappers resolve full IDs against THEIR VM's world each call; rigid body
+slots are reacquired generation-safely. Joint/UI lifetime rules differ. None are
+cross-scene handles: new VM/new scene means reacquire even if authored ID text is
+identical. Constructor/handle fields are ordinary JS data, not immutable native
+capabilities; treating IDs as opaque is a usage convention. The internal `__judas`
+bridge is unsupported. There is no independent public Body class.
+
+Destroy invalidates entity lookup immediately; destroying script slots itself is
+retired at synchronization, not a promise that `destroy()` runs recursively before
+the call returns. `destroy` may see an already-stale owner. Keep teardown defensive;
+faulted scripts receive no destroy callback. Support-body disappearance is handled
+by the motor's safe generations, not explicit transform parenting.
