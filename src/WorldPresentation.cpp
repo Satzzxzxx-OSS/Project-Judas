@@ -316,18 +316,23 @@ std::vector<DynamicLight> BuildWorldLights(const RuntimeWorld& world, const Game
 void UpdateFluidSurface(Renderer& renderer, const RuntimeWorld& world, float /*alpha*/) {
     // 30 Hz particle state is held; rigid interpolation alpha would replay the
     // same fluid interval twice. Presentation never feeds the field sampler.
-    if (!world.HasFluid() || !world.FluidMesh().IsValid() || world.Fluid().Particles().empty()) return;
+    if (!world.HasFluid() || !world.FluidMesh().IsValid() || !world.FluidSurfaceDirty()) return;
     std::vector<glm::vec3> positions;
     positions.reserve(world.Fluid().Particles().size());
     for (std::size_t i = 0; i < world.Fluid().Particles().size(); ++i) {
         positions.push_back(world.Fluid().Particles()[i].position);
     }
-    // Surface extraction scales with the solver's own smoothing radius:
-    // the M24 cup values at scale 1, the M25 lake values at scale 10.
+    // Presentation resolution follows particle spacing. The former fixed
+    // 0.40 m grid over-refined coarser fields (cubic extraction work), even
+    // though their simulation contained less detail. Preserve scale-1 and
+    // scale-10 reference resolutions; this never affects authoritative water.
     const float scale = world.Settings().fluidScale;
     const float smoothing = scale > 1.0f ? world.FluidSettingsUsed().smoothingRadius : 0.105f;
-    const float cell = scale > 1.0f ? 0.40f : 0.05f;
+    const float cell = scale > 1.0f ? std::max(0.05f, 0.04f * scale) : 0.05f;
     renderer.UpdateMeshVertices(world.FluidMesh(), BuildFluidSurface(positions, smoothing, cell, 0.45f));
+    // The latest liquid state is held between executed liquid updates. Reuse
+    // its exact mesh; a new/reset world owns a separate invalidation marker.
+    world.MarkFluidSurfaceUploaded();
 }
 
 void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWorld& world,

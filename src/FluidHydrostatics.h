@@ -84,6 +84,7 @@ private:
     glm::vec3 m_min{0}, m_max{0};
     std::vector<Particle> m_particles;
     std::unordered_map<Key, std::vector<std::size_t>, Hash> m_cells;
+    std::vector<Key> m_occupiedCells; // deterministic z/y/x traversal; no retained pointers
 };
 
 struct FluidHydrostaticResult {

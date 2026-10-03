@@ -258,6 +258,8 @@ public:
     const FluidSettings& FluidSettingsUsed() const { return m_fluidSettings; }
     const std::vector<FluidVolume>& FluidVolumes() const { return m_fluidVolumes; }
     MeshHandle FluidMesh() const { return m_fluidMesh; }
+    bool FluidSurfaceDirty() const { return m_fluidSurfaceRevision != m_fluid->Revision(); }
+    void MarkFluidSurfaceUploaded() const { m_fluidSurfaceRevision = m_fluid->Revision(); }
     ProductionFluidCoupling& FluidCoupling() { return *m_fluidCoupling; }
     const ProductionFluidCoupling& FluidCoupling() const { return *m_fluidCoupling; }
     bool HasFluid() const { return !m_fluidVolumes.empty(); }
@@ -474,6 +476,7 @@ private:
     std::unique_ptr<ProductionFluidCoupling> m_fluidCoupling;
     std::vector<FluidVolume> m_fluidVolumes;
     MeshHandle m_fluidMesh;
+    mutable std::uint64_t m_fluidSurfaceRevision = ~std::uint64_t{0};
     std::size_t m_emittedParticles = 0;
 
     std::optional<PlayerStart> m_playerStart;

@@ -15,6 +15,7 @@ struct ProductionFluidMeasurements {
     unsigned long long executedSteps = 0;
     float lastFluidDeltaTime = 0;
     double particleMilliseconds = 0, totalMilliseconds = 0;
+    double hydrostaticMilliseconds = 0, playerMilliseconds = 0; // passive phase timings
     glm::vec3 exteriorReactionNotApplied{0};
     glm::vec3 containedStaticSupportImpulse{0}; // external impulse on coupled rigid island
     // Aggregated over every auxiliary batch in this rigid tick; hold ticks are zero.

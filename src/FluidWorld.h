@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -109,6 +110,7 @@ struct FluidDiagnostics {
     std::size_t pressureReconstructionSamples = 0; // particle/substep observations in last executed step
     double maximumPressureReconstructionVelocityError = 0; // passive subtraction-versus-increment residual, m/s
     double rmsPressureReconstructionVelocityError = 0; // no correction is applied to authoritative velocity
+    double densityMilliseconds = 0, boundaryMilliseconds = 0, velocityMilliseconds = 0; // passive last-step phase timings
     float totalMass = 0.0f;
     glm::vec3 centerOfMass{0.0f};
     glm::vec3 totalMomentum{0.0f};
@@ -143,11 +145,14 @@ public:
               const FluidVelocityBatchResponse& velocityResponse = {});
 
     const std::vector<FluidParticle>& Particles() const { return m_particles; }
+    std::uint64_t Revision() const { return m_revision; }
     const FluidSettings& Settings() const { return m_settings; }
     glm::vec3 PresentedPosition(std::size_t index, float alpha) const;
     FluidDiagnostics GetDiagnostics() const;
 
 private:
+    double m_densityMilliseconds=0, m_boundaryMilliseconds=0, m_velocityMilliseconds=0;
+    std::uint64_t m_revision = 0; // presentation invalidation, never saved
     FluidSettings m_settings;
     std::vector<FluidParticle> m_particles;
     std::vector<float> m_lastDensities;

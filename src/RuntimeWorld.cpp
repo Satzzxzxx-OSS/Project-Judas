@@ -1172,6 +1172,7 @@ void RuntimeWorld::Destroy() {
         m_assets->GetRenderer()->DestroyMesh(m_fluidMesh);
     }
     m_fluidMesh = MeshHandle{};
+    m_fluidSurfaceRevision = ~std::uint64_t{0};
     m_physics.Shutdown();
 
     m_doors.clear();

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -15,6 +16,9 @@
 #include "RadialTerrain.h"
 
 namespace {
+
+using FluidClock = std::chrono::steady_clock;
+double ElapsedFluidMs(FluidClock::time_point t) { return std::chrono::duration<double,std::milli>(FluidClock::now()-t).count(); }
 
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kEpsilon = 1.0e-7f;
@@ -46,18 +50,29 @@ Cell CellFor(const glm::vec3& position, float cellWidth) {
                 static_cast<int>(std::floor(position.z / cellWidth))};
 }
 
-using NeighborLists = std::vector<std::vector<std::size_t>>;
+// Flat reusable adjacency retains the original cell/particle visitation order.
+// Iteration consumes one completed build; the next build occurs only after its
+// consumers finish. Capacity growth is real work, not hidden preparation.
+struct NeighborLists {
+    std::vector<std::size_t> offsets, indices;
+    struct Range {
+        std::vector<std::size_t>::const_iterator first,last;
+        auto begin() const { return first; } auto end() const { return last; }
+    };
+    Range operator[](std::size_t i) const { return {indices.begin()+offsets[i],indices.begin()+offsets[i+1]}; }
+};
 
-NeighborLists BuildNeighbors(const std::vector<glm::vec3>& positions, float radius) {
+const NeighborLists& BuildNeighbors(const std::vector<glm::vec3>& positions, float radius, NeighborLists& neighbors) {
     std::unordered_map<Cell, std::vector<std::size_t>, CellHash> grid;
     grid.reserve(positions.size());
     for (std::size_t i = 0; i < positions.size(); ++i) {
         grid[CellFor(positions[i], radius)].push_back(i);
     }
 
-    NeighborLists neighbors(positions.size());
+    neighbors.offsets.resize(positions.size()+1);neighbors.indices.clear();
     const float radiusSquared = radius * radius;
     for (std::size_t i = 0; i < positions.size(); ++i) {
+        neighbors.offsets[i]=neighbors.indices.size();
         const Cell center = CellFor(positions[i], radius);
         for (int x = -1; x <= 1; ++x) {
             for (int y = -1; y <= 1; ++y) {
@@ -67,42 +82,44 @@ NeighborLists BuildNeighbors(const std::vector<glm::vec3>& positions, float radi
                     for (std::size_t j : found->second) {
                         const glm::vec3 separation = positions[i] - positions[j];
                         if (j != i && glm::dot(separation, separation) < radiusSquared) {
-                            neighbors[i].push_back(j);
+                            neighbors.indices.push_back(j);
                         }
                     }
                 }
             }
         }
     }
+    neighbors.offsets[positions.size()]=neighbors.indices.size();
     return neighbors;
 }
 
-float Poly6(float squaredDistance, float radius) {
-    const float squaredRadius = radius * radius;
-    if (squaredDistance >= squaredRadius) return 0.0f;
-    const float remaining = squaredRadius - squaredDistance;
-    const float radius3 = squaredRadius * radius;
-    const float radius9 = radius3 * radius3 * radius3;
-    return (315.0f / (64.0f * kPi * radius9)) * remaining * remaining * remaining;
+struct FluidKernel {
+    float radius,radiusSquared,poly6,spiky;
+    explicit FluidKernel(float r):radius(r),radiusSquared(r*r){
+        const float radius3=radiusSquared*r, radius9=radius3*radius3*radius3;
+        const float radius6=radiusSquared*radiusSquared*radiusSquared;
+        poly6=315.0f/(64.0f*kPi*radius9);spiky=-45.0f/(kPi*radius6);
+    }
+};
+float Poly6(float squaredDistance, const FluidKernel& kernel) {
+    if (squaredDistance >= kernel.radiusSquared) return 0.0f;
+    const float remaining = kernel.radiusSquared - squaredDistance;
+    return kernel.poly6 * remaining * remaining * remaining;
 }
-
-glm::vec3 SpikyGradient(const glm::vec3& displacement, float radius) {
+glm::vec3 SpikyGradient(const glm::vec3& displacement, const FluidKernel& kernel) {
     const float distance = glm::length(displacement);
-    if (distance <= kEpsilon || distance >= radius) return glm::vec3(0.0f);
-    const float radius2 = radius * radius;
-    const float radius6 = radius2 * radius2 * radius2;
-    const float remaining = radius - distance;
-    return (-45.0f / (kPi * radius6)) * remaining * remaining *
-           (displacement / distance);
+    if (distance <= kEpsilon || distance >= kernel.radius) return glm::vec3(0.0f);
+    const float remaining = kernel.radius - distance;
+    return kernel.spiky * remaining * remaining * (displacement / distance);
 }
 
 float DensityAt(std::size_t i, const std::vector<glm::vec3>& positions,
                 const std::vector<FluidParticle>& particles,
-                const NeighborLists& neighbors, float radius) {
-    float density = particles[i].mass * Poly6(0.0f, radius);
+                const NeighborLists& neighbors, const FluidKernel& kernel) {
+    float density = particles[i].mass * Poly6(0.0f, kernel);
     for (std::size_t j : neighbors[i]) {
         const glm::vec3 separation = positions[i] - positions[j];
-        density += particles[j].mass * Poly6(glm::dot(separation, separation), radius);
+        density += particles[j].mass * Poly6(glm::dot(separation, separation), kernel);
     }
     return density;
 }
@@ -170,6 +187,7 @@ struct PreparedBox {
     glm::vec3 halfExtents{0.0f};
     glm::vec3 sweptCenter{0.0f};
     float sweptRadius = 0.0f;
+    glm::vec3 boundMin{0},boundMax{0},skinBoundScale{1}; // outward-rounded endpoint OBB bounds
 };
 
 struct PreparedSphere {
@@ -221,6 +239,19 @@ PreparedBox Prepare(const FluidBoxCollider& box, float alpha0, float alpha1) {
     prepared.inverseStart = glm::inverse(prepared.start.rotation);
     prepared.inverseEnd = glm::inverse(prepared.end.rotation);
     prepared.halfExtents = box.halfExtents;
+    // Cache endpoint bounds once per substep. Bound the represented inverse
+    // transform; round outward and retain a conservative floating-point band.
+    const glm::dmat3 basis=glm::inverse(glm::dmat3(glm::mat3_cast(prepared.inverseEnd)));
+    glm::dvec3 half(0),scale(0);
+    for(int i=0;i<3;++i){scale[i]=std::abs(basis[0][i])+std::abs(basis[1][i])+std::abs(basis[2][i]);
+        half[i]=glm::dot(glm::dvec3(std::abs(basis[0][i]),std::abs(basis[1][i]),std::abs(basis[2][i])),glm::dvec3(box.halfExtents));}
+    const double reach=std::max(half.x,std::max(half.y,half.z));
+    const glm::dvec3 rounding=64.0*std::numeric_limits<float>::epsilon()*(2.0*glm::abs(glm::dvec3(prepared.end.position))+glm::dvec3(3*reach+1));
+    for(int i=0;i<3;++i){
+        prepared.boundMin[i]=std::nextafter(float(double(prepared.end.position[i])-half[i]-rounding[i]),-std::numeric_limits<float>::infinity());
+        prepared.boundMax[i]=std::nextafter(float(double(prepared.end.position[i])+half[i]+rounding[i]),std::numeric_limits<float>::infinity());
+        prepared.skinBoundScale[i]=std::nextafter(float(scale[i]),std::numeric_limits<float>::infinity());
+    }
     prepared.sweptCenter = 0.5f * (prepared.start.position + prepared.end.position);
     float endpointReach=0.5f*glm::distance(prepared.start.position,prepared.end.position);
     if (!box.resolvedMotion.empty()) {
@@ -275,12 +306,22 @@ bool FarFromSweptSolid(const glm::vec3& from, const glm::vec3& to,
     return glm::dot(separation, separation) > reach * reach;
 }
 
+// Conservative rejection only. The float quaternion/vector predicate has
+// fewer than 32 elementary operations per axis; 64 epsilon covers its rounding
+// and bound construction. All close/ill-conditioned cases use original tests.
+bool BoxBoundMiss(const glm::vec3& from,const glm::vec3& to,const PreparedBox& box,float radius=0) {
+    const glm::vec3 margin=radius*box.skinBoundScale;
+    return glm::any(glm::greaterThan(glm::min(from,to),box.boundMax+margin)) ||
+        glm::any(glm::lessThan(glm::max(from,to),box.boundMin-margin));
+}
+
 // A point swept relative to a moving OBB, expanded by the fluid element's
 // collision radius. This is geometric contact against the box, regardless
 // of whether it is a cup wall, floor, or another ordinary body.
 BoxContact CollideBox(const glm::vec3& from, const glm::vec3& to,
                       const PreparedBox& box, float radius, float substepTime) {
     BoxContact result;
+    if(box.start.position==box.end.position && (box.start.rotation==box.end.rotation || box.start.rotation==-box.end.rotation) && BoxBoundMiss(from,to,box,radius))return result;
     if (FarFromSweptSolid(from, to, box.sweptCenter, box.sweptRadius, radius)) return result;
     const BodyTransform& start = box.start;
     const BodyTransform& end = box.end;
@@ -299,6 +340,11 @@ BoxContact CollideBox(const glm::vec3& from, const glm::vec3& to,
     float exit = 1.0f;
     int entryAxis = -1;
     float entrySign = 0.0f;
+    // Exact same relative endpoint segment as the slab test below: if one
+    // axis stays wholly outside, no slab contact can exist. No skin/geometry
+    // tolerance or collision equation changes.
+    if (glm::any(glm::greaterThan(glm::min(startLocal,endLocal),half)) ||
+        glm::any(glm::lessThan(glm::max(startLocal,endLocal),-half))) return result;
     const glm::vec3 displacement = endLocal - startLocal;
     bool sweptHit = true;
     for (int axis = 0; axis < 3; ++axis) {
@@ -531,6 +577,7 @@ double BoxSeparation(const glm::vec3& point,const PreparedBox& box,float radius)
 bool CrossesNonmovingBoxInterior(const glm::vec3& from,const glm::vec3& to,const PreparedBox& box) {
     if(box.start.position!=box.end.position ||
        (box.start.rotation!=box.end.rotation && box.start.rotation!=-box.end.rotation))return false;
+    if(BoxBoundMiss(from,to,box))return false;
     const glm::dvec3 start(box.inverseEnd*(from-box.end.position));
     const glm::dvec3 finish(box.inverseEnd*(to-box.end.position));
     bool alreadyInside=true;
@@ -556,7 +603,7 @@ bool CrossesAnyNonmovingBox(const glm::vec3& from,const glm::vec3& to,
 bool InsideRealSolid(const glm::vec3& point,const std::vector<PreparedBox>& boxes,
                          const std::vector<PreparedSphere>& spheres,
                          const std::vector<PreparedTerrain>& terrains) {
-    for(const auto& box:boxes)if(BoxSeparation(point,box,0)<0)return true;
+    for(const auto& box:boxes)if(!BoxBoundMiss(point,point,box) && BoxSeparation(point,box,0)<0)return true;
     for(const auto& sphere:spheres) {
         const glm::dvec3 delta=glm::dvec3(point)-glm::dvec3(sphere.end.position);
         if(glm::dot(delta,delta)<double(sphere.radius)*sphere.radius)return true;
@@ -646,6 +693,7 @@ struct RealClipLimit {
     std::size_t index=0;
 };
 double RealBoxEntry(const glm::vec3& from,const glm::vec3& to,const PreparedBox& box) {
+    if(BoxBoundMiss(from,to,box))return 1;
     const glm::dvec3 a(box.inverseEnd*(from-box.end.position));
     const glm::dvec3 b(box.inverseEnd*(to-box.end.position));
     double enter=-std::numeric_limits<double>::infinity(),leave=std::numeric_limits<double>::infinity();
@@ -889,12 +937,14 @@ FluidWorld::FluidWorld(const FluidSettings& settings) : m_settings(settings) {
 
 void FluidWorld::AddParticle(const glm::vec3& position, const glm::vec3& velocity,
                              float mass) {
+    ++m_revision;
     if (mass <= 0.0f) return;
     m_particles.push_back(FluidParticle{position, position, velocity, mass});
     m_lastDensities.push_back(m_settings.restDensity);
 }
 
 void FluidWorld::Clear() {
+    ++m_revision;
     m_particles.clear();
     m_lastDensities.clear();
     m_geometryEscapes=m_unresolvedGeometry=m_geometryEscapeCandidates=0;
@@ -932,12 +982,15 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                       const std::vector<FluidTerrainCollider>& terrains,
                       std::vector<FluidContactImpulse>* contactImpulses,
                       const FluidVelocityBatchResponse& velocityResponse) {
+    ++m_revision;
     if (contactImpulses) contactImpulses->clear();
     if (fixedDeltaTime <= 0.0f || m_particles.empty()) return;
+    m_densityMilliseconds=m_boundaryMilliseconds=m_velocityMilliseconds=0;
     const int substeps = std::max(m_settings.substeps, 1);
     const int iterations = std::max(m_settings.densityIterations, 0);
     const float substepTime = fixedDeltaTime / static_cast<float>(substeps);
     const float radius = m_settings.smoothingRadius;
+    const FluidKernel kernel(radius);
     const float restDensity = m_settings.restDensity;
     const std::size_t count = m_particles.size();
     for (FluidParticle& particle : m_particles) {
@@ -965,6 +1018,7 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
     std::vector<glm::dvec3> representedPressureCorrections(count);
     std::vector<float> lambdas(count);
     std::vector<float> densities(count);
+    NeighborLists neighborWorkspace;neighborWorkspace.indices.reserve(count*64);
     std::vector<std::vector<BoxContact>> contacts(count);
     std::vector<PreparedBox> preparedBoxes;
     std::vector<PreparedSphere> preparedSpheres;
@@ -991,6 +1045,7 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
         for (auto& rows : contacts) rows.clear();
         std::fill(solidCorrections.begin(), solidCorrections.end(), glm::vec3(0));
         std::fill(representedPressureCorrections.begin(), representedPressureCorrections.end(), glm::dvec3(0));
+        auto phaseStart=FluidClock::now();
         for (std::size_t i = 0; i < count; ++i) {
             FluidParticle& particle = m_particles[i];
             starts[i] = particle.position;
@@ -1004,10 +1059,12 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                                  m_skinClippedProposals,m_skinPreventedReversals,m_surfaceRoundingSteps);
         }
 
+        m_boundaryMilliseconds+=ElapsedFluidMs(phaseStart);
         for (int iteration = 0; iteration < iterations; ++iteration) {
-            const NeighborLists neighbors = BuildNeighbors(positions, radius);
+            phaseStart=FluidClock::now();
+            const NeighborLists& neighbors = BuildNeighbors(positions, radius, neighborWorkspace);
             for (std::size_t i = 0; i < count; ++i) {
-                densities[i] = DensityAt(i, positions, m_particles, neighbors, radius);
+                densities[i] = DensityAt(i, positions, m_particles, neighbors, kernel);
                 const float constraint = std::max(densities[i] / restDensity - 1.0f, 0.0f);
                 if (constraint <= 0.0f) {
                     lambdas[i] = 0.0f;
@@ -1017,7 +1074,7 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                 float gradientSum = 0.0f;
                 for (std::size_t j : neighbors[i]) {
                     const glm::vec3 gradient = (m_particles[j].mass / restDensity) *
-                        SpikyGradient(positions[i] - positions[j], radius);
+                        SpikyGradient(positions[i] - positions[j], kernel);
                     ownGradient += gradient;
                     gradientSum += glm::dot(gradient, gradient);
                 }
@@ -1029,7 +1086,7 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                 for (std::size_t j : neighbors[i]) {
                     correction += (lambdas[i] + lambdas[j]) *
                         (m_particles[j].mass / restDensity) *
-                        SpikyGradient(positions[i] - positions[j], radius);
+                        SpikyGradient(positions[i] - positions[j], kernel);
                 }
                 const float length = glm::length(correction);
                 if (length > m_settings.maxDensityCorrection && length > kEpsilon) {
@@ -1042,6 +1099,7 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                 positions[i] += corrections[i];
                 representedPressureCorrections[i] += glm::dvec3(positions[i])-before;
             }
+            m_densityMilliseconds+=ElapsedFluidMs(phaseStart);phaseStart=FluidClock::now();
             for (std::size_t i = 0; i < count; ++i) {
                 ApplySolidCollisions(i, starts[i], positions, preparedBoxes, preparedSpheres,
                                      preparedTerrains,
@@ -1049,8 +1107,10 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                                  m_geometryEscapes,m_unresolvedGeometry,m_geometryEscapeCandidates,m_maximumGeometryEscapeDistance,
                                  m_skinClippedProposals,m_skinPreventedReversals,m_surfaceRoundingSteps);
             }
+            m_boundaryMilliseconds+=ElapsedFluidMs(phaseStart);
         }
 
+        phaseStart=FluidClock::now();
         for (std::size_t i = 0; i < count; ++i) {
             FluidParticle& particle = m_particles[i];
             // Preserve free-flight velocity exactly. Reconstructing it from
@@ -1075,9 +1135,9 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
         // resolved wall (independent two-particle witness). Use exactly the
         // same conservative weights; no additional damping or clipping.
         if (m_settings.velocitySmoothing > 0.0f) {
-            const NeighborLists neighbors = BuildNeighbors(positions, radius);
+            const NeighborLists& neighbors = BuildNeighbors(positions, radius, neighborWorkspace);
             for (std::size_t i = 0; i < count; ++i) {
-                densities[i] = DensityAt(i, positions, m_particles, neighbors, radius);
+                densities[i] = DensityAt(i, positions, m_particles, neighbors, kernel);
             }
             for (std::size_t i = 0; i < count; ++i) {
                 corrections[i] = glm::vec3(0.0f);
@@ -1089,7 +1149,7 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                     const glm::vec3 separation = positions[i] - positions[j];
                     corrections[i] += (m_particles[j].mass / pairDensity) *
                         (m_particles[j].velocity - m_particles[i].velocity) *
-                        Poly6(glm::dot(separation, separation), radius);
+                        Poly6(glm::dot(separation, separation), kernel);
                 }
             }
             for (std::size_t i = 0; i < count; ++i) {
@@ -1116,19 +1176,20 @@ void FluidWorld::Step(float fixedDeltaTime, const GravityField& gravity,
                 contactImpulses->push_back({c.owner,c.point,-impulses[row],c.particleIndex});
         }
 
-
+        m_velocityMilliseconds+=ElapsedFluidMs(phaseStart);
     }
 
     for (std::size_t i = 0; i < count; ++i) positions[i] = m_particles[i].position;
-    const NeighborLists finalNeighbors = BuildNeighbors(positions, radius);
+    const NeighborLists& finalNeighbors = BuildNeighbors(positions, radius, neighborWorkspace);
     for (std::size_t i = 0; i < count; ++i) {
-        m_lastDensities[i] = DensityAt(i, positions, m_particles, finalNeighbors, radius);
+        m_lastDensities[i] = DensityAt(i, positions, m_particles, finalNeighbors, kernel);
         m_particles[i].acceleration = (m_particles[i].velocity - initialVelocities[i]) / fixedDeltaTime;
     }
 }
 
 FluidDiagnostics FluidWorld::GetDiagnostics() const {
     FluidDiagnostics diagnostics;
+    diagnostics.densityMilliseconds=m_densityMilliseconds;diagnostics.boundaryMilliseconds=m_boundaryMilliseconds;diagnostics.velocityMilliseconds=m_velocityMilliseconds;
     diagnostics.particleCount = m_particles.size();
     diagnostics.geometryEscapeCount=m_geometryEscapes;
     diagnostics.unresolvedGeometryCount=m_unresolvedGeometry;

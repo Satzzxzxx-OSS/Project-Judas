@@ -988,3 +988,12 @@ target_link_libraries(judas_ragdoll_tests PRIVATE judas_engine)
 
 add_executable(judas_ragdoll_application_tests tests/RagdollApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_ragdoll_application_tests PRIVATE judas_engine)
+
+# Focused fluid-demo performance observation of the ordinary application.
+add_executable(judas_fluid_demo_probe tools/FluidDemoProbe.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_fluid_demo_probe PRIVATE judas_engine)
+target_compile_options(judas_fluid_demo_probe PRIVATE -Wall -Wextra)
+
+add_executable(judas_fluid_demo_integration_tests tests/FluidDemoIntegrationTests.cpp)
+target_link_libraries(judas_fluid_demo_integration_tests PRIVATE judas_engine)
+target_compile_options(judas_fluid_demo_integration_tests PRIVATE -Wall -Wextra)

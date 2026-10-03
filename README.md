@@ -42,6 +42,17 @@ M24–M26 results below retain their original scope and do not describe this new
 coupling. Current behavioural evidence and accepted numerical limits are recorded
 in the ledger and the [final gate](docs/evidence/stabilization/final-gate/README.md).
 
+The [current production fluid demo](docs/FLUID_DEMO.md) is an ordinary registered
+project with a flat swimming pool, a radial-gravity planetary basin, thrown
+bodies and empty geometric containers that can carry actual liquid particles:
+
+```sh
+./build/judas projects/fluid_demo/fluid_demo.judasproj
+```
+
+Use F1/F2 to select the two scenes. Historical FTFT/P1 fixtures remain evidence,
+not current demonstration launchers.
+
 Current rigid physics provides:
 
 1. A dynamic AABB-tree broadphase with exhaustive-oracle coverage, including

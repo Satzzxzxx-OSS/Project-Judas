@@ -38,6 +38,15 @@ fluid cavities, and custom-controller swimming. Its current validation status is
 in `docs/FTFT.md` and `docs/STABILIZATION_STATUS.md`; required behavioural gates
 pass, including the final clean Release gate, while optional strict diagnostics
 and numerical limitations remain explicit.
+The ordinary `projects/fluid_demo/` project demonstrates a flat pool and an
+oblique radial-gravity basin with swimming, thrown props and actual particle
+transport in empty cavities. Fluid neighbour adjacency reuses flat scratch
+storage; kernel constants and conservative solid bounds are prepared once.
+Dry hydrostatic queries reject impossible particle-height intervals along the
+query's own up direction before column/solid work. Presentation caches the held
+fluid state's mesh by revision and scales extraction grid spacing with authored
+fluid resolution. These optimizations do not change PBF equations, wet-column
+reconstruction or finite-mass cavity exchange; see `docs/FLUID_DEMO.md`.
 Particles use actual resolved rigid paths. Physical solid exclusion takes priority
 over numerical skin clearance; the query-only player samples interior liquid
 without pretending to displace it. FTFT9 is checkpointed at `1b3a134`; the final

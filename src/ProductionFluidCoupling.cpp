@@ -128,6 +128,7 @@ void ProductionFluidCoupling::PrepareRigidStep(RuntimeWorld& world,float dt) {
         }
     }
     s.measured.totalMilliseconds=Milliseconds(started);
+    s.measured.hydrostaticMilliseconds=s.measured.totalMilliseconds;s.measured.playerMilliseconds=0;
 }
 void ProductionFluidCoupling::AdvanceResolvedLiquid(RuntimeWorld& world,float dt) {
     auto& s=*m_impl;const auto started=Clock::now();auto& p=world.Physics();auto& fluid=world.Fluid();
@@ -282,6 +283,6 @@ PlayerFluidSample ProductionFluidCoupling::SamplePlayer(const RuntimeWorld& worl
         sample.fluidVelocity+sample.fluidAcceleration*static_cast<float>(s.pending),sample.fluidAcceleration};
     // Passive accounting includes the ordinary controller's field query too.
     // It changes no particle, body, controller or force state.
-    s.measured.totalMilliseconds+=Milliseconds(started);
+    s.measured.playerMilliseconds=Milliseconds(started);s.measured.totalMilliseconds+=s.measured.playerMilliseconds;
     return result;
 }
