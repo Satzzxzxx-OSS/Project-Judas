@@ -100,6 +100,7 @@ void DrawLight(DebugLineList& out, const DynamicLight& light) {
 void BuildWorldDebugLines(const RuntimeWorld& world, const GameSession* session, float alpha,
                           const DebugViewOptions& options, DebugLineList& out) {
     if (!world.IsBuilt() || !options.AnyEnabled()) return;
+    if(options.navigation)world.Navigation().Debug(out);
     const std::vector<DynamicBody>& bodies = world.DynamicBodies();
 
     // Positions of every entity this frame, live or retained.

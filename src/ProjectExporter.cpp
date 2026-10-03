@@ -1,3 +1,4 @@
+#include "NavigationAsset.h"
 #include "ProjectExporter.h"
 #include "ScriptSystem.h"
 #include "AssetDatabase.h"
@@ -51,7 +52,7 @@ bool ReleaseRuntime(const fs::path& executable) {
     while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
     return WIFEXITED(status) && WEXITSTATUS(status) == 0 && text == "Judas runtime Linux Release\n";
 }
-void References(const Scene& scene, const AssetDatabase& assets, const ProjectClassification& categories) {
+void References(const Scene& scene, const AssetDatabase& assets, const ProjectClassification& categories,const ProjectNavigation& navigation) {
     const auto checkUI=[&](const SceneObject& o){if(!o.ui)return;auto* r=assets.Find(o.ui->asset);UIDocument d;std::string error;Require(r&&!r->missing&&r->type==AssetType::UI,"Missing UI document "+o.ui->asset);Require(LoadUIDocument(r->path,d,error)&&ValidateUIAssets(d,assets,error),"UI: "+error);};
     const auto check = [&](const AssetId& id, AssetType type) {
         if (id.empty()) return;
@@ -75,7 +76,9 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
     Require(ValidateSceneClassification(resolved,categories,error),"Classification: "+error);
     std::string scripts;Require(ScriptSystem::SourceFingerprint(assets,resolved,scripts,error),"Scripts: "+error);
     // Overrides/source content must be validated too, not just placeholders.
-    for (const auto& object : resolved.Objects()) {
+    Scene flattened;Require(FlattenHierarchy(resolved,flattened,error),error);
+    for (const auto& object : flattened.Objects()) {
+        if(object.navigationSurface && object.navigationSurface->enabled){check(object.navigationSurface->asset,AssetType::Navigation);const auto* record=assets.Find(object.navigationSurface->asset);NavigationData data;NavigationGeometry geometry;Require(record&&LoadNavigation(record->path,data,error),"Navigation: "+error);Require(CollectNavigationGeometry(flattened,object,navigation,geometry,error)&&geometry.fingerprint==data.fingerprint,"Stale navigation bake: "+error);}
         checkUI(object);
         if (object.render) {
             check(object.render->meshAsset, AssetType::Mesh);
@@ -141,7 +144,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             Scene scene; std::string detail;
             const bool loaded = LoadSceneFromFile(path.string(), scene, detail);
             Require(loaded, "Invalid scene " + path.string() + ": " + detail);
-            References(scene, assets, project.Settings().classification);
+            References(scene, assets, project.Settings().classification,project.Settings().navigation);
         }
         for (const auto& [id, record] : assets.Records()) {
             (void)id; std::string detail;
@@ -152,7 +155,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             if(record.type==AssetType::UI){UIDocument d;Require(LoadUIDocument(record.path,d,detail)&&ValidateUIAssets(d,assets,detail),"UI dependency: "+detail);}
             if (record.type == AssetType::Prefab) {
                 Scene prefab; Require(LoadSceneFromFile(record.path, prefab, detail), detail);
-                References(prefab, assets, project.Settings().classification);
+                References(prefab, assets, project.Settings().classification,project.Settings().navigation);
             }
         }
         fs::create_directories(destination.parent_path());

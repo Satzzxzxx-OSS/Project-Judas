@@ -1,5 +1,5 @@
-/** Current JudasJS through M52; reviewed against ScriptSystem.cpp based on M51
- * 73698d1a1f928c7210679e58fdb5259d2a196c7b. Tooling only, no TS runtime.
+/** Current JudasJS through M53; reviewed against ScriptSystem.cpp based on M52
+ * 3c52b13765a0721fa6a1fea0038505326359326b. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
@@ -46,6 +46,10 @@ declare module "judas" {
     removeTag(tag: string): boolean;
     readonly classification: Classification;
     readonly animation: Animation | null;
+    readonly navigation: NavigationAgent | null;
+    readonly navigationObstacle: NavigationObstacleInfo | null;
+    readonly navigationLink: NavigationLinkInfo | null;
+    setNavigationEnabled(component: "agent" | "obstacle" | "link", enabled: boolean): boolean;
     readonly character: Character | null;
     readonly ragdoll: Ragdoll | null;
     readonly audio: AudioInfo | null;
@@ -96,6 +100,46 @@ declare module "judas" {
     gravity: Vec3; up: Vec3; supported: boolean; collided: boolean;
     supportEntityId: EntityId; supportEntity: Entity | null;
   }
+  export interface NavigationFilter {
+    profile?: number | string; includeAreas?: string[]; excludeAreas?: string[];
+    /** Traversal costs >= 1, keyed by project area name. */
+    costs?: { [area: string]: number };
+  }
+  export interface NavigationLocation { position: Vec3; surfaceId: EntityId; surface: Entity | null; area: number }
+  export interface NavigationCorner { position: Vec3; linkId: EntityId; link: Entity | null; linkEnd: Vec3 }
+  export interface NavigationPath { status: "complete" | "partial" | "failed"; corners: NavigationCorner[]; distance: number; revision: number; areas: number[] }
+  export interface NavigationAgentState {
+    stopped: boolean; hasDestination: boolean; destination: Vec3; steering: Vec3;
+    remainingDistance: number; reached: boolean; nextCorner: Vec3 | null;
+    onLink: boolean; linkId: EntityId; link: Entity | null; linkEnd: Vec3;
+    /** Agent path corners have native linkId, not the top-level path's link wrappers. */
+    path: Omit<NavigationPath, "corners"> & { corners: Omit<NavigationCorner, "link">[] };
+  }
+  export interface NavigationAgentPatch extends NavigationFilter { speed?: number; arrival?: number; repathSeconds?: number; avoidance?: boolean }
+  export interface NavigationObstacleInfo { enabled: boolean; cylinder: boolean; halfExtents: Vec3; radius: number; height: number }
+  export interface NavigationLinkInfo { enabled: boolean; bidirectional: boolean; start: Vec3; end: Vec3; area: number }
+  export class NavigationAgent {
+    constructor(id: EntityId);
+    id: EntityId;
+    readonly state: NavigationAgentState;
+    set enabled(value: boolean);
+    setDestination(point: Vec3): boolean;
+    clear(): boolean;
+    get stopped(): boolean;
+    set stopped(value: boolean);
+    readonly steering: Vec3;
+    readonly remainingDistance: number;
+    completeLink(): boolean;
+    configure(settings: NavigationAgentPatch): boolean;
+  }
+  export const navigation: {
+    sample(point: Vec3, range?: number, filter?: NavigationFilter): NavigationLocation | null;
+    path(start: Vec3, end: Vec3, filter?: NavigationFilter): NavigationPath;
+    raycast(start: Vec3, end: Vec3, filter?: NavigationFilter): NavigationLocation | null;
+    readonly areas: {id: number; name: string}[];
+    readonly profiles: {id: number; name: string; radius: number; height: number}[];
+    readonly errors: {entityId: EntityId; message: string}[];
+  };
   export class Character {
     constructor(id: EntityId);
     id: EntityId;

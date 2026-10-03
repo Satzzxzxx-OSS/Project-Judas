@@ -8913,3 +8913,22 @@ Details, exact compatibility scope and limitations:
 [M51 engine/game boundary](M51_ENGINE_BOUNDARY.md). The accepted production fluid
 repair, current fluid project and protected historical/research evidence are
 unchanged. This candidate still requires operator review.
+
+## M53 — world-owned navigation (candidate)
+
+Navigation surfaces carry explicit local frames and registered tiled `.judasnav`
+assets. RecastNavigation v1.6.0 provides editor/tool baking from authoritative
+collision geometry; standalone uses Detour/TileCache and advisory avoidance only.
+Immutable CPU resources load through ResourceManager, while RuntimeWorld owns
+mutable mesh/query/cache/agent/link state. Stable project profiles and navigation
+areas remain distinct from gravity, tags, collision layers and render layers.
+Source/settings fingerprints reject stale bakes; baked content contributes to
+conditional schema-5 authored identity and normal M38 export.
+
+Navigation proposes routes/corners/velocity; CharacterMotor resolves motion;
+project JavaScript chooses destinations and special link traversal. Multiple local
+surface frames can connect through explicit links, without claiming continuous
+whole-planet navigation. Dynamic blockers carve incremental cache tiles independently
+of physical colliders. Expanded Spring Range composes these primitives through
+ordinary chase/health/score scripts, not a native Enemy/AI system. See
+[NAVIGATION.md](NAVIGATION.md) and the [public API](judasjs/navigation.md).

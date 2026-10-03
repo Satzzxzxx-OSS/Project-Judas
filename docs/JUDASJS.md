@@ -2,7 +2,7 @@
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M52, based on
+This reference describes the public virtual `judas` module through M53, based on
 M51 checkpoint `73698d1a1f928c7210679e58fdb5259d2a196c7b`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
@@ -68,3 +68,5 @@ remains authoritative.
 8. Check tags, collision layers and render layers remain distinct.
 9. Check arbitrary-gravity coordinates do not assume world-Y.
 10. Confirm engine primitives and game behaviour remain separate.
+
+- [Navigation: queries, agents, obstacles and explicit links](judasjs/navigation.md)

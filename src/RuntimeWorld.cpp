@@ -195,12 +195,14 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
     return true;
 }
 
-bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError, const ProjectClassification* categories) {
+bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError, const ProjectClassification* categories,const ProjectNavigation* navigation) {
     Scene resolved, scene;
     if (!ResolvePrefabs(authored, resources ? resources->Assets() : nullptr, resolved, outError) ||
         !FlattenHierarchy(resolved, scene, outError)) return false;
     const ProjectClassification selected=categories?*categories:ProjectClassification{};
     if(!ValidateSceneClassification(scene,selected,outError))return false;
+    const auto navConfig=navigation?*navigation:ProjectNavigation{};if(!navConfig.Validate(outError))return false;
+    for(const auto& o:scene.Objects()){if(!ValidateNavigationComponents(o,outError))return false;if((o.navigationSurface&&!navConfig.profiles.count(o.navigationSurface->profile))||(o.navigationAgent&&!navConfig.profiles.count(o.navigationAgent->profile))||(o.navigationModifier&&!navConfig.areas.names.count(o.navigationModifier->area))||(o.navigationLink&&!navConfig.areas.names.count(o.navigationLink->area))){outError="unknown navigation profile/area";return false;}if(o.navigationAgent)for(auto [id,c]:o.navigationAgent->costs)if(!navConfig.areas.names.count(id)){outError="unknown navigation area cost";return false;}}
     int activeAudioListeners=0;
     for(const auto& o:scene.Objects())if(o.audioListener&&o.audioListener->enabled)++activeAudioListeners;
     if(activeAudioListeners>1){outError="more than one enabled audio listener";return false;}
@@ -234,8 +236,10 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         for(const auto& p:resources->Assets()->Records())if(p.second.type==AssetType::UI){std::ifstream file(p.second.path);std::ostringstream contents;contents<<file.rdbuf();bytes+=p.first+SceneFingerprintSha256(contents.str());}
         fingerprint=SceneFingerprintSha256(fingerprint+SceneFingerprintSha256(bytes));
     }
+    if(resources&&resources->Assets()){std::string navBytes="Judas.NavSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.navigationSurface){has=true;auto* asset=resources->Assets()->Find(o.navigationSurface->asset);if(asset){std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();navBytes+=asset->id+SceneFingerprintSha256(contents.str());}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+navBytes);}
     Destroy();
     m_categories=selected;
+    m_navigation=std::make_unique<NavigationSystem>(navigation?*navigation:ProjectNavigation{});
     m_assets = resources;
     m_audioSystem=resources?resources->GetAudioSystem():nullptr;
     m_settings = scene.Settings();
@@ -274,7 +278,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
 
     if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
     SynchronizeJoints();
-    for(const auto& o:scene.Objects())if((m_hasScripts||o.animation||o.ragdoll||o.characterMotor)&&!FindEntity(o.id)){
+    for(const auto& o:scene.Objects())if((m_hasScripts||o.animation||o.ragdoll||o.characterMotor||!NavigationProperties(o).empty())&&!FindEntity(o.id)){
         std::string unsupported;
         if(o.scripts.empty()&&!ValidateEntityDefinition(o,unsupported))continue;
         EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
@@ -297,6 +301,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     for (const SceneObject& o : scene.Objects()) {
         if(o.ui&&o.ui->enabled){std::string uiError;if(!UI().Load(o.ui->asset,o.ui->name,o.id,uiError))return fail(o,uiError);}
         m_hasScripts|=!o.scripts.empty();
+        m_hasNavigation|=o.navigationSurface.has_value()||o.navigationAgent.has_value()||o.navigationObstacle.has_value()||o.navigationLink.has_value()||o.navigationModifier.has_value();
         m_scriptDefinitions[o.id]=o;
         m_entityCategories[o.id]={o.tags,o.tags,o.renderLayer,{}};
         const glm::vec3 position = o.transform.position;
@@ -376,6 +381,12 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
             m_physics.SetCollisionFilter(bodyHandle,o.body->collisionLayer,o.body->collisionMask);
             m_physics.SetBodySensor(bodyHandle,o.body->sensor);m_physics.SetBodyEnabled(bodyHandle,o.body->enabled);
             m_physics.SetBodyTags(bodyHandle,o.tags);m_entityCategories[o.id].body=bodyHandle;
+        }
+        if(o.navigationSurface && o.navigationSurface->enabled){
+            if(!m_assets || !m_assets->Assets()){return fail(o,"navigation surface needs project assets");}
+            auto* asset=m_assets->Assets()->Find(o.navigationSurface->asset);
+            if(!asset||asset->missing||asset->type!=AssetType::Navigation)return fail(o,"missing/wrong-type navigation asset");
+            m_assets->AddRef(asset->id);m_referencedAssets.push_back(asset->id);m_assets->RequestNavigation(asset->id);
         }
         // --- Renderable without a dynamic body ---
         if (o.render && !isDynamic && o.render->shape != SceneShape::Terrain && !o.door && !o.lightSwitch) {
@@ -667,6 +678,7 @@ bool RuntimeWorld::EmitFluidParticle() {
 }
 
 void RuntimeWorld::RestoreAuthoredState() {
+    if(m_navigation)m_navigation=std::make_unique<NavigationSystem>(m_navigation->Configuration());
     std::vector<EntityId> articulations;for(const auto& entry:m_ragdolls)articulations.push_back(entry.first);
     for(auto id:articulations){std::string error;LeaveRagdoll(id,0,error);}
     m_ragdollReturns.clear();m_ragdollAutostarted.clear();ClearCharacters();m_animationInstances.clear();
@@ -990,6 +1002,9 @@ bool RuntimeWorld::ValidateEntityCreation(const SceneObject& definition, std::st
     classified.InsertObject(classifiedDefinition);
     if(!ValidateSceneClassification(classified,m_categories,error))return false;
     if (!ValidateEntityDefinition(definition, error) || !ValidateVisualAssets(definition, error)) return false;
+    if(definition.navigationSurface&&definition.navigationSurface->enabled){auto* asset=m_assets&&m_assets->Assets()?m_assets->Assets()->Find(definition.navigationSurface->asset):nullptr;if(!asset||asset->missing||asset->type!=AssetType::Navigation){error="missing/wrong-type navigation asset";return false;}}
+    if((definition.navigationAgent&&!m_navigation->Configuration().profiles.count(definition.navigationAgent->profile))||(definition.navigationLink&&!m_navigation->Configuration().areas.names.count(definition.navigationLink->area))){error="unknown navigation profile/area";return false;}
+
     if (definition.render && definition.render->textureCamera) {
         const SceneObjectId reference = definition.render->textureCamera;
         const bool present = std::any_of(m_renderCameras.begin(), m_renderCameras.end(), [reference](const RenderCamera& camera) { return camera.id == reference; });
@@ -1167,7 +1182,7 @@ void RuntimeWorld::Destroy() {
     ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
-    m_scripts.reset();m_ui.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;
+    m_scripts.reset();m_navigation.reset();m_ui.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;
@@ -1278,3 +1293,7 @@ std::vector<EntityId> RuntimeWorld::QueryEntities(CategoryMask required,Category
     }
     return result;
 }
+
+bool RuntimeWorld::SetNavigationAgentSettings(EntityId id,const NavigationAgentSettings& settings){auto it=m_scriptDefinitions.find(id);if(it==m_scriptDefinitions.end()||!it->second.navigationAgent)return false;SceneObject check;check.navigationAgent=settings;std::string error;if(!ValidateNavigationComponents(check,error)||!m_navigation->Configuration().profiles.count(settings.profile))return false;it->second.navigationAgent=settings;if(auto agent=m_navigation->Agent(id))agent->elapsed=1e10f;return true;}
+
+bool RuntimeWorld::SetNavigationEnabled(EntityId id,const std::string& kind,bool enabled){auto it=m_scriptDefinitions.find(id);if(it==m_scriptDefinitions.end())return false;auto& o=it->second;if(kind=="agent"&&o.navigationAgent)o.navigationAgent->enabled=enabled;else if(kind=="obstacle"&&o.navigationObstacle)o.navigationObstacle->enabled=enabled;else if(kind=="link"&&o.navigationLink)o.navigationLink->enabled=enabled;else return false;return true;}

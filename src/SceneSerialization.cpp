@@ -88,6 +88,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    for(const auto& [key,value]:NavigationProperties(o))w.Line(key,Quote(value));
     if(o.characterMotor){const auto& m=*o.characterMotor;
         w.Line("motor.enabled",B(m.enabled));
         w.Line("motor.radius",F(m.radius));
@@ -643,6 +644,9 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    std::map<std::string,std::string> navFields;
+    for(const auto& [key,tokens]:block.values)if(key.rfind("nav.",0)==0){std::string value;if(!p.String(key,value))return false;navFields[key]=value;}
+    std::string navError;if(!ApplyNavigationProperties(navFields,o,navError))return reader.Fail(navError);
     if(p.Has("motor.enabled")){CharacterMotorSettings m;
         if(!p.Bool("motor.enabled",m.enabled)||!p.Float("motor.radius",m.radius)||!p.Float("motor.halfHeight",m.halfHeight)||!p.Vec3("motor.offset",m.offset)||!p.Float("motor.stepHeight",m.stepHeight)||!p.Float("motor.supportDistance",m.supportDistance)||!p.Float("motor.skin",m.skin)||!p.Float("motor.maxSlopeDegrees",m.maxSlopeDegrees)||!p.Float("motor.gravityScale",m.gravityScale)||!p.Float("motor.reorientationDegreesPerSecond",m.reorientationDegreesPerSecond)||!p.Float("motor.interactionMass",m.interactionMass)||!p.Float("motor.maxPushImpulse",m.maxPushImpulse))return false;
         if(!p.Layer("motor.collisionLayer",m.collisionLayer)||!p.Mask("motor.collisionMask",m.collisionMask)||!p.Mask("motor.requiredTags",m.requiredTags)||!p.Mask("motor.excludedTags",m.excludedTags))return false;

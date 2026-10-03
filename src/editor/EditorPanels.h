@@ -95,6 +95,7 @@ struct EditorPanelState {
     RuntimeWorld* runtime = nullptr;
     std::string worldStatePath;
     bool playPaused = false;
+    DebugLineList navigationPreview;
     std::string status;
     std::string pathInput;  // Open / Save As text field
     std::vector<std::string> terrainSurfaces;
@@ -103,7 +104,7 @@ struct EditorPanelState {
 
     // Milestone 30: project, assets, gizmo, debug view, profiler.
     Project* project = nullptr;              // the open project (may be !IsLoaded())
-    const AssetDatabase* assets = nullptr;   // its asset database
+    AssetDatabase* assets = nullptr;   // its asset database
     ResourceManager* resources = nullptr;    // Milestone 31: live resource states for the browser
     std::vector<std::string> sceneFiles;     // project-relative .judas files
     GizmoMode gizmoMode = GizmoMode::Translate;

@@ -1,3 +1,6 @@
+#include "NavigationAsset.h"
+#include "Prefab.h"
+#include "RuntimeWorld.h"
 #include "ComponentEditors.h"
 #include <algorithm>
 #include <filesystem>
@@ -427,6 +430,19 @@ void DrawPlayerStart(EditorDocument& doc, SceneObject& o, EditorPanelState& stat
     ImGui::TextDisabled("Exactly one object may carry a player start.");
 }
 
+void NavProfile(EditorDocument& doc,unsigned& profile,EditorPanelState& state){if(!state.project)return;CategoryRegistry registry;registry.names.clear();for(auto [id,p]:state.project->Settings().navigation.profiles)registry.names[id]=p.name;DrawCategoryLayer(doc,"Agent profile",profile,registry);}
+void DrawNavSurface(EditorDocument& doc,SceneObject& o,EditorPanelState& state){auto& n=*o.navigationSurface;Checkbox(doc,"Enabled",n.enabled);NavProfile(doc,n.profile,state);Checkbox(doc,"Include dynamic bake sources",n.includeDynamic);if(state.project)DrawCategoryMask(doc,"Physical source layers",n.sources,state.project->Settings().classification.collision);DragVec3(doc,"Local bounds half extents",n.halfExtents);DragScalar(doc,"Cell size",n.cellSize,.01f,.02f,2);DragScalar(doc,"Cell height",n.cellHeight,.01f,.01f,1);DragInt(doc,"Tile size (cells)",n.tileSize,16,128);DragInt(doc,"Minimum region (cells)",n.minRegion,0,100);DragScalar(doc,"Simplification",n.simplification,.1f,.1f,10);AssetField(doc,"Baked navigation",n.asset,AssetType::Navigation,true,state);ImGui::TextWrapped("Object rotation defines the navigation frame; local +Y is its traversal up. Gravity is independent.");
+ if(state.mode==EditorMode::Edit&&state.project&&state.assets){Scene resolved,flat;std::string error;NavigationGeometry geometry;const bool sources=ResolvePrefabs(doc.GetScene(),state.assets,resolved,error)&&FlattenHierarchy(resolved,flat,error);const SceneObject* surface=sources?flat.Find(o.id):nullptr;if(surface&&!n.asset.empty()){auto* record=state.assets->Find(n.asset);NavigationData data;if(record&&LoadNavigation(record->path,data,error)&&CollectNavigationGeometry(flat,*surface,state.project->Settings().navigation,geometry,error))ImGui::Text("Bake: %s | %zu tile layers",data.fingerprint==geometry.fingerprint?"current":"STALE",data.layers.size());else ImGui::TextWrapped("Bake error: %s",error.c_str());}
+ if(ImGui::Button("Bake selected surface"))BakeEditorNavigation(doc,o.id,state);
+ if(ImGui::Button("Preview baked polygons")){auto* record=state.assets->Find(n.asset);NavigationData data;if(record&&surface&&LoadNavigation(record->path,data,error)){NavigationSystem preview(state.project->Settings().navigation);if(preview.LoadSurface(o.id,surface->transform,std::make_shared<NavigationData>(data),error)){state.navigationPreview.Clear();preview.Debug(state.navigationPreview);state.debug.navigation=true;state.status="Baked polygons displayed (preview snapshot).";}}if(!error.empty())state.status=error;}
+ if(ImGui::Button("Clear baked reference")){doc.BeginEdit();n.asset.clear();doc.CommitEdit();state.status="Navigation reference cleared; asset retained for other users.";}}
+ if(state.runtime){for(auto [id,error]:state.runtime->Navigation().Errors())if(id==o.id)ImGui::TextWrapped("Runtime: %s",error.c_str());}
+}
+void DrawNavAgent(EditorDocument& doc,SceneObject& o,EditorPanelState& state){auto& n=*o.navigationAgent;Checkbox(doc,"Enabled",n.enabled);NavProfile(doc,n.profile,state);if(state.project){DrawCategoryMask(doc,"Allowed navigation areas",n.areas,state.project->Settings().navigation.areas);for(auto [id,name]:state.project->Settings().navigation.areas.names){float cost=n.costs.count(id)?n.costs[id]:1;ImGui::PushID(int(id));if(ImGui::DragFloat((name+" cost").c_str(),&cost,.1f,1,100)){doc.BeginEdit();n.costs[id]=cost;doc.CommitEdit();}ImGui::PopID();}}Checkbox(doc,"Local avoidance",n.avoidance);DragScalar(doc,"Guidance speed",n.speed,.1f,.1f,100);DragScalar(doc,"Arrival distance",n.arrival,.05f,.01f,10);DragScalar(doc,"Corner tolerance",n.cornerDistance,.05f,.01f,5);DragScalar(doc,"Repath cadence (s)",n.repathSeconds,.05f,.02f,10);ImGui::TextWrapped("Guidance only. Project scripts feed CharacterMotor; navigation never moves this entity.");}
+void DrawNavObstacle(EditorDocument& doc,SceneObject& o,EditorPanelState&){auto& n=*o.navigationObstacle;Checkbox(doc,"Enabled",n.enabled);Checkbox(doc,"Cylinder",n.cylinder);DragVec3(doc,"Box half extents",n.halfExtents);DragScalar(doc,"Radius",n.radius,.05f,.01f,100);DragScalar(doc,"Height",n.height,.05f,.01f,100);DragScalar(doc,"Update distance",n.updateDistance,.01f,.01f,10);ImGui::TextWrapped("Tile-cache carving; physical collision is a separate Body component.");}
+void DrawNavLink(EditorDocument& doc,SceneObject& o,EditorPanelState& state){auto& n=*o.navigationLink;Checkbox(doc,"Enabled",n.enabled);Checkbox(doc,"Bidirectional",n.bidirectional);DragVec3(doc,"Local start",n.start);DragVec3(doc,"Local end",n.end);DragScalar(doc,"Endpoint tolerance",n.radius,.05f,.01f,5);if(state.project)DrawCategoryLayer(doc,"Navigation area",n.area,state.project->Settings().navigation.areas);ImGui::TextWrapped("Traversal is explicit script behaviour. No automatic teleport.");}
+void DrawNavModifier(EditorDocument& doc,SceneObject& o,EditorPanelState& state){auto& n=*o.navigationModifier;Checkbox(doc,"Enabled",n.enabled);Checkbox(doc,"Exclude own collider source",n.excludeSource);Checkbox(doc,"Blocked volume",n.blocked);DragVec3(doc,"Local volume half extents",n.halfExtents);if(state.project)DrawCategoryLayer(doc,"Navigation area",n.area,state.project->Settings().navigation.areas);ImGui::TextWrapped("Volume is conservatively projected into each surface frame during bake.");}
+
 template <typename T>
 ComponentEditor Make(const char* name, char indicator, std::optional<T> SceneObject::*member,
                      void (*draw)(EditorDocument&, SceneObject&, EditorPanelState&)) {
@@ -448,6 +464,11 @@ ComponentEditor Make(const char* name, char indicator, std::optional<T> SceneObj
 
 const std::vector<ComponentEditor>& ComponentEditorRegistry() {
     static const std::vector<ComponentEditor> registry = {
+        Make<NavigationSurfaceSettings>("Navigation surface",'N',&SceneObject::navigationSurface,DrawNavSurface),
+        Make<NavigationAgentSettings>("Navigation agent",'N',&SceneObject::navigationAgent,DrawNavAgent),
+        Make<NavigationObstacleSettings>("Navigation obstacle",'N',&SceneObject::navigationObstacle,DrawNavObstacle),
+        Make<NavigationLinkSettings>("Navigation link",'N',&SceneObject::navigationLink,DrawNavLink),
+        Make<NavigationModifierSettings>("Navigation modifier",'N',&SceneObject::navigationModifier,DrawNavModifier),
         Make<SceneUIComponent>("Runtime UI",'U',&SceneObject::ui,DrawUIComponent),
         {"Scripts",'J',[](const SceneObject& o){return !o.scripts.empty();},[](SceneObject& o){o.scripts.push_back({1,"",true,"{}"});},[](SceneObject& o){o.scripts.clear();},DrawScripts},
         Make<ParticleEmitterSettings>("Particle emitter", 'E', &SceneObject::particleEmitter, DrawParticleEmitter),
@@ -514,4 +535,20 @@ void DrawCategoryMask(EditorDocument& doc,const char* label,CategoryMask& mask,c
         if(!allowAll&&(mask&~registry.ActiveMask()))ImGui::TextColored(ImVec4(1,.3f,.2f,1),"Contains retired/unregistered tags");
         ImGui::TreePop();
     }
+}
+
+bool BakeEditorNavigation(EditorDocument& doc,SceneObjectId id,EditorPanelState& state){
+    if(state.mode!=EditorMode::Edit||!state.project||!state.assets){state.status="Open an editable project before baking";return false;}
+    Scene resolved,flat;std::string error;NavigationData data;
+    if(!ResolvePrefabs(doc.GetScene(),state.assets,resolved,error)||!FlattenHierarchy(resolved,flat,error)){state.status=error;return false;}
+    auto* surface=flat.Find(id);if(!surface||!surface->navigationSurface){state.status="Selected entity has no navigation surface";return false;}
+    if(!BakeNavigation(flat,*surface,state.project->Settings().navigation,data,error)){state.status=error;return false;}
+    auto path=std::filesystem::path(state.project->AssetsDir())/"navigation"/("surface-"+std::to_string(id)+".judasnav");
+    std::error_code ec;std::filesystem::create_directories(path.parent_path(),ec);if(ec){state.status=ec.message();return false;}
+    if(!SaveNavigation(path.string(),data,error)){state.status=error;return false;}
+    auto* existing=state.assets->FindByRelativePath(std::filesystem::relative(path,state.project->RootDir()).generic_string());AssetRecord asset;
+    if(existing)asset=*existing;else if(!state.assets->Track(path.string(),asset,error)){state.status=error;return false;}
+    doc.BeginEdit();doc.GetScene().Find(id)->navigationSurface->asset=asset.id;doc.CommitEdit();if(state.resources)state.resources->Invalidate(asset.id);
+    state.navigationPreview.Clear();NavigationSystem preview(state.project->Settings().navigation);if(preview.LoadSurface(id,surface->transform,std::make_shared<NavigationData>(data),error))preview.Debug(state.navigationPreview);state.debug.navigation=true;
+    state.status="Baked "+std::to_string(data.layers.size())+" tile layers. Save scene to persist reference.";return true;
 }

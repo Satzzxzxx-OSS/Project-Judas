@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M52 review of the registered virtual module based on M51 checkpoint `73698d1a1f928c7210679e58fdb5259d2a196c7b`.
+M53 review of the registered virtual module based on M52 checkpoint `3c52b13765a0721fa6a1fea0038505326359326b`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -59,6 +59,9 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.inertiaWorld` | `inertiaWorld` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.mass` | `mass` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.navigation` | `navAgentExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.navigationLink` | `navLinkInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.navigationObstacle` | `navObstacleInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.parent` | `parent` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.pauseAudio` | `pauseAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.playAudio` | `playAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -70,6 +73,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.setAudioEnabled` | `audioEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setCameraEnabled` | `camera` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setColliderEnabled` | `colliderEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.setNavigationEnabled` | `navEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setParticles` | `particles` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.stopAudio` | `stopAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.transform` | `setTransform`, `transform` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -84,6 +88,18 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Joint.setSpring` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.state` | `jointState` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.valid` | `jointValid` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `NavigationAgent` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.clear` | `navClear` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.completeLink` | `navCompleteLink` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.configure` | `navConfigure` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.enabled` | `navEnabled` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.remainingDistance` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.setDestination` | `navDestination` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.state` | `navAgentState` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.steering` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `NavigationAgent.stopped` | `navStopped` | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `Ragdoll` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Ragdoll.active` | `ragdollActive` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Ragdoll.body` | `ragdollBody` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
@@ -120,6 +136,13 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `input.pointerCapture` | `pointerCapture`, `setPointerCapture` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.pressed` | `pressed` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.released` | `released` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `navigation` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `navigation.areas` | `navAreas` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `navigation.errors` | `navErrors` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `navigation.path` | `navPath` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `navigation.profiles` | `navProfiles` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `navigation.raycast` | `navRaycast` | [declaration](../judas.d.ts) | [reference](navigation.md) |
+| `navigation.sample` | `navSample` | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `physics` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.boxCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.capsuleCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |

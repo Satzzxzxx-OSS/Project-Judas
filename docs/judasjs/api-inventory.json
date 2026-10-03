@@ -1,5 +1,5 @@
 {
-  "checkpoint": "73698d1a1f928c7210679e58fdb5259d2a196c7b",
+  "checkpoint": "3c52b13765a0721fa6a1fea0038505326359326b",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -551,6 +551,39 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.navigation",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "navAgentExists"
+      ],
+      "type": "docs/judas.d.ts:Entity.navigation",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.navigationLink",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "navLinkInfo"
+      ],
+      "type": "docs/judas.d.ts:Entity.navigationLink",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.navigationObstacle",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "navObstacleInfo"
+      ],
+      "type": "docs/judas.d.ts:Entity.navigationObstacle",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
       "symbol": "Entity.parent",
       "kinds": [
         "get"
@@ -669,6 +702,17 @@
         "colliderEnabled"
       ],
       "type": "docs/judas.d.ts:Entity.setColliderEnabled",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.setNavigationEnabled",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navEnabled"
+      ],
+      "type": "docs/judas.d.ts:Entity.setNavigationEnabled",
       "reference": "docs/judasjs/entities.md"
     },
     {
@@ -822,6 +866,129 @@
       ],
       "type": "docs/judas.d.ts:Joint.valid",
       "reference": "docs/judasjs/physics.md"
+    },
+    {
+      "symbol": "NavigationAgent",
+      "kinds": [
+        "class"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:NavigationAgent",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.clear",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navClear"
+      ],
+      "type": "docs/judas.d.ts:NavigationAgent.clear",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.completeLink",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navCompleteLink"
+      ],
+      "type": "docs/judas.d.ts:NavigationAgent.completeLink",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.configure",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navConfigure"
+      ],
+      "type": "docs/judas.d.ts:NavigationAgent.configure",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.constructor",
+      "kinds": [
+        "call"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:NavigationAgent.constructor",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.enabled",
+      "kinds": [
+        "set"
+      ],
+      "native": [
+        "navEnabled"
+      ],
+      "type": "docs/judas.d.ts:NavigationAgent.enabled",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.id",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:NavigationAgent.id",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.remainingDistance",
+      "kinds": [
+        "get"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:NavigationAgent.remainingDistance",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.setDestination",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navDestination"
+      ],
+      "type": "docs/judas.d.ts:NavigationAgent.setDestination",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.state",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "navAgentState"
+      ],
+      "type": "docs/judas.d.ts:NavigationAgent.state",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.steering",
+      "kinds": [
+        "get"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:NavigationAgent.steering",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "NavigationAgent.stopped",
+      "kinds": [
+        "get",
+        "set"
+      ],
+      "native": [
+        "navStopped"
+      ],
+      "type": "docs/judas.d.ts:NavigationAgent.stopped",
+      "reference": "docs/judasjs/navigation.md"
     },
     {
       "symbol": "Ragdoll",
@@ -1206,6 +1373,81 @@
       ],
       "type": "docs/judas.d.ts:input.released",
       "reference": "docs/judasjs/input.md"
+    },
+    {
+      "symbol": "navigation",
+      "kinds": [
+        "namespace"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:navigation",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "navigation.areas",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "navAreas"
+      ],
+      "type": "docs/judas.d.ts:navigation.areas",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "navigation.errors",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "navErrors"
+      ],
+      "type": "docs/judas.d.ts:navigation.errors",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "navigation.path",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navPath"
+      ],
+      "type": "docs/judas.d.ts:navigation.path",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "navigation.profiles",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "navProfiles"
+      ],
+      "type": "docs/judas.d.ts:navigation.profiles",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "navigation.raycast",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navRaycast"
+      ],
+      "type": "docs/judas.d.ts:navigation.raycast",
+      "reference": "docs/judasjs/navigation.md"
+    },
+    {
+      "symbol": "navigation.sample",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "navSample"
+      ],
+      "type": "docs/judas.d.ts:navigation.sample",
+      "reference": "docs/judasjs/navigation.md"
     },
     {
       "symbol": "physics",
@@ -1617,6 +1859,22 @@
     "jointValid",
     "log",
     "mass",
+    "navAgentExists",
+    "navAgentState",
+    "navAreas",
+    "navClear",
+    "navCompleteLink",
+    "navConfigure",
+    "navDestination",
+    "navEnabled",
+    "navErrors",
+    "navLinkInfo",
+    "navObstacleInfo",
+    "navPath",
+    "navProfiles",
+    "navRaycast",
+    "navSample",
+    "navStopped",
     "overlap",
     "parent",
     "particles",

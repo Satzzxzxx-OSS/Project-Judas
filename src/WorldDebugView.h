@@ -53,10 +53,11 @@ struct DebugViewOptions {
     bool fluidParticles = false;
     bool atmosphere = false;
     bool broadphase = false;
+    bool navigation = false;
 
     bool AnyEnabled() const {
         return collisionShapes || playerCapsule || contacts || gravity || frameAxes || lights ||
-               interactionRanges || lifecycle || terrainNormals || fluidParticles || atmosphere || broadphase;
+               interactionRanges || lifecycle || terrainNormals || fluidParticles || atmosphere || broadphase || navigation;
     }
 };
 

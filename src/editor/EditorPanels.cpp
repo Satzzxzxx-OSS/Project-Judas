@@ -127,6 +127,7 @@ void DrawEditorMainMenu(EditorDocument& doc, EditorPanelState& state, EditorRequ
         ImGui::MenuItem("Fluid particles", nullptr, &d.fluidParticles);
         ImGui::MenuItem("Atmosphere radii", nullptr, &d.atmosphere);
         ImGui::MenuItem("Broadphase bounds", nullptr, &d.broadphase);
+        ImGui::MenuItem("Navigation mesh / routes", nullptr, &d.navigation);
         ImGui::Separator();
         if (ImGui::MenuItem("All off")) d = DebugViewOptions{};
         ImGui::EndMenu();
@@ -636,6 +637,14 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
             ImGui::PopID();
         };
         registry("Tags",s.classification.tags,false);registry("Collision layers",s.classification.collision,true);registry("Render layers",s.classification.render,true);
+    }
+    if(ImGui::CollapsingHeader("Navigation profiles and areas")){
+        auto& nav=s.navigation;static char areaName[128]="",profileName[128]="";
+        ImGui::InputText("New navigation area",areaName,sizeof(areaName));if(ImGui::Button("Add area")&&nav.areas.nextId<62){unsigned id;if(nav.areas.Add(areaName,id))areaName[0]=0;}
+        for(auto it=nav.areas.names.begin();it!=nav.areas.names.end();++it){ImGui::PushID(int(it->first));char name[256];CopyToBuffer(it->second,name,sizeof(name));if(ImGui::InputText("Area name",name,sizeof(name)))nav.areas.Rename(it->first,name);if(it->first&&ImGui::Button("Delete area")){nav.areas.Remove(it->first,true);ImGui::PopID();break;}ImGui::PopID();}
+        ImGui::InputText("New agent profile",profileName,sizeof(profileName));if(ImGui::Button("Add profile")&&nav.nextProfile<64&&profileName[0]){NavigationProfile p;p.name=profileName;nav.profiles[nav.nextProfile++]=p;profileName[0]=0;}
+        for(auto it=nav.profiles.begin();it!=nav.profiles.end();++it){auto& p=it->second;ImGui::PushID(int(it->first)+1000);char name[256];CopyToBuffer(p.name,name,sizeof(name));if(ImGui::InputText("Profile name",name,sizeof(name)))p.name=name;ImGui::DragFloat("Radius",&p.radius,.01f,.02f,10);ImGui::DragFloat("Height",&p.height,.05f,.1f,20);ImGui::DragFloat("Slope degrees",&p.slope,1,0,89);ImGui::DragFloat("Climb",&p.climb,.01f,0,p.height*.9f);if(it->first&&ImGui::Button("Delete profile")){nav.profiles.erase(it);ImGui::PopID();break;}ImGui::PopID();}
+        ImGui::TextWrapped("Stable IDs are never reused. Up to 62 navigation areas and 64 lifetime profile IDs. Changing profiles/source geometry requires rebaking; Save project persists settings.");
     }
     if(ImGui::CollapsingHeader("Input actions and axes")){
         static char newName[128]="";static bool newAxis=false;

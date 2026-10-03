@@ -84,6 +84,7 @@ bool OptEq(const std::optional<T>& a, const std::optional<T>& b, F&& equal) {
 }  // namespace
 
 bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
+    if(NavigationProperties(a)!=NavigationProperties(b))return false;
     if(a.scripts!=b.scripts)return false;
     if(!OptEq(a.characterMotor,b.characterMotor,[](const auto& x,const auto& y){return x.enabled==y.enabled&&x.radius==y.radius&&x.halfHeight==y.halfHeight&&x.offset==y.offset&&x.stepHeight==y.stepHeight&&x.supportDistance==y.supportDistance&&x.skin==y.skin&&x.maxSlopeDegrees==y.maxSlopeDegrees&&x.gravityScale==y.gravityScale&&x.reorientationDegreesPerSecond==y.reorientationDegreesPerSecond&&x.interactionMass==y.interactionMass&&x.maxPushImpulse==y.maxPushImpulse&&x.collisionLayer==y.collisionLayer&&x.collisionMask==y.collisionMask&&x.requiredTags==y.requiredTags&&x.excludedTags==y.excludedTags;}))return false;
     if(!OptEq(a.ragdoll,b.ragdoll,[](const auto& x,const auto& y){return RagdollDefinitionsEqual(x,y);}))return false;

@@ -1,3 +1,4 @@
+#include "NavigationSystem.h"
 #pragma once
 
 #include <memory>
@@ -219,7 +220,7 @@ public:
     // missing or undecodable shows as a placeholder and reads Failed in the
     // resource manager. On failure nothing is left allocated and `outError`
     // says which object/component could not be realised.
-    bool Build(const Scene& scene, ResourceManager* resources, std::string& outError, const ProjectClassification* categories=nullptr);
+    bool Build(const Scene& scene, ResourceManager* resources, std::string& outError, const ProjectClassification* categories=nullptr,const ProjectNavigation* navigation=nullptr);
     ResourceManager* Resources() const { return m_assets; }
     void Destroy();
     bool IsBuilt() const { return m_built; }
@@ -287,6 +288,11 @@ public:
     JointHandle RuntimeJoint(EntityId owner);
     CharacterMotor* RuntimeCharacter(EntityId id);
     void UpdateCharacters(float dt);
+    NavigationSystem& Navigation(){return *m_navigation;}
+    const NavigationSystem& Navigation()const{return *m_navigation;}
+    bool SetNavigationEnabled(EntityId id,const std::string& kind,bool enabled);
+    bool SetNavigationAgentSettings(EntityId id,const NavigationAgentSettings& settings);
+    void UpdateNavigation(float dt){if(m_navigation&&m_hasNavigation)m_navigation->Update(*this,dt);}
     bool SetCharacterSettings(EntityId,const CharacterMotorSettings&);
     void ClearCharacters();
     struct CharacterInstance {CharacterMotor motor;SceneTransform previous;};
@@ -429,12 +435,13 @@ private:
 
     struct EntityCategories {CategoryMask tags=0, authoredTags=0;unsigned renderLayer=0;BodyHandle body;};
     ProjectClassification m_categories;
+    std::unique_ptr<NavigationSystem> m_navigation;
     std::map<EntityId,EntityCategories> m_entityCategories;
     bool m_built = false;
     PhysicsWorld m_physics;
     bool AppendSceneObjects(const Scene& scene, bool authored, const FidelityPolicyContext& context, std::string& error);
     Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
-    bool m_hasScripts=false;
+    bool m_hasScripts=false,m_hasNavigation=false;
     std::set<EntityId> m_animationOwners;
     std::map<EntityId,CharacterInstance> m_characters;
     std::map<EntityId,AnimationInstance> m_animationInstances;

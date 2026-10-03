@@ -60,6 +60,7 @@ std::string Project::SerializeToString(const ProjectSettings& s) {
     out += "legacy-gameplay " + Quote(s.legacyGameplay ? "true" : "false") + "\n";
     out += "input-map " + Quote(s.input.Serialize()) + "\n";
     if (!s.classification.IsDefault()) out += "classification " + Quote(s.classification.Serialize()) + "\n";
+    out += "navigation " + Quote(s.navigation.Serialize()) + "\n";
     return out;
 }
 
@@ -123,6 +124,7 @@ bool Project::ParseFromString(const std::string& text, ProjectSettings& outSetti
             if(value!="true"&&value!="false"){outError="legacy-gameplay must be true or false";return false;}
             s.legacyGameplay=value=="true";
         }
+        else if (key == "navigation") { if(!ProjectNavigation::Parse(value,s.navigation,outError))return false; }
         else if (key == "classification") { if(!ProjectClassification::Parse(value,s.classification,outError))return false; }
         else if (key == "input-map") { if(!InputMap::Parse(value,s.input,outError)) return false; }
         else {
@@ -165,7 +167,7 @@ bool Project::Load(const std::string& projectFilePath, std::string& outError) {
 }
 
 bool Project::Save(std::string& outError) const {
-    if(!m_settings.input.Validate(outError)||!m_settings.classification.Validate(outError))return false;
+    if(!m_settings.input.Validate(outError)||!m_settings.classification.Validate(outError)||!m_settings.navigation.Validate(outError))return false;
     if (m_projectFile.empty()) {
         outError = "project has no file path";
         return false;

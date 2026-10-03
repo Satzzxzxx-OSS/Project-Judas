@@ -22,7 +22,7 @@ int main(){std::string error;Project project;Check(project.Load("projects/shoote
  RuntimeWorld world;GameSession game;std::shared_ptr<SceneSession> session;
  auto load=[&](){game.End();world.Destroy();Scene scene;if(!LoadSceneFromFile(project.StartupScenePath(),scene,error))return false;
   world.legacyGameplay=false;session=std::make_shared<SceneSession>(project,project.StartupScenePath());world.SetSceneControl(session);
-  if(!world.Build(scene,&host.Resources(),error,&project.Settings().classification)||!game.Begin(world,error))return false;
+  if(!world.Build(scene,&host.Resources(),error,&project.Settings().classification,&project.Settings().navigation)||!game.Begin(world,error))return false;
   world.UpdateScripts(&window.Input(),1.f/60);host.Resources().WaitForAll();world.UpdateScripts(&window.Input(),1.f/60);return true;};
  auto state=[&](EntityId id=10){for(const auto& x:world.Scripts()->Capture())if(x.entity==id)return x.json;return std::string{};};
  auto step=[&](int count){for(int i=0;i<count;++i){window.Input().BeginFixedStep();if(!world.UI().Paused())StepPlayedWorld(game,window,1.f/60);world.UpdateUIScripts(&window.Input(),1.f/60);world.UpdateScripts(&window.Input(),1.f/60);world.PresentationScripts(&window.Input(),1.f/60,1);window.Input().BeginFrame();}};

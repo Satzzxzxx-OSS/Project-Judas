@@ -1,5 +1,5 @@
 import {ui,input,scenes,session} from 'judas';
-import {round,targets} from './round.js';
+import {round,targets,navigators} from './round.js';
 export default class {
  constructor(player){this.player=player;this.doc=ui.get('range_ui');}
  start(){ui.debugOverlayVisible=false;this.doc.modal=false;this.doc.get('pause').visible=false;input.pointerCapture=true;}
@@ -7,7 +7,7 @@ export default class {
  update(){if(input.pressed('pause'))this.menu(!this.doc.modal);
   this.doc.get('score').text=`SCORE ${round.score}     HITS ${round.hits} / ${round.shots} SHOTS`;
   let ready=0;for(const t of targets.values())if(t.state.ready)ready++;
-  this.doc.get('progress').text=`${round.unique} / ${targets.size} UNIQUE  |  ${ready} READY  |  ${this.player.camera.third?'THIRD':'FIRST'} PERSON  |  BEST ${session.get('rangeBest')||0}`;
+  this.doc.get('progress').text=`${round.unique} / ${targets.size} UNIQUE  |  ${ready} READY  |  ${this.player.camera.third?'THIRD':'FIRST'} PERSON | ${[...navigators.values()].filter(n=>!n.state.defeated).length} CHASERS  |  BEST ${session.get('rangeBest')||0}`;
   this.doc.get('message').text=round.message;
   this.doc.get('hitmark').visible=round.flash>0;
   this.player.state.paused=this.doc.modal;

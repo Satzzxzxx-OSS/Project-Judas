@@ -38,3 +38,6 @@ std::string ComponentIndicators(const SceneObject& object);
 
 void DrawCategoryLayer(EditorDocument&,const char*,unsigned&,const CategoryRegistry&);
 void DrawCategoryMask(EditorDocument&,const char*,CategoryMask&,const CategoryRegistry&,bool allowAll=true);
+
+// Shared inspector Bake command and editor automation entry point.
+bool BakeEditorNavigation(EditorDocument&,SceneObjectId,EditorPanelState&);

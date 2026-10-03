@@ -58,6 +58,17 @@ target_compile_definitions(judas_quickjs PRIVATE _GNU_SOURCE QUICKJS_NG_BUILD)
 target_include_directories(judas_quickjs SYSTEM PUBLIC third_party/quickjs)
 target_link_libraries(judas_quickjs PUBLIC m Threads::Threads ${CMAKE_DL_LIBS})
 
+# Pinned RecastNavigation 1.6.0. Recast baking stays out of runtime.
+file(GLOB JUDAS_DETOUR third_party/recastnavigation/Detour/Source/*.cpp third_party/recastnavigation/DetourTileCache/Source/*.cpp third_party/recastnavigation/DetourCrowd/Source/*.cpp)
+add_library(judas_navigation_backend STATIC ${JUDAS_DETOUR})
+target_include_directories(judas_navigation_backend SYSTEM PUBLIC third_party/recastnavigation/Detour/Include third_party/recastnavigation/DetourTileCache/Include third_party/recastnavigation/DetourCrowd/Include)
+target_compile_definitions(judas_navigation_backend PUBLIC DT_VIRTUAL_QUERYFILTER)
+file(GLOB JUDAS_RECAST third_party/recastnavigation/Recast/Source/*.cpp)
+add_library(judas_navigation_baker STATIC src/NavigationBake.cpp ${JUDAS_RECAST})
+target_include_directories(judas_navigation_baker SYSTEM PRIVATE third_party/recastnavigation/Recast/Include)
+target_include_directories(judas_navigation_baker PUBLIC src)
+target_link_libraries(judas_navigation_baker PUBLIC judas_engine judas_navigation_backend)
+
 # GLAD 2 loader generated for precisely OpenGL 3.3 Core, no extensions.
 add_library(judas_glad STATIC third_party/glad/src/gl.c)
 target_include_directories(judas_glad PUBLIC third_party/glad/include)
@@ -67,6 +78,9 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
 add_library(judas_engine STATIC
+    src/NavigationSystem.cpp
+    src/NavigationTypes.cpp
+    src/NavigationAsset.cpp
     src/WorldAnimation.cpp
     src/PoseComposition.cpp
     src/WorldRagdoll.cpp
@@ -162,7 +176,7 @@ target_link_libraries(judas_audio_backend PUBLIC Threads::Threads ${CMAKE_DL_LIB
 if(UNIX)
     target_link_libraries(judas_audio_backend PUBLIC m)
 endif()
-target_link_libraries(judas_engine PUBLIC SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads judas_audio_backend)
+target_link_libraries(judas_engine PUBLIC SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads judas_audio_backend judas_navigation_backend)
 target_compile_options(judas_engine PRIVATE -Wall -Wextra)
 
 add_executable(judas
@@ -201,7 +215,7 @@ add_executable(judas_editor
     src/editor/ComponentEditors.cpp
     src/editor/GizmoMath.cpp
 )
-target_link_libraries(judas_editor PRIVATE judas_engine judas_imgui)
+target_link_libraries(judas_editor PRIVATE judas_engine judas_imgui judas_navigation_baker)
 target_compile_options(judas_editor PRIVATE -Wall -Wextra)
 
 # Milestone 30: the scene authoring tool that writes the shipped demonstration
@@ -1032,3 +1046,10 @@ target_compile_options(judas_shooter_application_tests PRIVATE -Wall -Wextra)
 add_executable(judas_script_presentation_tests tests/ScriptPresentationTests.cpp)
 target_link_libraries(judas_script_presentation_tests PRIVATE judas_engine)
 target_compile_options(judas_script_presentation_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_navigation_bake tools/NavigationBake.cpp)
+target_link_libraries(judas_navigation_bake PRIVATE judas_navigation_baker)
+add_executable(judas_navigation_tests tests/NavigationTests.cpp)
+target_link_libraries(judas_navigation_tests PRIVATE judas_navigation_baker)
+add_executable(judas_navigation_game_tests tests/NavigationGameTests.cpp)
+target_link_libraries(judas_navigation_game_tests PRIVATE judas_engine)

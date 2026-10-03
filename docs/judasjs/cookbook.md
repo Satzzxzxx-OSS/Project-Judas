@@ -48,3 +48,5 @@ M52 adds [impulse at a world point](examples/impulse-point.js): an off-centre im
 M52 [presentation.js](examples/presentation.js) follows a body's/motor's existing
 interpolated world pose in the post-simulation presentation phase; it leaves
 authoritative motion untouched. Attach to a moving body or CharacterMotor.
+
+- [Navigation guidance into CharacterMotor](examples/navigation.js) ([reference](navigation.md)).

@@ -86,7 +86,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     worldOwner->legacyGameplay = !options.project.IsLoaded() || options.project.Settings().legacyGameplay;
     worldOwner->SetSceneControl(sceneControl);
     RuntimeWorld& world=*worldOwner;
-    if (!world.Build(scene, &host.Resources(), error, options.project.IsLoaded()?&options.project.Settings().classification:nullptr)) {
+    if (!world.Build(scene, &host.Resources(), error, options.project.IsLoaded()?&options.project.Settings().classification:nullptr, options.project.IsLoaded()?&options.project.Settings().navigation:nullptr)) {
         std::fprintf(stderr, "Scene '%s' could not be instantiated: %s\n", options.scenePath.c_str(),
                      error.c_str());
         return 1;

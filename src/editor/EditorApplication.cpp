@@ -1,3 +1,4 @@
+#include "ComponentEditors.h"
 #include "EditorApplication.h"
 #include "Prefab.h"
 
@@ -468,7 +469,7 @@ bool EditorApplication::RunProject(std::string& outMessage) {
 bool EditorApplication::StartPlay(std::string& outError) {
     m_world = std::make_unique<RuntimeWorld>();
     m_world->legacyGameplay = m_project.Settings().legacyGameplay;
-    if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError, &m_project.Settings().classification)) {
+    if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError, &m_project.Settings().classification, &m_project.Settings().navigation)) {
         m_world.reset();
         return false;
     }
@@ -761,6 +762,7 @@ void EditorApplication::UpdateGizmo(bool allowInteraction) {
 void EditorApplication::DrawEditOverlay(Renderer& renderer, const Scene& scene) {
     m_debugLines.Clear();
     BuildAuthoredDebugLines(scene, m_panels.debug, m_debugLines);
+    if(m_panels.debug.navigation)m_debugLines.Append(m_panels.navigationPreview);
     if (const SceneObject* selected = scene.Find(m_document.Selected())) BuildSelectionLines(*selected, m_debugLines);
     renderer.DrawDebugLines(m_debugLines.Lines(), /*depthTest=*/true);
     renderer.DrawDebugLines(m_gizmoLines.Lines(), /*depthTest=*/false);
@@ -972,6 +974,7 @@ int EditorApplication::Run(int argc, char** argv) {
     const char* autotest = std::getenv("JUDAS_EDITOR_AUTOTEST");
     int autotestFrame = 0;
     std::string autotestBaseline;
+    if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_NAV_BAKE")){std::vector<SceneObjectId> surfaces;for(const auto& o:m_document.GetScene().Objects())if(o.navigationSurface)surfaces.push_back(o.id);for(auto id:surfaces){bool ok=BakeEditorNavigation(m_document,id,m_panels);std::fprintf(stderr,"[editor autotest] navigation bake %llu: %s: %s\n",static_cast<unsigned long long>(id),ok?"PASS":"FAIL",m_panels.status.c_str());}}
     if (autotest) SaveSceneToString(m_document.GetScene(), autotestBaseline);
     const auto screenshot = [&](const std::string& path) {
         std::vector<unsigned char> pixels;

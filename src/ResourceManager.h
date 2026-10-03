@@ -11,6 +11,7 @@
 
 #include "AssetDatabase.h"
 #include "AudioSystem.h"
+#include "NavigationAsset.h"
 #include "JobSystem.h"
 #include "MeshData.h"
 #include "Renderer.h"
@@ -70,6 +71,7 @@ struct ResourceStats {
     std::size_t loadedMeshes = 0;
     std::size_t loadedTextures = 0;
     std::size_t loadedAudio = 0;
+    std::size_t loadedNavigation = 0;
     std::size_t loadedTerrainMeshes = 0;
     std::size_t failed = 0;
     std::size_t loading = 0;   // Queued + Loading + CpuReady
@@ -109,6 +111,8 @@ public:
 
     // Non-blocking demand: starts (or joins) the load and returns the
     // state now. Ready is answered from cache (a hit).
+    ResourceState RequestNavigation(const AssetId&,JobPriority priority=JobPriority::Normal);
+    std::shared_ptr<const NavigationData> GetNavigation(const AssetId&,std::string& error);
     ResourceState RequestAudio(const AssetId& id, JobPriority priority = JobPriority::Normal);
     AudioClipHandle GetAudio(const AssetId& id, std::string& error, JobPriority priority = JobPriority::Normal);
     AudioSystem* GetAudioSystem() const { return m_audio; }
@@ -197,6 +201,7 @@ private:
         MeshData mesh;
         TextureData texture;
         AudioData audio;
+        std::shared_ptr<NavigationData> navigation;
         std::thread::id decodeThread;
         ResourceTrace trace;
         JobHandle job;
@@ -209,6 +214,7 @@ private:
         std::shared_ptr<const SkeletalAsset> skeletal;
         TextureHandle texture;
         AudioClipHandle audio;
+        std::shared_ptr<const NavigationData> navigation;
         std::string error;
         unsigned int generation = 0;
         unsigned int refs = 0;

@@ -73,3 +73,7 @@ readonly world-space inertia tensor snapshot in kg m², with columns `x`, `y`, `
 (each a Vec3). Both require a live active dynamic body, otherwise throw TypeError
 (after normal entity validity checks). Multiplying this matrix by an angular
 acceleration gives a world torque; it does not add a controller or holding policy.
+
+## Navigation components
+
+`Entity.navigation`, `navigationObstacle`, `navigationLink` and `setNavigationEnabled` are described in [Navigation](navigation.md). They remain distinct from character movement and physical collision.

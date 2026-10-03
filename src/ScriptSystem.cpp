@@ -42,6 +42,10 @@ export class Entity {
  removeTag(tag){return call('removeTag',this.id,tag)}
  get classification(){return call('classification',this.id)}
  get animation(){return call('animationExists',this.id)?new Animation(this.id):null}
+ get navigationObstacle(){return call("navObstacleInfo",this.id)}
+ get navigationLink(){return call("navLinkInfo",this.id)}
+ setNavigationEnabled(component,enabled){return call("navEnabled",this.id,component,enabled)}
+ get navigation(){return call("navAgentExists",this.id)?new NavigationAgent(this.id):null}
  get character(){return call("characterExists",this.id)?new Character(this.id):null}
  get ragdoll(){return call('ragdollExists',this.id)?new Ragdoll(this.id):null}
  get audio(){return call('audioInfo',this.id)}
@@ -88,6 +92,27 @@ export class Character {
  accelerate(v){return call('characterAcceleration',this.id,v)}
  ignore(entities){return call('characterIgnore',this.id,entities.map(e=>e.id))}
 }
+export class NavigationAgent {
+ constructor(id){this.id=id}
+ get state(){const s=call('navAgentState',this.id);return {...s,link:entity(s.linkId)}}
+ set enabled(value){call("navEnabled",this.id,"agent",value)}
+ setDestination(point){return call('navDestination',this.id,point)}
+ clear(){return call('navClear',this.id)}
+ set stopped(value){call('navStopped',this.id,value)}
+ get stopped(){return this.state.stopped}
+ get steering(){return this.state.steering}
+ get remainingDistance(){return this.state.remainingDistance}
+ completeLink(){return call('navCompleteLink',this.id)}
+ configure(settings){return call('navConfigure',this.id,settings)}
+}
+const navResult=r=>r?{...r,surface:entity(r.surfaceId)}:null;
+const navPath=p=>({...p,corners:p.corners.map(c=>({...c,link:entity(c.linkId)}))});
+export const navigation={
+ sample:(point,range=2,filter={})=>navResult(call('navSample',point,range,filter)),
+ path:(start,end,filter={})=>navPath(call('navPath',start,end,filter)),
+ raycast:(start,end,filter={})=>navResult(call('navRaycast',start,end,filter)),
+ get areas(){return call('navAreas')},get profiles(){return call('navProfiles')},get errors(){return call('navErrors')}
+};
 export class Ragdoll {
  constructor(id){this.id=id}
  get active(){return call('ragdollActive',this.id)}
@@ -275,6 +300,17 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
 
+    auto navPath=[&](const NavigationPath& path){auto v=JS_NewObject(c);const char* status=path.status==NavigationPath::Status::Complete?"complete":path.status==NavigationPath::Status::Partial?"partial":"failed";JS_SetPropertyStr(c,v,"status",JS_NewString(c,status));JS_SetPropertyStr(c,v,"distance",JS_NewFloat64(c,path.distance));JS_SetPropertyStr(c,v,"revision",JS_NewUint32(c,path.revision));auto corners=JS_NewArray(c);uint32_t i=0;for(auto p:path.corners){auto corner=JS_NewObject(c);JS_SetPropertyStr(c,corner,"position",Vec(c,p.position));JS_SetPropertyStr(c,corner,"linkId",JS_NewString(c,std::to_string(p.link).c_str()));JS_SetPropertyStr(c,corner,"linkEnd",Vec(c,p.linkEnd));JS_SetPropertyUint32(c,corners,i++,corner);}JS_SetPropertyStr(c,v,"corners",corners);auto areas=JS_NewArray(c);i=0;for(auto id:path.areas)JS_SetPropertyUint32(c,areas,i++,JS_NewUint32(c,id));JS_SetPropertyStr(c,v,"areas",areas);return v;};
+    auto navFilter=[&](JSValueConst options,NavigationFilter& f){const auto& config=world.Navigation().Configuration();auto p=JS_GetPropertyStr(c,options,"profile");if(!JS_IsUndefined(p)){if(JS_IsString(p)){auto name=String(c,p);bool found=false;for(auto [id,profile]:config.profiles)if(profile.name==name){f.profile=id;found=true;}if(!found){JS_FreeValue(c,p);return false;}}else if(JS_ToUint32(c,&f.profile,p)!=0){JS_FreeValue(c,p);return false;}}JS_FreeValue(c,p);if(!config.profiles.count(f.profile))return false;
+        for(auto entry:{std::pair<const char*,CategoryMask*>{"includeAreas",&f.include},{"excludeAreas",&f.exclude}}){auto list=JS_GetPropertyStr(c,options,entry.first);if(!JS_IsUndefined(list)){if(!JS_IsArray(list)){JS_FreeValue(c,list);return false;}auto len=JS_GetPropertyStr(c,list,"length");uint32_t n=0;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);*entry.second=0;if(n>62){JS_FreeValue(c,list);return false;}for(uint32_t i=0;i<n;++i){auto v=JS_GetPropertyUint32(c,list,i);int id=config.areas.Find(String(c,v));JS_FreeValue(c,v);if(id<0){JS_FreeValue(c,list);return false;}*entry.second|=CategoryBit(id);}}JS_FreeValue(c,list);}
+        auto costs=JS_GetPropertyStr(c,options,"costs");if(!JS_IsUndefined(costs)){if(!JS_IsObject(costs)){JS_FreeValue(c,costs);return false;}for(auto [id,name]:config.areas.names){auto v=JS_GetPropertyStr(c,costs,name.c_str());if(!JS_IsUndefined(v)){double value;if(JS_ToFloat64(c,&value,v)!=0||!std::isfinite(value)||value<1||value>1e6){JS_FreeValue(c,v);JS_FreeValue(c,costs);return false;}f.costs[id]=float(value);}JS_FreeValue(c,v);}}JS_FreeValue(c,costs);return true;};
+    if(op=="navSample"||op=="navPath"||op=="navRaycast"){
+        glm::vec3 a,b;NavigationFilter f;if(!ReadVec(c,arg(1),a)||!navFilter(arg(3),f))return JS_ThrowTypeError(c,"invalid navigation point/filter");
+        if(op!="navSample"&&!ReadVec(c,arg(2),b))return JS_ThrowTypeError(c,"invalid navigation endpoint");
+        if(op=="navPath")return navPath(world.Navigation().FindPath(a,b,f));
+        std::optional<NavigationLocation> location;if(op=="navSample"){double range;if(JS_ToFloat64(c,&range,arg(2))!=0||!std::isfinite(range)||range<=0||range>100)return JS_ThrowTypeError(c,"invalid sample range");location=world.Navigation().Sample(a,float(range),f);}else location=world.Navigation().Raycast(a,b,f);if(!location)return JS_NULL;auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"position",Vec(c,location->position));JS_SetPropertyStr(c,result,"surfaceId",JS_NewString(c,std::to_string(location->surface).c_str()));JS_SetPropertyStr(c,result,"area",JS_NewUint32(c,location->area));return result;
+    }
+    if(op=="navAreas"||op=="navProfiles"||op=="navErrors"){auto result=JS_NewArray(c);uint32_t i=0;const auto& config=world.Navigation().Configuration();if(op=="navErrors"){for(auto [id,error]:world.Navigation().Errors()){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"entityId",JS_NewString(c,std::to_string(id).c_str()));JS_SetPropertyStr(c,v,"message",JS_NewString(c,error.c_str()));JS_SetPropertyUint32(c,result,i++,v);}}else if(op=="navAreas"){for(auto [id,name]:config.areas.names){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"id",JS_NewUint32(c,id));JS_SetPropertyStr(c,v,"name",JS_NewString(c,name.c_str()));JS_SetPropertyUint32(c,result,i++,v);}}else for(auto [id,p]:config.profiles){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"id",JS_NewUint32(c,id));JS_SetPropertyStr(c,v,"name",JS_NewString(c,p.name.c_str()));JS_SetPropertyStr(c,v,"radius",JS_NewFloat64(c,p.radius));JS_SetPropertyStr(c,v,"height",JS_NewFloat64(c,p.height));JS_SetPropertyUint32(c,result,i++,v);}return result;}
     if(op=="joint"||op=="jointValid"||op=="jointState"||op=="jointSet") {
         uint64_t id=0;try{const auto text=String(c,arg(1));size_t end;id=std::stoull(text,&end);if(end!=text.size())id=0;}catch(...){id=0;}
         if(op=="joint"){auto h=world.RuntimeJoint(id);return h.IsValid()?JS_NewString(c,std::to_string(h.id).c_str()):JS_NULL;}
@@ -458,6 +494,19 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     const auto* definition=world.RuntimeDefinition(id);
     if(op=="valid")return JS_NewBool(c,definition!=nullptr);
     if(!definition)return JS_ThrowReferenceError(c,"stale or invalid entity %llu",(unsigned long long)id);
+    if(op=="navEnabled"){if(!JS_IsBool(arg(3)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.SetNavigationEnabled(id,String(c,arg(2)),JS_ToBool(c,arg(3))));}
+    if(op=="navObstacleInfo"){if(!definition->navigationObstacle)return JS_NULL;const auto& n=*definition->navigationObstacle;auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"enabled",JS_NewBool(c,n.enabled));JS_SetPropertyStr(c,v,"cylinder",JS_NewBool(c,n.cylinder));JS_SetPropertyStr(c,v,"halfExtents",Vec(c,n.halfExtents));JS_SetPropertyStr(c,v,"radius",JS_NewFloat64(c,n.radius));JS_SetPropertyStr(c,v,"height",JS_NewFloat64(c,n.height));return v;}
+    if(op=="navLinkInfo"){if(!definition->navigationLink)return JS_NULL;const auto& n=*definition->navigationLink;auto t=world.PresentedTransform(id,definition->transform,1);auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"enabled",JS_NewBool(c,n.enabled));JS_SetPropertyStr(c,v,"bidirectional",JS_NewBool(c,n.bidirectional));JS_SetPropertyStr(c,v,"start",Vec(c,t.position+t.rotation*n.start));JS_SetPropertyStr(c,v,"end",Vec(c,t.position+t.rotation*n.end));JS_SetPropertyStr(c,v,"area",JS_NewUint32(c,n.area));return v;}
+    if(op=="navAgentExists")return JS_NewBool(c,definition->navigationAgent.has_value());
+    if(op=="navAgentState"||op=="navDestination"||op=="navClear"||op=="navStopped"||op=="navCompleteLink"||op=="navConfigure"){
+        if(!definition->navigationAgent)return JS_ThrowTypeError(c,"entity has no navigation agent");
+        if(definition->navigationAgent->enabled)world.Navigation().RegisterAgent(id);
+        auto* a=world.Navigation().Agent(id);if(!a||!definition->navigationAgent->enabled)return JS_ThrowReferenceError(c,"disabled/unregistered navigation agent");
+        if(op=="navDestination"){glm::vec3 v;if(!ReadVec(c,arg(2),v))return JS_ThrowTypeError(c,"finite destination required");return JS_NewBool(c,world.Navigation().SetDestination(id,v));}
+        if(op=="navClear"){world.Navigation().ClearDestination(id);return JS_TRUE;}if(op=="navStopped"){if(!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"boolean required");a->stopped=JS_ToBool(c,arg(2));return JS_TRUE;}if(op=="navCompleteLink")return JS_NewBool(c,world.Navigation().CompleteLink(id));
+        if(op=="navConfigure"){NavigationFilter f;f.profile=definition->navigationAgent->profile;f.include=definition->navigationAgent->areas;f.costs=definition->navigationAgent->costs;if(!navFilter(arg(2),f))return JS_ThrowTypeError(c,"invalid navigation filter");auto config=*definition->navigationAgent;config.profile=f.profile;config.areas=f.include&~f.exclude;config.costs=f.costs;for(auto field:{std::pair<const char*,float*>{"speed",&config.speed},{"arrival",&config.arrival},{"repathSeconds",&config.repathSeconds}}){auto v=JS_GetPropertyStr(c,arg(2),field.first);bool present=!JS_IsUndefined(v);JS_FreeValue(c,v);if(present&&!Number(c,arg(2),field.first,*field.second))return JS_ThrowTypeError(c,"invalid navigation setting");}auto v=JS_GetPropertyStr(c,arg(2),"avoidance");if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"boolean required");}config.avoidance=JS_ToBool(c,v);}JS_FreeValue(c,v);SceneObject check;check.navigationAgent=config;std::string error;if(!ValidateNavigationComponents(check,error))return JS_ThrowTypeError(c,"%s",error.c_str());world.SetNavigationAgentSettings(id,config);return JS_TRUE;}
+        auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"stopped",JS_NewBool(c,a->stopped));JS_SetPropertyStr(c,result,"hasDestination",JS_NewBool(c,a->hasDestination));JS_SetPropertyStr(c,result,"destination",Vec(c,a->destination));JS_SetPropertyStr(c,result,"steering",Vec(c,a->steering));JS_SetPropertyStr(c,result,"remainingDistance",JS_NewFloat64(c,a->remaining));JS_SetPropertyStr(c,result,"reached",JS_NewBool(c,a->hasDestination&&a->path.status==NavigationPath::Status::Complete&&a->remaining<=definition->navigationAgent->arrival));JS_SetPropertyStr(c,result,"nextCorner",a->corner<a->path.corners.size()?Vec(c,a->path.corners[a->corner].position):JS_NULL);JS_SetPropertyStr(c,result,"onLink",JS_NewBool(c,a->onLink));JS_SetPropertyStr(c,result,"linkId",JS_NewString(c,std::to_string(a->onLink&&a->corner<a->path.corners.size()?a->path.corners[a->corner].link:0).c_str()));JS_SetPropertyStr(c,result,"linkEnd",Vec(c,a->onLink&&a->corner<a->path.corners.size()?a->path.corners[a->corner].linkEnd:glm::vec3(0)));JS_SetPropertyStr(c,result,"path",navPath(a->path));return result;
+    }
     if(op.rfind("ragdoll",0)==0){
         if(op=="ragdollExists")return JS_NewBool(c,definition->ragdoll.has_value());
         if(!definition->ragdoll)return JS_ThrowTypeError(c,"entity has no ragdoll mapping");

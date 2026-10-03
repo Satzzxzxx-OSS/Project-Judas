@@ -43,7 +43,7 @@ export default class {
   scene.Find(10)->scripts.push_back({99,probe.id,true,"{}"});window.Input().SetMap(project.Settings().input,error);
   RuntimeWorld world;world.legacyGameplay=false;GameSession game;
   world.SetSceneControl(std::make_shared<SceneSession>(project,flight?project.Resolve("Scenes/flight.judas"):project.StartupScenePath()));
-  Check(world.Build(scene,&host.Resources(),error,&project.Settings().classification)&&game.Begin(world,error),"ordinary runtime builds");if(failures){std::puts(error.c_str());return 1;}
+  Check(world.Build(scene,&host.Resources(),error,&project.Settings().classification,&project.Settings().navigation)&&game.Begin(world,error),"ordinary runtime builds");if(failures){std::puts(error.c_str());return 1;}
   auto update=[&](){world.UpdateScripts(&window.Input(),1.f/60);};
   auto fixed=[&](){window.Input().BeginFixedStep();StepPlayedWorld(game,window,1.f/60);window.Input().BeginFrame();};
   auto probeState=[&](){for(const auto& s:world.Scripts()->Capture())if(s.entity==10&&s.slot==99)return s.json;return std::string{};};
