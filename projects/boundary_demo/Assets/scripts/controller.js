@@ -19,7 +19,7 @@ export default class {
    this.hud.get('pause_options').text='Workshop / flight / planet / pool';}
   this.camera();
  }
- camera(){if(this.rules.camera())return;const t=this.entity.transform;const rotation=qm(qm(t.rotation,axis({x:0,y:1,z:0},this.state.yaw)),axis({x:1,y:0,z:0},this.state.pitch));
+ camera(presented=false){if(this.rules.camera(presented))return;const t=presented?this.entity.presentedTransform:this.entity.transform;const rotation=qm(qm(t.rotation,axis({x:0,y:1,z:0},this.state.yaw)),axis({x:1,y:0,z:0},this.state.pitch));
   const eye=add(t.position,rotate(t.rotation,{x:0,y:.7,z:0}));
   world.setView({position:this.rules.third?add(eye,rotate(rotation,{x:0,y:1,z:4})):eye,rotation},70);}
  update(dt){if(!this.props.controlled)return;if(this.hud?.modal)return;
@@ -28,8 +28,9 @@ export default class {
   if(input.pressed('motor_flat'))scenes.load('Scenes/flat.judas');if(input.pressed('motor_planet'))scenes.load('Scenes/planet.judas');if(input.pressed('motor_pool'))scenes.load('Scenes/pool.judas');
   this.rules.update();
   if(input.pressed('spawn')){const t=this.entity.transform;t.position=add(t.position,rotate(t.rotation,{x:2,y:1,z:-2}));world.spawnPrefab('49494949494949494949494949494903',t);}
-  if(input.pressed('reset'))scenes.reload();this.camera();
+  if(input.pressed('reset'))scenes.reload();
  }
+ presentationUpdate(){if(this.props.controlled)this.camera(true);}
  fixedUpdate(dt){if(this.props.controlled&&this.rules.fixedUpdate(dt))return;const motor=this.entity.character;if(!motor)return;this.elapsed+=dt;
   const state=motor.state,up=motor.up,pose=this.entity.transform;
   const heading=qm(pose.rotation,axis({x:0,y:1,z:0},this.state.yaw));

@@ -31,6 +31,7 @@ export class Entity {
  constructor(id){this.id=String(id)}
  get valid(){return call('valid',this.id)}
  get transform(){return call('transform',this.id)}
+ get presentedTransform(){return call('presentedTransform',this.id)}
  set transform(value){call('setTransform',this.id,value)}
  get parent(){return entity(call('parent',this.id))}
  get children(){return call('children',this.id).map(entity)}
@@ -49,6 +50,7 @@ export class Entity {
  scriptState(slot){return call('scriptState',this.id,slot)}
  applyForce(value){call('force',this.id,value)}
  applyImpulse(value){call('impulse',this.id,value)}
+ applyImpulseAtPoint(impulse,point){call('impulseAtPoint',this.id,impulse,point)}
  applyTorque(value){call('torque',this.id,value)}
  get mass(){return call('mass',this.id)}
  get inertiaWorld(){return call('inertiaWorld',this.id)}
@@ -176,6 +178,7 @@ struct ScriptSystem::Impl {
     std::map<std::string,JSModuleDef*> modules;
     std::vector<ScriptDiagnostic> diagnostics;
     const InputSystem* input=nullptr;bool fixed=false;float delta=0;
+    bool inPresentation=false;float presentationAlpha=1;
     bool hasView=false;glm::vec3 viewOrigin{0},viewDirection{0};
     unsigned budget=10000,polls=0;bool stopping=false;SceneObjectId currentOwner=0;std::uint64_t currentSlot=0;
     std::map<std::pair<SceneObjectId,std::uint64_t>,std::string> restored;
@@ -254,8 +257,8 @@ struct ScriptSystem::Impl {
         auto json=JS_JSONStringify(ctx,value,JS_UNDEFINED,JS_UNDEFINED);if(JS_IsException(json)){error=Exception(ctx);return false;}text=String(ctx,json);JS_FreeValue(ctx,json);
         if(text.size()>65536){error="state exceeds 64KiB";return false;}return true;
     }
-    void Callback(Instance& i,const char* name){if(i.fault)return;currentOwner=i.entity;currentSlot=i.slot.id;polls=0;auto fn=JS_GetPropertyStr(ctx,i.value,name);
-        if(JS_IsException(fn)){Error(i,name);return;}if(JS_IsFunction(ctx,fn)){auto dt=JS_NewFloat64(ctx,delta);auto result=JS_Call(ctx,fn,i.value,1,&dt);if(JS_IsException(result))Error(i,name);else if(JS_PromiseState(ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(ctx,"async gameplay callbacks are unsupported");Error(i,name);}JS_FreeValue(ctx,result);}JS_FreeValue(ctx,fn);
+    void Callback(Instance& i,const char* name,bool presentation=false){if(i.fault)return;currentOwner=i.entity;currentSlot=i.slot.id;polls=0;auto fn=JS_GetPropertyStr(ctx,i.value,name);
+        if(JS_IsException(fn)){Error(i,name);return;}if(JS_IsFunction(ctx,fn)){JSValue args[]={JS_NewFloat64(ctx,delta),JS_NewFloat64(ctx,presentationAlpha)};auto result=JS_Call(ctx,fn,i.value,presentation?2:1,args);if(JS_IsException(result))Error(i,name);else if(JS_PromiseState(ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(ctx,"async gameplay callbacks are unsupported");Error(i,name);}JS_FreeValue(ctx,result);}JS_FreeValue(ctx,fn);
     }
     void Stop(){if(stopping)return;stopping=true;std::vector<Instance*> order;
         for(auto& entry:instances)order.push_back(&entry.second);
@@ -523,7 +526,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(op=="parent")return JS_NewString(c,std::to_string(definition->parent).c_str());
     if(op=="children"){std::vector<EntityId> result;for(const auto& o:world.ScriptObjects())if(o.parent==id)result.push_back(o.id);return ids(result);}
     if(op=="destroy"){std::string error;if(!world.DestroyHierarchy(id,error))return JS_ThrowTypeError(c,"destroy: %s",error.c_str());return JS_TRUE;}
-    if(op=="transform"){auto t=world.PresentedTransform(id,definition->transform,1);auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"position",Vec(c,t.position));JS_SetPropertyStr(c,result,"scale",Vec(c,t.scale));auto q=Vec(c,{t.rotation.x,t.rotation.y,t.rotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,t.rotation.w));JS_SetPropertyStr(c,result,"rotation",q);return result;}
+    if(op=="transform"||op=="presentedTransform"){auto t=world.PresentedTransform(id,definition->transform,op=="presentedTransform"&&s->inPresentation?s->presentationAlpha:1);auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"position",Vec(c,t.position));JS_SetPropertyStr(c,result,"scale",Vec(c,t.scale));auto q=Vec(c,{t.rotation.x,t.rotation.y,t.rotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,t.rotation.w));JS_SetPropertyStr(c,result,"rotation",q);return result;}
     if(op=="setTransform"){auto t=world.PresentedTransform(id,definition->transform,1);if(!readTransform(arg(2),t)||!world.SetRuntimeTransform(id,t))return JS_ThrowTypeError(c,"invalid transform");return JS_TRUE;}
     if(op=="hasTag"||op=="addTag"||op=="removeTag"){auto tag=world.Categories().tags.Find(String(c,arg(2)));if(tag<0)return JS_ThrowTypeError(c,"unknown tag");return JS_NewBool(c,op=="hasTag"?world.HasTag(id,tag):op=="addTag"?world.AddTag(id,tag):world.RemoveTag(id,tag));}
     if(op=="classification"){auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"renderLayer",JS_NewUint32(c,world.RenderLayerOf(id)));unsigned layer=0;CategoryMask mask=0;world.Physics().GetCollisionFilter(world.RuntimeBody(id),layer,mask);JS_SetPropertyStr(c,o,"collisionLayer",JS_NewUint32(c,layer));JS_SetPropertyStr(c,o,"collisionMask",JS_NewString(c,std::to_string(mask).c_str()));return o;}
@@ -548,6 +551,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     glm::vec3 v;if(!ReadVec(c,arg(2),v))return JS_ThrowTypeError(c,"invalid vector");
     if(op=="force")world.Physics().ApplyForce(body,v);
     else if(op=="impulse")world.Physics().ApplyLinearImpulse(body,v);
+    else if(op=="impulseAtPoint"){glm::vec3 point;if(!ReadVec(c,arg(3),point))return JS_ThrowTypeError(c,"invalid impulse point");world.Physics().ApplyImpulseAtPoint(body,v,point);}
     else if(op=="torque")world.Physics().ApplyTorque(body,v);
     else if(op=="setVelocity")world.Physics().SetLinearVelocity(body,v);
     else if(op=="setAngularVelocity")world.Physics().SetAngularVelocity(body,v);
@@ -695,4 +699,17 @@ void ScriptSystem::PhysicsEvent(SceneObjectId self,SceneObjectId other,const Phy
 void ScriptSystem::SetView(const glm::mat4& view) {
     m->CheckThread();auto inverse=glm::inverse(view);m->viewOrigin=glm::vec3(inverse[3]);
     m->viewDirection=-glm::vec3(inverse[2]);m->hasView=true;
+}
+
+void ScriptSystem::Presentation(const InputSystem* input,float dt,float alpha){
+    m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
+    m->presentationAlpha=std::clamp(alpha,0.f,1.f);m->inPresentation=true;
+    for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){
+        auto it=m->instances.find({o.id,slot.id});
+        if(it==m->instances.end()||!m->world->RuntimeDefinition(o.id))continue;
+        auto& instance=it->second;
+        if(!instance.started){instance.started=true;m->Callback(instance,"start");}
+        m->Callback(instance,"presentationUpdate",true);
+    }
+    m->inPresentation=false;
 }

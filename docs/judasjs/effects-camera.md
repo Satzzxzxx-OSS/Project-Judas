@@ -44,6 +44,10 @@ between 1 and 179. Rotation normalizes; invalid pose/FOV throws. Scale is not vi
 projection. `clearView()` restores the compatibility main-view path. Both return
 true. This view is world-owned and clears on reset/destruction. It does not move a
 motor or create another simulation. Scripts choose camera behaviour separately.
+For a moving-body/motor camera, publish in `presentationUpdate` from
+`entity.presentedTransform`, keeping position/orientation on the renderer's
+interpolated timeline. Read look input in `update` and preserve authoritative
+`transform` for physics queries. See [lifecycle](lifecycle.md).
 
 `world.viewRay` is `{origin,direction}` from the latest view passed to ScriptSystem,
 or null before any. It can lag rendered/input state; it is not a recomputed ray

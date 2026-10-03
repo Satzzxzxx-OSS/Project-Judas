@@ -1,19 +1,22 @@
-# JudasJS — current API reference (M51)
+# JudasJS — current API reference (M52)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M51, based on
-M50 checkpoint `74da7b534831d7cb7043ed1c02970283f7078daf`. It is not an
+This reference describes the public virtual `judas` module through M52, based on
+M51 checkpoint `73698d1a1f928c7210679e58fdb5259d2a196c7b`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
 and pointer capture intent; see [engine/game boundary](M51_ENGINE_BOUNDARY.md).
+M52 exposes the existing generic impulse-at-point body operation and render pose
+through `Entity.presentedTransform` / `presentationUpdate(dt, alpha)`; the
+[Spring Range project](M52_SHOOTER_GAME.md) implements all shooting/score rules in JS.
 
 ## Find an API
 
 | Topic | Reference |
 |---|---|
-| Imports, properties, start/update/fixedUpdate/uiUpdate/destroy | [Lifecycle](judasjs/lifecycle.md) |
+| Imports, properties, start/update/fixedUpdate/presentationUpdate/uiUpdate/destroy | [Lifecycle](judasjs/lifecycle.md) |
 | Entity, transform, tags, spawnPrefab | [Entities/prefabs](judasjs/entities.md) |
 | input, time, console | [Input/time](judasjs/input.md) |
 | physics.raycast/sphereCast/capsuleCast/boxCast, Joint, contacts/triggers | [Physics](judasjs/physics.md) |
@@ -40,7 +43,8 @@ and pointer capture intent; see [engine/game boundary](M51_ENGINE_BOUNDARY.md).
 ## Important boundaries
 
 Use fixedUpdate for authoritative movement/physics, frame updates for relative
-mouse/presentation, uiUpdate for menus while paused. Worlds have fixed local
+mouse input, presentationUpdate for render-following poses/cameras, and uiUpdate
+for menus while paused. Worlds have fixed local
 float coordinates with a double absolute origin; no automatic live rebasing or
 universal world up. Tags, collision layers and render layers are distinct.
 Read returned snapshots; assign updates through explicit APIs. Safe wrappers do

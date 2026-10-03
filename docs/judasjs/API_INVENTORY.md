@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M51 review of the registered virtual module based on M50 checkpoint `74da7b534831d7cb7043ed1c02970283f7078daf`.
+M52 review of the registered virtual module based on M51 checkpoint `73698d1a1f928c7210679e58fdb5259d2a196c7b`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -45,6 +45,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.animation` | `animationExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.applyForce` | `force` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.applyImpulse` | `impulse` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.applyImpulseAtPoint` | `impulseAtPoint` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.applyTorque` | `torque` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.audio` | `audioInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.burst` | `burst` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -61,6 +62,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.parent` | `parent` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.pauseAudio` | `pauseAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.playAudio` | `playAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.presentedTransform` | `presentedTransform` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.ragdoll` | `ragdollExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.removeTag` | `removeTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.resumeAudio` | `resumeAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -155,7 +157,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 
 ## Lifecycle and dynamic exceptions
 
-`start`, `update`, `fixedUpdate`, `uiUpdate`, `destroy`, `onUI`, `onCollisionEnter`, `onCollisionStay`, `onCollisionExit`, `onTriggerEnter`, `onTriggerStay`, `onTriggerExit` are structural ScriptBehaviour callbacks, not module exports.
+`start`, `update`, `fixedUpdate`, `uiUpdate`, `presentationUpdate`, `destroy`, `onUI`, `onCollisionEnter`, `onCollisionStay`, `onCollisionExit`, `onTriggerEnter`, `onTriggerStay`, `onTriggerExit` are structural ScriptBehaviour callbacks, not module exports.
 
 - **globalThis.__judas**: Internal native dispatcher; unsupported, not a public API declaration.
 - **globalThis.console**: Alias of exported console; no extra API.

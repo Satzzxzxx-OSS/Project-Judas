@@ -13,7 +13,8 @@ can exceed safe JS integers. `new Entity(id)` also exists but does not test vali
 | Member | Arguments / result / behaviour |
 |---|---|
 | `id`, `valid` | String identity; validity resolves the current world's definition and returns false after destruction. |
-| `transform` | Read detached `{position,rotation,scale}`; assign a partial object to update selected fields. World transforms in fixed-origin local simulation coordinates. |
+| `presentedTransform` | Readonly detached world transform: render interpolation during `presentationUpdate`, authoritative current pose in other callbacks. Same validity/coordinate rules as `transform`. |
+| `transform` | Read authoritative detached `{position,rotation,scale}`; assign a partial object to update selected fields. World transforms in fixed-origin local simulation coordinates. |
 | `parent`, `children` | Safe wrapper/null; immediate authored/runtime children, ascending entity ID. |
 | `destroy()` | Destroy hierarchy, true or throws on failure. Stale owner throws, not an idempotent no-op. |
 | `setColliderEnabled(bool)` | Enable/disable existing body; boolean success, false when absent. |
@@ -21,9 +22,15 @@ can exceed safe JS integers. `new Entity(id)` also exists but does not test vali
 | `classification` | Detached `{renderLayer,collisionLayer,collisionMask}`. Layer IDs are numeric, 64-bit mask is a decimal string. No JS classification setters exist. |
 | `scriptState(slot)` | Detached bounded JSON copy of another slot's state; null when absent/faulted. Invalid slot/state throws. |
 | `velocity`, `angularVelocity` | Read/write dynamic-body world-space m/s and rad/s; missing/static body throws. Character velocity is instead on `.character`. |
-| `applyForce(v)`, `applyImpulse(v)`, `applyTorque(v)` | N, N·s, N·m; world-space, existing dynamic body required. Return undefined. No application-point JS overload. |
+| `applyForce(v)`, `applyImpulse(v)`, `applyTorque(v)` | N, N·s, N·m; world-space, existing dynamic body required. Return undefined. `applyImpulseAtPoint(impulse, point)` applies world-space N·s at a world-space point in metres through the existing rigid-body operation (M52). It produces both linear and angular motion; stale/missing/static body throws, and invalid vectors throw before mutation. |
 | `audio`, `animation`, `ragdoll`, `character`, `camera` | Component facades/snapshots or null when component absent; see subsystem pages. Stale entity usually throws; `.character` specifically returns null. |
 | `playAudio/stopAudio/pauseAudio/resumeAudio`, `setAudioEnabled`, `burst`, `setParticles`, `setCameraEnabled` | See [effects/cameras](effects-camera.md). |
+
+Use `transform` for physics intent, shooting and game rules. Use `presentedTransform`
+in [presentationUpdate](lifecycle.md#callbacks-and-order) for cameras and body-free
+cosmetic followers. It reuses motor/body interpolation, including orientation and
+authored visual-child hierarchy. It does not advance simulation or interpolate
+arbitrary script teleports. Never assign a presented pose back to a physical body.
 
 Returned transforms/vectors are snapshots. `e.transform.position.x += 1` only
 edits the temporary object. Assign it back, e.g. `const t=e.transform;

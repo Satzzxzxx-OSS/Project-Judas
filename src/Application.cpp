@@ -118,6 +118,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     if (options.IsTestRun()) {
         // A harness screenshot shows exactly what the real game renders.
         const auto drawScene = [&](Renderer& r, float alpha) {
+            world.PresentationScripts(&window.Input(),0.f,alpha);
             r.SetLighting(glm::normalize(world.Settings().sunDirection), world.Settings().sunColor,
                           world.Settings().ambientColor);
             UpdateFluidSurface(r, world, alpha);

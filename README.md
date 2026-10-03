@@ -1446,3 +1446,8 @@ It composes queries/tags, physical joints, force-driven holding/throwing,
 spacecraft control, CharacterMotor, cameras, authored UI and scene loading in
 project JavaScript. See [M51 workflow/controls](docs/M51_ENGINE_BOUNDARY.md) and
 [the source-backed boundary audit](docs/evidence/m51/AUDIT.md).
+
+## Spring Range (M52)
+
+A small ordinary JudasJS shooting-range game: [project and controls](projects/shooter_game/README.md), [architecture and candidate results](docs/M52_SHOOTER_GAME.md).
+All movement/camera/shooting/score/menu policy is project JavaScript; the only native addition exposes the existing generic impulse-at-point operation.

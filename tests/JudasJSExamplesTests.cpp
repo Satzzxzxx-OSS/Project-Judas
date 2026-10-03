@@ -15,7 +15,7 @@ void Check(bool ok,const std::string& label){++checks;failures+=!ok;std::printf(
 int main(int argc,char** argv){
  fs::path out=argc>1?argv[1]:"build/m50-results";fs::create_directories(out);std::string only=argc>2?argv[2]:"";
  std::string error;EngineHost host;Check(host.Init("M50 cookbook",640,360,false,error),"real EngineHost");if(failures)return 1;host.Audio().Init(error,true);
- const char* names[]={"surface","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
+ const char* names[]={"surface","presentation","impulse-point","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
  for(auto name:names){if(!only.empty()&&only!=name)continue;
   std::string n=name,project=n=="audio"?"script_demo":n=="joint"?"joint_demo":n=="animation"||n=="ragdoll"?"ragdoll_demo":"character_demo";
   auto root=fs::absolute(fs::path("build/m50-examples")/n);fs::remove_all(root);fs::create_directories(root);fs::copy("projects/"+project,root,fs::copy_options::recursive);
@@ -46,13 +46,15 @@ int main(int argc,char** argv){
    if(n=="ui"&&frame==2){auto h=world.UI().Find("example_hud");world.UI().Layout(640,360);auto* layout=world.UI().LayoutOf(h,"start");
     if(layout){auto point=layout->rect.position+layout->rect.size*.5f;window.Input().SetPhysical("mouse:Left",1);world.UI().Input(window.Input(),point,true,640,360);window.Input().BeginFrame();window.Input().SetPhysical("mouse:Left",0);world.UI().Input(window.Input(),point,true,640,360);world.DispatchUIEvents(&window.Input(),1.f/60);}}
    StepPlayedWorld(game,window,1.f/60);if(n=="character")window.Input().SetPhysical("key:Space",0);
-   world.UpdateAudio(glm::mat4(1));resources.WaitForAll();
+   world.PresentationScripts(&window.Input(),1.f/60,.5f);world.UpdateAudio(glm::mat4(1));resources.WaitForAll();
   }
   Check(world.Scripts()&&world.Scripts()->Diagnostics().empty(),n+" real VM callbacks without faults");
   std::string state;for(const auto& s:world.Scripts()->Capture())if(s.entity==owner&&s.slot==1)state=s.json;
   std::printf("EXAMPLE %s %s\n",name,state.c_str());std::ofstream(out/(n+".json"))<<state;
   auto yes=[&](const char* key){return state.find(std::string("\"")+key+"\":true")!=std::string::npos;};
   bool ok=n=="surface"?state.find("Entity.destroy")!=std::string::npos:
+   n=="presentation"?yes("synchronized")&&yes("frameMode")&&state.find("\"calls\":100")!=std::string::npos:
+   n=="impulse-point"?yes("angular")&&yes("rejectsInvalid")&&yes("linear")&&yes("unchanged"):
    n=="physical-control"?yes("capture")&&state.find("\"mass\":40")!=std::string::npos:
    n=="minimal"?state.find("\"started\":1")!=std::string::npos&&state.find("\"steps\":100")!=std::string::npos:
    n=="input-motion"?yes("moved"):n=="spawn"?yes("spawned"):n=="queries"?yes("ray")&&yes("shape"):

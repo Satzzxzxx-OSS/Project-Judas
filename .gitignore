@@ -18,3 +18,6 @@ saves/
 
 # Milestone 30: per-project world-state deltas
 projects/*/Saves/*.judasstate
+
+# Imported meshes are project content, not compiler object files.
+!projects/*/Assets/**/*.obj

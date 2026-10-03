@@ -103,3 +103,8 @@ void RuntimeWorld::SynchronizeJoints(){
     }
 }
 JointHandle RuntimeWorld::RuntimeJoint(EntityId owner){SynchronizeJoints();auto it=m_runtimeJoints.find(owner);return it==m_runtimeJoints.end()?JointHandle{}:it->second;}
+
+void RuntimeWorld::PresentationScripts(const InputSystem* input,float dt,float alpha){
+    // Downstream of fixed simulation; reuse the renderer's existing pose history.
+    if(m_scripts)m_scripts->Presentation(input,dt,alpha);
+}

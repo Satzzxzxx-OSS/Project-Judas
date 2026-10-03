@@ -1019,3 +1019,16 @@ target_compile_options(judasjs_examples_tests PRIVATE -Wall -Wextra)
 add_executable(judas_boundary_migration_tests tests/BoundaryMigrationTests.cpp)
 target_link_libraries(judas_boundary_migration_tests PRIVATE judas_engine)
 target_compile_options(judas_boundary_migration_tests PRIVATE -Wall -Wextra)
+
+# M52 executes the ordinary JS game against production physics and runtime systems.
+add_executable(judas_shooter_game_tests tests/ShooterGameTests.cpp)
+target_link_libraries(judas_shooter_game_tests PRIVATE judas_engine)
+target_compile_options(judas_shooter_game_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_shooter_application_tests tests/ShooterApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_shooter_application_tests PRIVATE judas_engine)
+target_compile_options(judas_shooter_application_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_script_presentation_tests tests/ScriptPresentationTests.cpp)
+target_link_libraries(judas_script_presentation_tests PRIVATE judas_engine)
+target_compile_options(judas_script_presentation_tests PRIVATE -Wall -Wextra)

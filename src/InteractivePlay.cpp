@@ -189,6 +189,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     // How far real time has progressed into an as-yet-unsimulated fixed
     // step — the presentation interpolation factor (M6).
     const float presentationAlpha = m_physicsAccumulator / SimulationTiming::kFixedTimestep;
+    world.PresentationScripts(&window.Input(),frameDeltaTime,presentationAlpha);
     const auto surfaceStart = Clock::now();
     UpdateFluidSurface(renderer, world, presentationAlpha);
     m_lastSurfaceMilliseconds = MillisecondsSince(surfaceStart);

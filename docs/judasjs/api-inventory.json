@@ -1,5 +1,5 @@
 {
-  "checkpoint": "74da7b534831d7cb7043ed1c02970283f7078daf",
+  "checkpoint": "73698d1a1f928c7210679e58fdb5259d2a196c7b",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -401,6 +401,17 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.applyImpulseAtPoint",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "impulseAtPoint"
+      ],
+      "type": "docs/judas.d.ts:Entity.applyImpulseAtPoint",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
       "symbol": "Entity.applyTorque",
       "kinds": [
         "call"
@@ -570,6 +581,17 @@
         "playAudio"
       ],
       "type": "docs/judas.d.ts:Entity.playAudio",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.presentedTransform",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "presentedTransform"
+      ],
+      "type": "docs/judas.d.ts:Entity.presentedTransform",
       "reference": "docs/judasjs/entities.md"
     },
     {
@@ -1587,6 +1609,7 @@
     "hasTag",
     "held",
     "impulse",
+    "impulseAtPoint",
     "inertiaWorld",
     "joint",
     "jointSet",
@@ -1600,6 +1623,7 @@
     "pauseAudio",
     "playAudio",
     "pointerCapture",
+    "presentedTransform",
     "pressed",
     "queryTags",
     "ragdollActive",
@@ -1645,6 +1669,7 @@
     "update",
     "fixedUpdate",
     "uiUpdate",
+    "presentationUpdate",
     "destroy",
     "onUI",
     "onCollisionEnter",

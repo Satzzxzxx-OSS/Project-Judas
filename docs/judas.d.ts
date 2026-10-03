@@ -1,5 +1,5 @@
-/** Current JudasJS through M51; reviewed against ScriptSystem.cpp based on M50
- * 74da7b534831d7cb7043ed1c02970283f7078daf. Tooling only, no TS runtime.
+/** Current JudasJS through M52; reviewed against ScriptSystem.cpp based on M51
+ * 73698d1a1f928c7210679e58fdb5259d2a196c7b. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
@@ -34,6 +34,8 @@ declare module "judas" {
     id: EntityId;
     readonly valid: boolean;
     get transform(): Transform;
+    /** Render-interpolated world pose in presentationUpdate; authoritative pose otherwise. */
+    readonly presentedTransform: Transform;
     set transform(value: TransformPatch);
     readonly parent: Entity | null;
     readonly children: Entity[];
@@ -52,6 +54,8 @@ declare module "judas" {
     scriptState(slot: string | number): JSONValue;
     applyForce(value: Vec3): void;
     applyImpulse(value: Vec3): void;
+    /** World-space impulse (N s) at a world-space point (metres). */
+    applyImpulseAtPoint(impulse: Vec3, point: Vec3): void;
     applyTorque(value: Vec3): void;
     readonly mass: number;
     readonly inertiaWorld: {x: Vec3; y: Vec3; z: Vec3};
@@ -218,6 +222,8 @@ declare module "judas" {
     update?(dt: number): void;
     fixedUpdate?(dt: number): void;
     uiUpdate?(dt: number): void;
+    /** After fixed steps, before camera/audio/render; alpha is the renderer interpolation fraction. */
+    presentationUpdate?(dt: number, alpha: number): void;
     destroy?(dt: number): void;
     onUI?(event: UIEvent): void;
     onCollisionEnter?(event: ContactEvent): void;

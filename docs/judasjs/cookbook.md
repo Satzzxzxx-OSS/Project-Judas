@@ -42,3 +42,9 @@ Results: [M50 evidence](../evidence/m50/README.md). Human review still matters.
 entity: project damping uses mass/inertia snapshots and requests pointer
 capture. The complete workshop/flight compositions live in
 `projects/boundary_demo/Assets/scripts/rules.js`; no private native calls are used.
+
+M52 adds [impulse at a world point](examples/impulse-point.js): an off-centre impulse through the ordinary body API, with validation before mutation.
+
+M52 [presentation.js](examples/presentation.js) follows a body's/motor's existing
+interpolated world pose in the post-simulation presentation phase; it leaves
+authoritative motion untouched. Attach to a moving body or CharacterMotor.

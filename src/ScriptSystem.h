@@ -22,6 +22,7 @@ public:
     void Frame(const InputSystem* input,float dt);
     void Fixed(const InputSystem* input,float dt);
     void UIFrame(const InputSystem* input,float dt);
+    void Presentation(const InputSystem* input,float dt,float alpha);
     void PhysicsEvent(SceneObjectId self,SceneObjectId other,const PhysicsWorld::TouchEvent& event,bool reverse);
     void UIEvents(const InputSystem* input,float dt);
     void Stop();

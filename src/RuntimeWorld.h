@@ -269,6 +269,7 @@ public:
     // The M25 held-key water source: adds one particle at the next emitter
     // slot if any emitter has capacity. Returns false when none does.
     void UpdateScripts(const InputSystem* input,float dt);
+    void PresentationScripts(const InputSystem* input,float dt,float alpha);
     void DispatchPhysicsEvents(const InputSystem* input,float dt);
     bool SetColliderEnabled(EntityId id,bool enabled);
     void FixedScripts(const InputSystem* input,float dt);

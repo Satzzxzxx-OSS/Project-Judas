@@ -55,6 +55,7 @@ Promise. No async callback/top-level-await scheduler exists.
 | `uiUpdate(dt)` | Each interactive outer frame, including while a modal UI pauses gameplay. |
 | `onUI(event)` | UI input events, before gameplay input; broadcast to live scripts. |
 | `update(dt)` | Active gameplay frame, before that frame's fixed-step catch-up. |
+| `presentationUpdate(dt, alpha)` | After fixed-step catch-up, before the interactive view/audio/world draw. Runs also on zero-step frames and while UI pauses gameplay. Alpha is the same [0,1] interpolation fraction used by rendering; `dt` is outer-frame seconds. |
 | `fixedUpdate(dt)` | Before ordinary fixed-step force/physics advance; zero or several calls per rendered frame. |
 | `onCollisionEnter/Stay/Exit(event)` | Fixed-step authoritative contact delivery after physics/motor/pose publication. |
 | `onTriggerEnter/Stay/Exit(event)` | Same event boundary; sensors generate no physical response. |
@@ -76,11 +77,29 @@ Transitions are requested during callbacks and applied only after the outer
 application frame returns. No world teardown occurs inside `scenes.load()`.
 
 `time.fixed` is true in fixed callbacks and contact delivery; false in frame/UI
-callbacks. Character velocity/acceleration setters enforce fixed mode (contact
+callbacks, including presentation. Character velocity/acceleration setters enforce fixed mode (contact
 callbacks technically qualify too). Prefer submitting intent in `fixedUpdate`;
 contact intent applies after the current motor step. Forces are not phase-guarded,
 but use fixed callbacks to avoid frame-rate-dependent repeated force accumulation.
 Read relative mouse delta in frame updates, not once per catch-up step.
+
+Sample input/look policy in `update`; resolve physics intent in `fixedUpdate`;
+then publish camera/cosmetic transforms in `presentationUpdate` using
+`entity.presentedTransform`. The final phase does not sample another simulation
+step. Motor/rigid-body translation and quaternion orientation share the existing
+previous/current render interpolation. `entity.transform` stays authoritative in
+all phases. This avoids a fixed-step camera following an interpolated model, or
+a model copied before its motor moves. Interpolation intentionally presents up to
+one fixed step behind simulation, as the renderer already does. Cosmetic followers
+should have no physical body; pose writes on bodies are teleports, not rendering.
+Only presentation reads use alpha; fixed queries/forces must use actual physics.
+
+The scripted screenshot harness calls presentation with `dt=0` and its draw alpha;
+standalone and editor Play use the ordinary interactive phase. This callback is
+not a second input/physics update, a smoothing filter or a thread. As with `update`,
+callbacks can call exposed APIs, but fixed-mode motor setters reject this phase.
+Pausing freezes simulation; scripts should avoid advancing visual game timers if
+that is their desired menu policy.
 
 ## Failures and budget
 

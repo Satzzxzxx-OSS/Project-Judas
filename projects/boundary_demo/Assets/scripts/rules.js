@@ -50,5 +50,5 @@ export default class Rules {
   // An explicit seat policy for a non-rigid motor entity, not rigid-body holding.
   this.c.entity.transform={position:add(t.position,rotate(t.rotation,{x:0,y:1,z:0})),rotation:t.rotation};return true;
  }
- camera(){if(!this.craft?.valid)return false;const t=this.craft.transform;world.setView({position:add(t.position,rotate(t.rotation,this.third?{x:0,y:3,z:8}:{x:0,y:1,z:0})),rotation:t.rotation},70);return true;}
+ camera(presented=false){if(!this.craft?.valid)return false;const t=presented?this.craft.presentedTransform:this.craft.transform;world.setView({position:add(t.position,rotate(t.rotation,this.third?{x:0,y:3,z:8}:{x:0,y:1,z:0})),rotation:t.rotation},70);return true;}
 }
