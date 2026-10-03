@@ -20,6 +20,9 @@ bool RuntimeWorld::SetRuntimeTransform(EntityId id,const SceneTransform& t){
     if(!RuntimeDefinition(id))return false;
     if(!std::isfinite(glm::dot(t.position,t.position))||!std::isfinite(glm::dot(t.scale,t.scale))||
        !std::isfinite(glm::dot(t.rotation,t.rotation))||glm::dot(t.rotation,t.rotation)<1e-12f)return false;
+    if(auto it=m_characters.find(id);it!=m_characters.end()){
+        it->second.motor.Reset(t.position,t.rotation);it->second.previous=t;
+    }
     auto transform=t;transform.rotation=glm::normalize(t.rotation);
     auto& definition=m_scriptDefinitions.at(id);definition.transform=transform;
     // Explicit transform writes are teleports, not continuous kinematic motion.

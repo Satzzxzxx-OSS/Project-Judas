@@ -11,6 +11,7 @@
 #include "LightTransforms.h"
 #include "PhysicsWorld.h"
 #include "StepClimb.h"
+#include "CharacterMotor.h"
 #include "Window.h"
 
 namespace {
@@ -69,7 +70,6 @@ constexpr float kCameraHeightOffset = 1.0f;
 // slide the remainder along the surface, repeat a few times. Not a general
 // physics solver — just enough iterations to handle "hit one surface, then
 // slide into a second" without visibly getting stuck.
-constexpr int kMaxSlideIterations = 4;
 constexpr float kSkinMargin = 0.02f;           // stay this far from a surface after moving
 constexpr float kGroundProbeDistance = 0.15f;  // how far past the capsule to look for support
 constexpr float kMinGroundDot = 0.643f;        // cos(~50 degrees): matches Milestone 4's slope limit
@@ -547,7 +547,6 @@ void PlayerController::FixedUpdate(const Window& window, PhysicsWorld& physics,
     // airborne, groundVelocity is exactly zero, so this is unchanged from
     // every milestone before this one.
     glm::vec3 remaining = (m_velocity - groundVelocity) * fixedDeltaTime;
-    float bodyMotionTime = 0.0f;
 
     // Milestone 10: step-up, tried once with the FULL remaining
     // displacement before ordinary move-and-slide runs at all. Only
@@ -570,74 +569,12 @@ void PlayerController::FixedUpdate(const Window& window, PhysicsWorld& physics,
         }
     }
 
-    for (int i = 0; i < kMaxSlideIterations; ++i) {
-        const float remainingLength = glm::length(remaining);
-        if (remainingLength < 1.0e-6f) break;
+    CharacterMotorSettings geometry;
+    geometry.radius=kCapsuleRadius;geometry.halfHeight=kCapsuleHalfHeight;geometry.skin=kSkinMargin;
+    bool collided=false;
+    ResolveCharacterSlide(physics,m_position,m_frameOrientation,remaining,m_velocity,geometry,
+                          nullptr,!isGrounded,true,collided);
 
-        const ShapeSweepHit hit =
-            physics.SweepPlayerShape(m_position, m_frameOrientation, remaining, !isGrounded,
-                                     bodyMotionTime, 1.0f);
-        if (!hit.hit) {
-            m_position += remaining;
-            break;
-        }
-
-        // Milestone 7-A: the player itself is not a physics-engine body
-        // (see the class comment), so contact with a dynamic test object
-        // would otherwise never push it — SweepPlayerShape is a read-only
-        // query, not something the contact solver resolves. This is the
-        // smallest correction that closes that gap: when a move sweep
-        // meets a dynamic body, seed its velocity with the player's own
-        // speed into it (only ever increasing that component, never
-        // slowing the object down or overwriting motion along other axes)
-        // and let the physics engine take over from there via the next
-        // fixed step. Static world geometry is unaffected.
-        if (physics.IsDynamicBody(hit.hitBody)) {
-            const glm::vec3 pushDirection = -hit.normal;
-            const float playerSpeedIntoObject = glm::dot(m_velocity, pushDirection);
-            if (playerSpeedIntoObject > 0.0f) {
-                const glm::vec3 objectVelocity = physics.GetLinearVelocity(hit.hitBody);
-                const float objectSpeedIntoObject = glm::dot(objectVelocity, pushDirection);
-                if (playerSpeedIntoObject > objectSpeedIntoObject) {
-                    physics.SetLinearVelocity(hit.hitBody, objectVelocity + pushDirection *
-                                                      (playerSpeedIntoObject - objectSpeedIntoObject));
-                }
-            }
-        }
-
-        // Ordinarily, travel toward the hit up to just short of it (the
-        // skin margin). But a grounded step's own small inward gravity
-        // nudge (see the vertical-speed integration above) continually
-        // pushes the capsule a hair closer to whatever it's walking on —
-        // over many steps that erodes the skin margin entirely, down to
-        // hit.distance == 0 (shapes already touching). The previous
-        // version of this code clamped travelDistance at a floor of zero
-        // in that case and did nothing further, which — combined with an
-        // unreliable contact normal specifically in the already-touching
-        // case (see SweepPlayerShape's normal computation) — could leave
-        // the capsule stuck at exactly zero clearance indefinitely, no
-        // longer making any forward progress at all. Restoring the margin
-        // directly (moving back out along the now-reliable normal) instead
-        // of merely refusing to move closer keeps clearance in a small
-        // band near kSkinMargin instead of letting it erode to zero. See
-        // docs/ARCHITECTURE.md, "Remaining limitations" (Milestone 7-A).
-        float travelFraction = 0.0f;
-        if (hit.distance < kSkinMargin) {
-            m_position += hit.normal * (kSkinMargin - hit.distance);
-        } else {
-            const float travelDistance = hit.distance - kSkinMargin;
-            travelFraction = travelDistance / remainingLength;
-            m_position += remaining * travelFraction;
-        }
-        bodyMotionTime += (1.0f - bodyMotionTime) * travelFraction;
-
-        glm::vec3 leftover = remaining * (1.0f - travelFraction);
-        const float intoSurface = glm::dot(leftover, hit.normal);
-        if (intoSurface < 0.0f) {
-            leftover -= hit.normal * intoSurface;
-        }
-        remaining = leftover;
-    }
 }
 
 void PlayerController::FixedUpdateAttached(const glm::vec3& newPosition,

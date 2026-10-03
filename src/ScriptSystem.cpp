@@ -5,6 +5,7 @@
 #include "RuntimeWorld.h"
 #include "SceneSession.h"
 #include "ResourceManager.h"
+#include "ProductionFluidCoupling.h"
 #include "quickjs.h"
 #include <algorithm>
 #include <cmath>
@@ -40,6 +41,7 @@ export class Entity {
  removeTag(tag){return call('removeTag',this.id,tag)}
  get classification(){return call('classification',this.id)}
  get animation(){return call('animationExists',this.id)?new Animation(this.id):null}
+ get character(){return call("characterExists",this.id)?new Character(this.id):null}
  get ragdoll(){return call('ragdollExists',this.id)?new Ragdoll(this.id):null}
  get audio(){return call('audioInfo',this.id)}
  setAudioEnabled(enabled){return call('audioEnabled',this.id,enabled)}
@@ -61,11 +63,27 @@ export class Entity {
  setCameraEnabled(enabled){return call('camera',this.id,enabled)}
 }
 export const entity=id=>id&&id!=='0'?new Entity(id):null;
-export const world={entity,get viewRay(){return call('viewRay')},queryTags:(required=[],excluded=[])=>call('queryTags',required,excluded).map(entity),
+export const world={entity,setView:(pose,fov=70)=>call("setView",pose,fov),clearView:()=>call("clearView"),fluidSample:(point,up,halfHeight,radius,tangent)=>call("fluidSample",point,up,halfHeight,radius,tangent),get viewRay(){return call('viewRay')},queryTags:(required=[],excluded=[])=>call('queryTags',required,excluded).map(entity),
  spawnPrefab:(asset,transform)=>entity(call('spawn',asset,transform)),
  overlap:(min,max,filter={})=>call('overlap',min,max,filter).map(entity),
  sweepCapsule:(from,displacement,rotation={w:1,x:0,y:0,z:0},filter={})=>call('sweep',from,displacement,filter,rotation)};
 const cast=(origin,direction,maximum,filter,shape)=>{const hit=call('cast',origin,direction,filter,{...shape,maximum});return hit?{...hit,entity:entity(hit.entityId)}:null};
+export class Character {
+ constructor(id){this.id=id}
+ get state(){const v=call('characterState',this.id);return {...v,supportEntity:entity(v.supportEntityId)}}
+ get velocity(){return this.state.velocity}
+ set velocity(v){call('characterVelocity',this.id,v)}
+ get supported(){return this.state.supported}
+ get supportNormal(){return this.state.supportNormal}
+ get supportVelocity(){return this.state.supportVelocity}
+ get actualDisplacement(){return this.state.actualDisplacement}
+ get gravity(){return this.state.gravity}
+ get up(){return this.state.up}
+ set enabled(v){call('characterEnabled',this.id,v)}
+ configure(v){return call('characterConfigure',this.id,v)}
+ accelerate(v){return call('characterAcceleration',this.id,v)}
+ ignore(entities){return call('characterIgnore',this.id,entities.map(e=>e.id))}
+}
 export class Ragdoll {
  constructor(id){this.id=id}
  get active(){return call('ragdollActive',this.id)}
@@ -327,6 +345,54 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         if(!JS_IsUndefined(r))ok=ok&&Number(c,r,"w",t.rotation.w)&&Number(c,r,"x",t.rotation.x)&&Number(c,r,"y",t.rotation.y)&&Number(c,r,"z",t.rotation.z)&&std::isfinite(glm::dot(t.rotation,t.rotation))&&glm::dot(t.rotation,t.rotation)>1e-12f;
         if(!JS_IsUndefined(scale))ok=ok&&ReadVec(c,scale,t.scale)&&t.scale.x>0&&t.scale.y>0&&t.scale.z>0;
         JS_FreeValue(c,p);JS_FreeValue(c,r);JS_FreeValue(c,scale);return ok;};
+    if(op=="setView"){
+        SceneTransform t;double fov=70;if(!readTransform(arg(1),t)||JS_ToFloat64(c,&fov,arg(2))||!world.SetRuntimeView(t,float(fov)))return JS_ThrowTypeError(c,"invalid runtime view");return JS_TRUE;
+    }
+    if(op=="clearView"){world.view.reset();return JS_TRUE;}
+    if(op=="fluidSample"){
+        glm::vec3 p,up,tangent;double height,radius;
+        if(!ReadVec(c,arg(1),p)||!ReadVec(c,arg(2),up)||!ReadVec(c,arg(5),tangent)||JS_ToFloat64(c,&height,arg(3))||JS_ToFloat64(c,&radius,arg(4))||!std::isfinite(height)||!std::isfinite(radius)||height<0||radius<=0||glm::length(up)<1e-6f||glm::length(glm::cross(up,tangent))<1e-6f)return JS_ThrowTypeError(c,"invalid liquid query");
+        auto sample=world.HasFluid()?world.FluidCoupling().SampleField(p,glm::normalize(up),float(height),float(radius),tangent):FluidFieldSample{};
+        auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"immersion",JS_NewFloat64(c,sample.fraction));JS_SetPropertyStr(c,o,"density",JS_NewFloat64(c,sample.density));JS_SetPropertyStr(c,o,"velocity",Vec(c,sample.velocity));JS_SetPropertyStr(c,o,"acceleration",Vec(c,sample.acceleration));return o;
+    }
+    if(op.rfind("character",0)==0){
+        uint64_t id=0;try{id=std::stoull(String(c,arg(1)));}catch(...){return JS_ThrowReferenceError(c,"invalid character entity");}
+        auto* m=world.RuntimeCharacter(id);if(op=="characterExists")return JS_NewBool(c,m!=nullptr);
+        if(!m)return JS_ThrowReferenceError(c,"stale entity or missing character motor");
+        if(op=="characterVelocity"||op=="characterAcceleration"){
+            if(!s->fixed)return JS_ThrowTypeError(c,"character intent must be supplied in fixedUpdate");
+            glm::vec3 v;if(!ReadVec(c,arg(2),v))return JS_ThrowTypeError(c,"finite vector required");
+            if(op=="characterVelocity")m->velocity=v;else m->acceleration+=v;return JS_TRUE;
+        }
+        if(op=="characterEnabled"||op=="characterConfigure"){
+            auto config=m->settings;
+            if(op=="characterEnabled"){if(!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"boolean required");config.enabled=JS_ToBool(c,arg(2));}
+            else {
+                const char* keys[]={"radius","halfHeight","stepHeight","supportDistance","skin","maxSlopeDegrees","gravityScale","reorientationDegreesPerSecond","interactionMass","maxPushImpulse"};
+                float* values[]={&config.radius,&config.halfHeight,&config.stepHeight,&config.supportDistance,&config.skin,&config.maxSlopeDegrees,&config.gravityScale,&config.reorientationDegreesPerSecond,&config.interactionMass,&config.maxPushImpulse};
+                for(size_t i=0;i<10;++i){auto v=JS_GetPropertyStr(c,arg(2),keys[i]);bool exists=!JS_IsUndefined(v);JS_FreeValue(c,v);if(exists&&!Number(c,arg(2),keys[i],*values[i]))return JS_ThrowTypeError(c,"invalid motor setting");}
+            }
+            if(op=="characterConfigure"){
+                auto offset=JS_GetPropertyStr(c,arg(2),"offset");bool ok=JS_IsUndefined(offset)||ReadVec(c,offset,config.offset);JS_FreeValue(c,offset);if(!ok)return JS_ThrowTypeError(c,"invalid offset");
+                auto layer=JS_GetPropertyStr(c,arg(2),"collisionLayer");if(!JS_IsUndefined(layer)){int found=world.Categories().collision.Find(String(c,layer));JS_FreeValue(c,layer);if(found<0)return JS_ThrowTypeError(c,"unknown collision layer");config.collisionLayer=unsigned(found);}else JS_FreeValue(c,layer);
+                for(const auto& entry:std::vector<std::pair<const char*,CategoryMask*>>{{"requiredTags",&config.requiredTags},{"excludedTags",&config.excludedTags}}){auto a=JS_GetPropertyStr(c,arg(2),entry.first);bool valid=JS_IsUndefined(a)||tagMask(a,*entry.second);JS_FreeValue(c,a);if(!valid)return JS_ThrowTypeError(c,"unknown motor tag");}
+                auto mask=JS_GetPropertyStr(c,arg(2),"collisionMask");if(!JS_IsUndefined(mask)){uint32_t count=0;auto n=JS_GetPropertyStr(c,mask,"length");bool valid=JS_IsArray(mask)&&JS_ToUint32(c,&count,n)==0&&count<=64;JS_FreeValue(c,n);CategoryMask bits=0;for(uint32_t i=0;valid&&i<count;++i){auto v=JS_GetPropertyUint32(c,mask,i);int found=world.Categories().collision.Find(String(c,v));JS_FreeValue(c,v);if(found<0)valid=false;else bits|=CategoryBit(found);}JS_FreeValue(c,mask);if(!valid)return JS_ThrowTypeError(c,"unknown motor layer mask");config.collisionMask=bits;}else JS_FreeValue(c,mask);
+            }
+            std::string error;if(!ValidCharacterMotor(config,error))return JS_ThrowTypeError(c,"%s",error.c_str());world.SetCharacterSettings(id,config);return JS_TRUE;
+        }
+        if(op=="characterIgnore"){
+            if(!JS_IsArray(arg(2)))return JS_ThrowTypeError(c,"entity array required");
+            auto n=JS_GetPropertyStr(c,arg(2),"length");uint32_t length=0;JS_ToUint32(c,&length,n);JS_FreeValue(c,n);if(length>64)return JS_ThrowTypeError(c,"too many ignored entities");
+            std::vector<BodyHandle> handles;for(uint32_t i=0;i<length;++i){auto v=JS_GetPropertyUint32(c,arg(2),i);uint64_t other=0;try{other=std::stoull(String(c,v));}catch(...){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"invalid ignored entity");}JS_FreeValue(c,v);auto body=world.RuntimeBody(other);if(body.IsValid())handles.push_back(body);}m->filter.ignoredBodies=std::move(handles);return JS_TRUE;
+        }
+        if(op!="characterState")return JS_ThrowTypeError(c,"unknown character operation");
+        auto o=JS_NewObject(c);const auto& r=m->result;
+        JS_SetPropertyStr(c,o,"velocity",Vec(c,m->velocity));JS_SetPropertyStr(c,o,"actualDisplacement",Vec(c,r.displacement));
+        JS_SetPropertyStr(c,o,"supportNormal",Vec(c,r.supportNormal));JS_SetPropertyStr(c,o,"supportVelocity",Vec(c,r.supportVelocity));JS_SetPropertyStr(c,o,"gravity",Vec(c,world.Gravity().Sample(m->position)));JS_SetPropertyStr(c,o,"up",Vec(c,m->orientation*glm::vec3(0,1,0)));
+        JS_SetPropertyStr(c,o,"supported",JS_NewBool(c,r.supported));JS_SetPropertyStr(c,o,"collided",JS_NewBool(c,r.collided));
+        JS_SetPropertyStr(c,o,"supportEntityId",JS_NewString(c,std::to_string(world.EntityIdOfBody(r.support)).c_str()));
+        return o;
+    }
     if(op=="queryTags"){CategoryMask required,excluded;if(!tagMask(arg(1),required)||!tagMask(arg(2),excluded))return JS_ThrowTypeError(c,"unknown tag");return ids(world.QueryEntities(required,excluded));}
     if(op=="spawn"){SceneTransform t;if(!readTransform(arg(2),t))return JS_ThrowTypeError(c,"invalid transform");std::string error;auto id=world.SpawnPrefab(String(c,arg(1)),t,error);if(!id)return JS_ThrowTypeError(c,"spawn: %s",error.c_str());return JS_NewString(c,std::to_string(id).c_str());}
     if(op=="viewRay"){if(!s->hasView)return JS_NULL;auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"origin",Vec(c,s->viewOrigin));JS_SetPropertyStr(c,o,"direction",Vec(c,s->viewDirection));return o;}

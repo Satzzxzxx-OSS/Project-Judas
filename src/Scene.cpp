@@ -85,6 +85,7 @@ bool OptEq(const std::optional<T>& a, const std::optional<T>& b, F&& equal) {
 
 bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
     if(a.scripts!=b.scripts)return false;
+    if(!OptEq(a.characterMotor,b.characterMotor,[](const auto& x,const auto& y){return x.enabled==y.enabled&&x.radius==y.radius&&x.halfHeight==y.halfHeight&&x.offset==y.offset&&x.stepHeight==y.stepHeight&&x.supportDistance==y.supportDistance&&x.skin==y.skin&&x.maxSlopeDegrees==y.maxSlopeDegrees&&x.gravityScale==y.gravityScale&&x.reorientationDegreesPerSecond==y.reorientationDegreesPerSecond&&x.interactionMass==y.interactionMass&&x.maxPushImpulse==y.maxPushImpulse&&x.collisionLayer==y.collisionLayer&&x.collisionMask==y.collisionMask&&x.requiredTags==y.requiredTags&&x.excludedTags==y.excludedTags;}))return false;
     if(!OptEq(a.ragdoll,b.ragdoll,[](const auto& x,const auto& y){return RagdollDefinitionsEqual(x,y);}))return false;
     if(!OptEq(a.animation,b.animation,[](const auto& x,const auto& y){return x.enabled==y.enabled&&x.playOnStart==y.playOnStart&&x.loop==y.loop&&x.clip==y.clip&&x.speed==y.speed&&x.time==y.time&&x.layers==y.layers;}))return false;
     if(!OptEq(a.joint,b.joint,[](const auto& x,const auto& y){return x.bodyA==y.bodyA&&x.bodyB==y.bodyB&&JointSettingsEqual(x.settings,y.settings);}))return false;

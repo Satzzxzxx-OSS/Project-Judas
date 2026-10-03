@@ -71,6 +71,7 @@ add_library(judas_engine STATIC
     src/PoseComposition.cpp
     src/WorldRagdoll.cpp
     src/GltfLoader.cpp
+    src/WorldCharacter.cpp
     src/WorldScripts.cpp
     src/RuntimeUI.cpp
     src/ScriptSystem.cpp
@@ -84,6 +85,7 @@ add_library(judas_engine STATIC
     src/InputSystem.cpp
     src/Renderer.cpp
     src/SkeletalAnimation.cpp
+    src/CharacterMotor.cpp
     src/PlayerController.cpp
     src/PlayerView.cpp
     src/StepClimb.cpp
@@ -535,6 +537,7 @@ target_compile_options(judas_object_manipulation_tests PRIVATE -Wall -Wextra)
 # including rotated worlds and the ascending spacecraft-release regression.
 add_executable(judas_player_curved_locomotion_tests
     tests/PlayerCurvedLocomotionTests.cpp
+    src/CharacterMotor.cpp
     src/PlayerController.cpp
     src/PlayerView.cpp
     src/LightTransforms.cpp
@@ -562,6 +565,7 @@ add_executable(judas_world_coordinates_tests
     src/FlyingPrimitiveControl.cpp
     src/InteractionSystem.cpp
     src/ObjectManipulation.cpp
+    src/CharacterMotor.cpp
     src/PlayerController.cpp
     src/PlayerView.cpp
     src/LightTransforms.cpp
@@ -625,6 +629,7 @@ target_compile_options(judas_fluid_surface_tests PRIVATE -Wall -Wextra)
 add_executable(judas_terrain_physics_tests
     tests/TerrainPhysicsTests.cpp
     src/TerrainDemo.cpp
+    src/CharacterMotor.cpp
     src/PlayerController.cpp
     src/PlayerView.cpp
     src/LightTransforms.cpp
@@ -997,3 +1002,10 @@ target_compile_options(judas_fluid_demo_probe PRIVATE -Wall -Wextra)
 add_executable(judas_fluid_demo_integration_tests tests/FluidDemoIntegrationTests.cpp)
 target_link_libraries(judas_fluid_demo_integration_tests PRIVATE judas_engine)
 target_compile_options(judas_fluid_demo_integration_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_character_motor_tests tests/CharacterMotorTests.cpp)
+target_link_libraries(judas_character_motor_tests PRIVATE judas_engine)
+target_compile_options(judas_character_motor_tests PRIVATE -Wall -Wextra)
+add_executable(judas_character_motor_application_tests tests/CharacterMotorApplicationTests.cpp)
+target_link_libraries(judas_character_motor_application_tests PRIVATE judas_engine)
+target_compile_options(judas_character_motor_application_tests PRIVATE -Wall -Wextra)

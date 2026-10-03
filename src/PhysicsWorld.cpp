@@ -1935,12 +1935,22 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
     ShapeSweepHit result;
     if (!m_impl->hasPlayerShape) return result;
 
+    return SweepCapsuleMotion(m_impl->playerShape.radius,m_impl->playerShape.halfHeight,
+        fromCenter,rotation,displacement,interpolateDynamicBodyMotion,bodyMotionStart,
+        bodyMotionEnd,filter,m_impl->playerCollisionLayer,m_impl->playerCollisionMask,filter==nullptr);
+}
+ShapeSweepHit PhysicsWorld::SweepCapsuleMotion(float radius,float halfHeight,
+    const glm::vec3& fromCenter,const glm::quat& rotation,const glm::vec3& displacement,
+    bool interpolateDynamicBodyMotion,float bodyMotionStart,float bodyMotionEnd,
+    const PhysicsQueryFilter* filter,unsigned collisionLayer,CategoryMask collisionMask,bool bilateralFilter) const {
+    ShapeSweepHit result;
+    if(!(radius>0)||halfHeight<0)return result;
     const float displacementLength = glm::length(displacement);
     if (displacementLength < 1.0e-6f && !interpolateDynamicBodyMotion) return result;
 
-    const glm::vec3 localSegA(0.0f, -m_impl->playerShape.halfHeight, 0.0f);
-    const glm::vec3 localSegB(0.0f, m_impl->playerShape.halfHeight, 0.0f);
-    const float capsuleRadius = m_impl->playerShape.radius;
+    const glm::vec3 localSegA(0.0f, -halfHeight, 0.0f);
+    const glm::vec3 localSegB(0.0f, halfHeight, 0.0f);
+    const float capsuleRadius = radius;
 
     auto worldSegmentAt = [&](const glm::vec3& center) {
         return std::make_pair(center + rotation * localSegA, center + rotation * localSegB);
@@ -1958,10 +1968,10 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
     }
     std::vector<unsigned int> candidates = m_impl->QuerySlots(sweptBound);
     candidates.erase(std::remove_if(candidates.begin(),candidates.end(),[&](unsigned slot){
-        if(filter)return !m_impl->MatchesQuery(slot,*filter);
-        if(!m_impl->bodies[slot].enabled||m_impl->bodies[slot].sensor)return true;
+        if(filter && !m_impl->MatchesQuery(slot,*filter))return true;
+        if(!m_impl->bodies[slot].enabled||(m_impl->bodies[slot].sensor&&(!filter||bilateralFilter)))return true;
         const auto& b=m_impl->bodies[slot];
-        return !CollisionPermitted(m_impl->playerCollisionLayer,m_impl->playerCollisionMask,b.collisionLayer,b.collisionMask);
+        return bilateralFilter && !CollisionPermitted(collisionLayer,collisionMask,b.collisionLayer,b.collisionMask);
     }),candidates.end());
     auto evaluateAt = [&](float t) {
         const glm::vec3 center = fromCenter + displacement * t;
@@ -1981,6 +1991,7 @@ ShapeSweepHit PhysicsWorld::SweepPlayerShape(const glm::vec3& fromCenter, const 
     if (startResult.bodyIndex >= 0 && startResult.distance <= 0.0f) {
         result.hit = true;
         result.distance = 0.0f;
+        result.penetration = -startResult.distance;
         result.normal = startResult.normal;
         result.hitBody = m_impl->MakeHandle(static_cast<unsigned int>(startResult.bodyIndex));
         return result;

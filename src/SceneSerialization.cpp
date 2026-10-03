@@ -88,6 +88,24 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    if(o.characterMotor){const auto& m=*o.characterMotor;
+        w.Line("motor.enabled",B(m.enabled));
+        w.Line("motor.radius",F(m.radius));
+        w.Line("motor.halfHeight",F(m.halfHeight));
+        w.Line("motor.offset",V(m.offset));
+        w.Line("motor.stepHeight",F(m.stepHeight));
+        w.Line("motor.supportDistance",F(m.supportDistance));
+        w.Line("motor.skin",F(m.skin));
+        w.Line("motor.maxSlopeDegrees",F(m.maxSlopeDegrees));
+        w.Line("motor.gravityScale",F(m.gravityScale));
+        w.Line("motor.reorientationDegreesPerSecond",F(m.reorientationDegreesPerSecond));
+        w.Line("motor.interactionMass",F(m.interactionMass));
+        w.Line("motor.maxPushImpulse",F(m.maxPushImpulse));
+        w.Line("motor.collisionLayer",std::to_string(m.collisionLayer));
+        w.Line("motor.collisionMask",std::to_string(m.collisionMask));
+        w.Line("motor.requiredTags",std::to_string(m.requiredTags));
+        w.Line("motor.excludedTags",std::to_string(m.excludedTags));
+    }
     if(o.animation){const auto& a=*o.animation;w.Line("animation.enabled",B(a.enabled));w.Line("animation.play-on-start",B(a.playOnStart));w.Line("animation.loop",B(a.loop));w.Line("animation.clip",Quote(a.clip));w.Line("animation.speed",F(a.speed));w.Line("animation.time",F(a.time));
         if(!a.layers.empty()){w.Line("animation.layers",std::to_string(a.layers.size()));for(size_t i=0;i<a.layers.size();++i){const auto& l=a.layers[i];auto key="animation.layer."+std::to_string(i)+".";
             w.Line(key+"id",Quote(l.id));w.Line(key+"clip",Quote(l.clip));w.Line(key+"enabled",B(l.enabled));w.Line(key+"additive",B(l.additive));w.Line(key+"weight",F(l.weight));w.Line(key+"speed",F(l.speed));w.Line(key+"time",F(l.time));w.Line(key+"reference-clip",Quote(l.referenceClip));w.Line(key+"reference-time",F(l.referenceTime));w.Line(key+"mask-count",std::to_string(l.mask.size()));for(size_t n=0;n<l.mask.size();++n)w.Line(key+"mask."+std::to_string(n),Quote(l.mask[n]));}}
@@ -625,6 +643,11 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    if(p.Has("motor.enabled")){CharacterMotorSettings m;
+        if(!p.Bool("motor.enabled",m.enabled)||!p.Float("motor.radius",m.radius)||!p.Float("motor.halfHeight",m.halfHeight)||!p.Vec3("motor.offset",m.offset)||!p.Float("motor.stepHeight",m.stepHeight)||!p.Float("motor.supportDistance",m.supportDistance)||!p.Float("motor.skin",m.skin)||!p.Float("motor.maxSlopeDegrees",m.maxSlopeDegrees)||!p.Float("motor.gravityScale",m.gravityScale)||!p.Float("motor.reorientationDegreesPerSecond",m.reorientationDegreesPerSecond)||!p.Float("motor.interactionMass",m.interactionMass)||!p.Float("motor.maxPushImpulse",m.maxPushImpulse))return false;
+        if(!p.Layer("motor.collisionLayer",m.collisionLayer)||!p.Mask("motor.collisionMask",m.collisionMask)||!p.Mask("motor.requiredTags",m.requiredTags)||!p.Mask("motor.excludedTags",m.excludedTags))return false;
+        std::string error;if(!ValidCharacterMotor(m,error))return reader.Fail(error);o.characterMotor=m;
+    }
     if(p.Has("animation.enabled")){SceneAnimationComponent a;
         if(!p.Bool("animation.enabled",a.enabled)||!p.Bool("animation.play-on-start",a.playOnStart)||!p.Bool("animation.loop",a.loop)||!p.String("animation.clip",a.clip)||!p.Float("animation.speed",a.speed)||!p.Float("animation.time",a.time)||a.time<0)return false;
         if(p.Has("animation.layers")){int count=0;if(!p.Int("animation.layers",count)||count<0||count>16)return reader.Fail("invalid layer count");for(int i=0;i<count;++i){AnimationLayerSettings l;auto key="animation.layer."+std::to_string(i)+".";int masks=0;

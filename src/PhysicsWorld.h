@@ -54,6 +54,7 @@ struct BodyBox {
 // sliding, support, grounded state — is entirely PlayerController's
 // decision; this struct carries no interpretation of its own.
 struct ShapeSweepHit {
+    float penetration = 0.0f; // signed geometry overlap depth at sweep origin
     bool hit = false;
     float distance = 0.0f;      // world-space distance traveled before the hit
     glm::vec3 normal{0.0f};     // meaningful only when `hit` is true; contact normal,
@@ -440,6 +441,12 @@ public:
     // pin both endpoints to the previous pose so they query the player's
     // start-of-step state. `bodyMotionStart`/`bodyMotionEnd` preserve timing
     // when a move-and-slide sweep continues after contact.
+    // Same proven capsule/motion-ledger query, with per-consumer geometry.
+    ShapeSweepHit SweepCapsuleMotion(float radius, float halfHeight,
+        const glm::vec3& center, const glm::quat& rotation, const glm::vec3& displacement,
+        bool interpolateMotion=false, float motionStart=0, float motionEnd=1,
+        const PhysicsQueryFilter* filter=nullptr, unsigned collisionLayer=0,
+        CategoryMask collisionMask=kAllCategories, bool bilateralFilter=true) const;
     ShapeSweepHit SweepPlayerShape(const glm::vec3& fromCenter, const glm::quat& rotation,
                                     const glm::vec3& displacement,
                                     bool interpolateDynamicBodyMotion = false,

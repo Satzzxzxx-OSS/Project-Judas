@@ -331,6 +331,25 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
             w.Boolean(bool(o.renderCamera));if(o.renderCamera)w.U64(o.renderCamera->renderMask);
         }
     }
+    size_t motors=0;for(const auto& o:scene.Objects())motors+=o.characterMotor.has_value();
+    if(motors){w.Text("Judas.CharacterMotor.1");w.U64(motors);for(const auto& o:scene.Objects())if(o.characterMotor){const auto& m=*o.characterMotor;
+        std::string error;if(!ValidCharacterMotor(m,error))w.Fail(error);if(o.body||o.ragdoll)w.Fail("character motor cannot also own a root body/ragdoll");
+        if(o.transform.scale!=glm::vec3(1))w.Fail("character motor dimensions are in simulation metres; entity scale must be one");
+        w.U64(o.id);
+        w.Boolean(m.enabled);
+        w.Number(m.radius);
+        w.Number(m.halfHeight);
+        w.Vector(m.offset);
+        w.Number(m.stepHeight);
+        w.Number(m.supportDistance);
+        w.Number(m.skin);
+        w.Number(m.maxSlopeDegrees);
+        w.Number(m.gravityScale);
+        w.Number(m.reorientationDegreesPerSecond);
+        w.Number(m.interactionMass);
+        w.Number(m.maxPushImpulse);
+        w.U32(m.collisionLayer);w.U64(m.collisionMask);w.U64(m.requiredTags);w.U64(m.excludedTags);
+    }}
     size_t animations=0;for(const auto& o:scene.Objects())if(o.animation)++animations;
     if(animations){w.Text("Judas.SkeletalPlayback.1");w.U64(animations);for(const auto& o:scene.Objects())if(o.animation){const auto& a=*o.animation;
         if(!o.render||o.render->shape!=SceneShape::Mesh||!std::isfinite(a.speed)||!std::isfinite(a.time)||a.time<0)w.Fail("invalid animation component");

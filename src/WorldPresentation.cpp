@@ -100,7 +100,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
     for(size_t i=0;i<world.LightSwitches().size();++i){r.SetRenderLayer(world.RenderLayerOf(world.LightSwitchIds()[i]));world.LightSwitches()[i].Draw(r,alpha);}
     r.SetRenderLayer(0);
 
-    if (session) {
+    if (session && !world.view) {
         // Milestone 11: while attached, the pilot is rendered from the
         // SAME presented vehicle pose the camera and vehicle mesh use.
         glm::vec3 playerPosition;
@@ -345,7 +345,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
     // Milestone 15 shadow passes: the directional sun always, then each
     // shadow-casting spot light in the frame's list.
     const glm::mat4 dirShadow = ComputeDirectionalShadowMatrix(
-        shadowFocus, glm::normalize(settings.sunDirection), kDirShadowHalfExtent, kDirShadowDistance);
+        world.view ? world.view->pose.position : shadowFocus, glm::normalize(settings.sunDirection), kDirShadowHalfExtent, kDirShadowDistance);
     renderer.BeginShadowPass(kDirectionalShadowSlot, dirShadow);
     DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});
     renderer.EndShadowPass();
@@ -411,7 +411,9 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
         }
     }
     renderer.BeginFrame(width, height);
-    renderer.SetCamera(view, projection);
+    if(world.view){const auto& v=*world.view;auto q=v.pose.rotation;
+        renderer.SetCamera(glm::lookAt(v.pose.position,v.pose.position+q*glm::vec3(0,0,-1),q*glm::vec3(0,1,0)),glm::perspective(glm::radians(v.fov),float(width)/height,.1f,500.f));
+    }else renderer.SetCamera(view, projection);
     renderer.SetRenderMask(world.Settings().mainCameraRenderMask);
     renderer.SetDynamicLights(lights);
     DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});

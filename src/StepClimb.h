@@ -55,7 +55,7 @@
 bool TryStepMove(const PhysicsWorld& physics, const glm::vec3& position,
                   const glm::quat& orientation, const glm::vec3& localUp,
                   const glm::vec3& horizontalDisplacement, float maxStepHeight, float minGroundDot,
-                  float skinMargin, glm::vec3& outNewPosition);
+                  float skinMargin, glm::vec3& outNewPosition, const Shape* capsule = nullptr, const PhysicsQueryFilter* filter = nullptr, unsigned layer = 0, CategoryMask mask = kAllCategories);
 
 // Attempts to catch a small drop-off directly below the player (a step
 // down, or walking off a low ledge) by reaching further than the caller's
@@ -72,4 +72,4 @@ bool TryStepMove(const PhysicsWorld& physics, const glm::vec3& position,
 bool TryStepDown(const PhysicsWorld& physics, const glm::vec3& position,
                   const glm::quat& orientation, const glm::vec3& localUp, float maxStepHeight,
                   float minGroundDot, float skinMargin, glm::vec3& outNewPosition,
-                  glm::vec3& outNormal, BodyHandle& outHitBody);
+                  glm::vec3& outNormal, BodyHandle& outHitBody, const Shape* capsule = nullptr, const PhysicsQueryFilter* filter = nullptr, unsigned layer = 0, CategoryMask mask = kAllCategories);

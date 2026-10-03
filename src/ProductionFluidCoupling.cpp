@@ -286,3 +286,7 @@ PlayerFluidSample ProductionFluidCoupling::SamplePlayer(const RuntimeWorld& worl
     s.measured.playerMilliseconds=Milliseconds(started);s.measured.totalMilliseconds+=s.measured.playerMilliseconds;
     return result;
 }
+
+FluidFieldSample ProductionFluidCoupling::SampleField(glm::vec3 point,glm::vec3 up,float halfHeight,float radius,glm::vec3 tangent) const {
+    return m_impl->field.Query(point,up,halfHeight,radius,tangent);
+}

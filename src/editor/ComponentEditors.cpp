@@ -66,6 +66,18 @@ void DrawUIComponent(EditorDocument& doc,SceneObject& o,EditorPanelState& state)
     char name[128];std::snprintf(name,sizeof(name),"%s",u.name.c_str());if(ImGui::InputText("Runtime document name",name,sizeof(name))){doc.BeginEdit();u.name=name;doc.CommitEdit();}
     ImGui::TextWrapped("Select the UI asset in the Asset Browser to edit its hierarchy. Runtime changes never edit this source.");
 }
+void DrawCharacter(EditorDocument& doc,SceneObject& object,EditorPanelState& state){
+    auto& m=*object.characterMotor;Checkbox(doc,"Motor enabled",m.enabled);
+    DragScalar(doc,"Radius",m.radius,.01f);DragScalar(doc,"Cylinder half height",m.halfHeight,.01f);
+    DragScalar(doc,"Step height",m.stepHeight,.01f);DragScalar(doc,"Support probe",m.supportDistance,.01f);DragScalar(doc,"Skin",m.skin,.001f);
+    DragScalar(doc,"Maximum slope degrees",m.maxSlopeDegrees,1);DragScalar(doc,"Gravity multiplier",m.gravityScale,.1f);DragScalar(doc,"Reorientation degrees/sec",m.reorientationDegreesPerSecond,1);
+    DragScalar(doc,"Interaction mass kg",m.interactionMass,1);DragScalar(doc,"Max push impulse",m.maxPushImpulse,1);
+    DragVec3(doc,"Shape offset",m.offset);
+    if(state.project){const auto& categories=state.project->Settings().classification;
+        DrawCategoryLayer(doc,"Collision layer",m.collisionLayer,categories.collision);DrawCategoryMask(doc,"Collision mask",m.collisionMask,categories.collision);
+        DrawCategoryMask(doc,"Required collider tags",m.requiredTags,categories.tags,false);DrawCategoryMask(doc,"Excluded collider tags",m.excludedTags,categories.tags,false);}
+    ImGui::TextWrapped("Script fixedUpdate supplies world velocity and extra acceleration. No input, camera or gameplay state belongs to this component.");
+}
 void DrawScripts(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
     size_t remove=o.scripts.size();
     for(size_t i=0;i<o.scripts.size();++i){auto& slot=o.scripts[i];ImGui::PushID(static_cast<int>(i));
@@ -439,6 +451,7 @@ const std::vector<ComponentEditor>& ComponentEditorRegistry() {
         Make<SceneAudioListenerComponent>("Audio listener", 'N', &SceneObject::audioListener, DrawAudioListener),
         Make<SceneRenderCameraComponent>("Render camera", 'K', &SceneObject::renderCamera, DrawRenderCamera),
         Make<SceneRenderComponent>("Render", 'R', &SceneObject::render, DrawRender),
+        Make<CharacterMotorSettings>("Character motor",'M',&SceneObject::characterMotor,DrawCharacter),
         Make<SceneAnimationComponent>("Animation",'A',&SceneObject::animation,DrawAnimation),
         Make<RagdollDefinition>("Ragdoll",'R',&SceneObject::ragdoll,DrawRagdoll),
         Make<SceneJointComponent>("Joint",'J',&SceneObject::joint,DrawJoint),

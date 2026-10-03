@@ -127,7 +127,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
         // Liquid walls follow the already resolved rigid trajectory, including
         // impacts and support correction, never a gravity-only endpoint guess.
         world.FluidCoupling().AdvanceResolvedLiquid(world, fixedDeltaTime);
-        player.SetFluidSample(world.FluidCoupling().SamplePlayer(world, player));
+        player.SetFluidSample(world.view ? PlayerFluidSample{} : world.FluidCoupling().SamplePlayer(world, player));
         if (measurements && measurements->measureFluid) {
             measurements->fluidMilliseconds = world.FluidCoupling().Measurements().totalMilliseconds;
             measurements->fluidMeasured = true; // includes field/coupling cost even on particle hold frames
@@ -156,8 +156,13 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     // never through PhysicsWorld.
     StepCoarseEntities(world, fixedDeltaTime);
 
-    AdvancePlayerForPiloting(vehicleControl, session.Attachment(), player, physics, window, gravity,
+    if(world.view){const auto& pose=world.view->pose;
+        // Compatibility observer for legacy diagnostics/interaction. Scripted
+        // main-view projects do not run a second locomotion controller.
+        player.ObserveExternalView(pose.position-pose.rotation*glm::vec3(0,.7f,0),pose.rotation);
+    }else AdvancePlayerForPiloting(vehicleControl, session.Attachment(), player, physics, window, gravity,
                              fixedDeltaTime);
+    world.UpdateCharacters(fixedDeltaTime);
     SyncDynamicBodiesFromPhysics(world.DynamicBodies(), physics);
     world.UpdateAnimations(fixedDeltaTime);
     world.UpdateRagdolls(fixedDeltaTime);

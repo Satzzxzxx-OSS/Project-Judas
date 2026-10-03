@@ -108,6 +108,11 @@ public:
     // GetVelocity's own note below for why authoritative velocity itself
     // reads zero throughout the attached period.
     void FixedUpdateAttached(const glm::vec3& newPosition, const glm::quat& newOrientation);
+    // Compatibility diagnostics/interaction anchor when project JS owns the
+    // main view. This observer does not run legacy locomotion or own a motor.
+    void ObserveExternalView(const glm::vec3& center,const glm::quat& orientation){
+        FixedUpdateAttached(center,orientation);m_yaw=0;m_pitch=0;
+    }
 
     // Milestone 11: injects the player's inherited world-space velocity at
     // the exact instant piloting control is released (see

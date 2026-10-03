@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include "PhysicsWorld.h"
+#include "FluidHydrostatics.h"
 class RuntimeWorld;
 class PlayerController;
 struct PlayerFluidSample;
@@ -38,6 +39,7 @@ public:
     void PrepareRigidStep(RuntimeWorld& world, float rigidDeltaTime);
     void AdvanceResolvedLiquid(RuntimeWorld& world, float rigidDeltaTime);
     PlayerFluidSample SamplePlayer(const RuntimeWorld& world, const PlayerController& player) const;
+    FluidFieldSample SampleField(glm::vec3 point,glm::vec3 up,float halfHeight,float radius,glm::vec3 tangent) const;
     const ProductionFluidMeasurements& Measurements() const;
 private:
     struct Impl;

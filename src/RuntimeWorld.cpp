@@ -46,7 +46,7 @@ RuntimeWorld::~RuntimeWorld() {
 }
 
 bool RuntimeWorld::EntityRequiresFull(const SceneObject& o) {
-    if (o.vehicle || o.combustible || !o.scripts.empty()) return true;
+    if (o.vehicle || o.combustible || o.characterMotor || !o.scripts.empty()) return true;
     if (o.body && o.body->shape == SceneShape::Compound) return true;
     return false;
 }
@@ -274,7 +274,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
 
     if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
     SynchronizeJoints();
-    for(const auto& o:scene.Objects())if((m_hasScripts||o.animation||o.ragdoll)&&!FindEntity(o.id)){
+    for(const auto& o:scene.Objects())if((m_hasScripts||o.animation||o.ragdoll||o.characterMotor)&&!FindEntity(o.id)){
         std::string unsupported;
         if(o.scripts.empty()&&!ValidateEntityDefinition(o,unsupported))continue;
         EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
@@ -668,7 +668,7 @@ bool RuntimeWorld::EmitFluidParticle() {
 void RuntimeWorld::RestoreAuthoredState() {
     std::vector<EntityId> articulations;for(const auto& entry:m_ragdolls)articulations.push_back(entry.first);
     for(auto id:articulations){std::string error;LeaveRagdoll(id,0,error);}
-    m_ragdollReturns.clear();m_ragdollAutostarted.clear();m_animationInstances.clear();
+    m_ragdollReturns.clear();m_ragdollAutostarted.clear();ClearCharacters();m_animationInstances.clear();
     m_scripts.reset();m_ui.reset();m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
     if (!m_built) return;
     for(const auto& o:ScriptObjects())if(o.ui&&o.ui->enabled){std::string error;UI().Load(o.ui->asset,o.ui->name,o.id,error);}
@@ -698,7 +698,7 @@ void RuntimeWorld::RestoreAuthoredState() {
             ++e.reconstructions;
         }
     }
-    if(m_hasScripts){
+    if(m_hasScripts||std::any_of(m_extraEntities.begin(),m_extraEntities.end(),[](const auto& e){return bool(e.definition.characterMotor);})){
         for(auto& e:m_extraEntities)if(e.authored&&e.lifecycle!=EntityLifecycle::Destroyed){
             SetEntityState(e.id,StateFromDefinition(e.definition));SetRuntimeTransform(e.id,e.definition.transform);
         }
@@ -789,6 +789,9 @@ bool RuntimeWorld::SetEntityState(EntityId id, const EntityPhysicalState& state)
     EntityRecord* e = FindEntity(id);
     if (!e || e->lifecycle == EntityLifecycle::Destroyed) return false;
     e->state = state;
+    if(e->definition.characterMotor){auto t=RuntimeDefinition(id)->transform;t.position=state.position;t.rotation=state.rotation;
+        SetRuntimeTransform(id,t);if(auto* motor=RuntimeCharacter(id))motor->velocity=state.linearVelocity;
+    }
     if (e->slot == std::numeric_limits<std::size_t>::max()) {
         for(auto& r:m_staticRenderables)if(r.id==id){r.position=state.position;r.rotation=state.rotation;}
         for(auto& b:m_staticBodies)if(b.id==id){m_physics.ResetBody(b.handle,state.position,state.rotation);b.position=state.position;b.rotation=state.rotation;}
@@ -1070,6 +1073,13 @@ EntityId RuntimeWorld::SpawnPrefab(const AssetId& asset,const SceneTransform& pl
 }
 
 SceneTransform RuntimeWorld::PresentedTransform(SceneObjectId id,const SceneTransform& fallback,float alpha) const {
+    auto character=m_characters.find(id);
+    if(character!=m_characters.end()){
+        auto t=fallback;const auto& c=character->second;
+        t.position=glm::mix(c.previous.position,c.motor.position,alpha);
+        t.rotation=glm::normalize(glm::slerp(c.previous.rotation,c.motor.orientation,alpha));return t;
+    }
+
     if(const auto* e=FindEntity(id))if(e->slot!=std::numeric_limits<std::size_t>::max()){
         const auto& body=m_dynamicBodies[e->slot];auto t=fallback;
         t.position=body.GetPresentedPosition(alpha);t.rotation=body.GetPresentedOrientation(alpha);return t;
@@ -1153,6 +1163,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 
 void RuntimeWorld::Destroy() {
     m_ragdolls.clear();m_ragdollReturns.clear();m_ragdollAutostarted.clear();
+    ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
     m_scripts.reset();m_ui.reset();m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;

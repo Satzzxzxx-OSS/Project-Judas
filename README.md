@@ -1417,3 +1417,10 @@ M42: [authored collision/sensor events](docs/COLLISION_EVENTS.md), with a script
 M43 adds queued runtime scene transitions and bounded JavaScript session data.
 See [scene transitions](docs/SCENE_TRANSITIONS.md). The two-scene demonstration is
 `projects/scene_demo/scene_demo.judasproj` (E send/return, P spawn, R reload).
+
+## Scriptable character motor (M49 candidate)
+
+Open `projects/character_demo/character_demo.judasproj`: F1 flat course, F2 radial
+planet, F3 JS swimming on the existing pool content. Generic capsule motion and
+support belong to Judas; input, launch, swimming and camera behaviour are project
+JavaScript. See [M49 authoring/API and checklist](docs/M49_CHARACTER_MOTOR.md).

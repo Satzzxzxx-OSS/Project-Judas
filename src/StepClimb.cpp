@@ -27,7 +27,8 @@ constexpr float kDownProbeLookAhead = 0.08f;
 bool TryStepMove(const PhysicsWorld& physics, const glm::vec3& position,
                   const glm::quat& orientation, const glm::vec3& localUp,
                   const glm::vec3& horizontalDisplacement, float maxStepHeight, float minGroundDot,
-                  float skinMargin, glm::vec3& outNewPosition) {
+                  float skinMargin, glm::vec3& outNewPosition, const Shape* capsule, const PhysicsQueryFilter* filter, unsigned layer, CategoryMask mask) {
+    auto sweep=[&](glm::vec3 p,glm::vec3 d){return capsule ? physics.SweepCapsuleMotion(capsule->radius,capsule->halfHeight,p,orientation,d,false,0,1,filter,layer,mask) : physics.SweepPlayerShape(p,orientation,d);};
     const float horizontalLength = glm::length(horizontalDisplacement);
     if (horizontalLength < 1.0e-6f) return false;
 
@@ -50,14 +51,14 @@ bool TryStepMove(const PhysicsWorld& physics, const glm::vec3& position,
     // slopes are handled entirely by the caller's own existing move-and-
     // slide loop, never routed through here.
     const ShapeSweepHit flatHit =
-        physics.SweepPlayerShape(probeOrigin, orientation, horizontalDisplacement);
+        sweep(probeOrigin, horizontalDisplacement);
     if (!flatHit.hit) return false;
     if (glm::dot(flatHit.normal, localUp) > minGroundDot) return false;
     const float flatDistance = flatHit.distance;
 
     // 2) Sweep up by up to maxStepHeight.
     const ShapeSweepHit upHit =
-        physics.SweepPlayerShape(probeOrigin, orientation, localUp * maxStepHeight);
+        sweep(probeOrigin, localUp * maxStepHeight);
     const float upDistance = upHit.hit ? upHit.distance : maxStepHeight;
     if (upDistance < 1.0e-4f) return false;  // nothing to rise into, e.g. a low ceiling right here
     const glm::vec3 raisedPosition = probeOrigin + localUp * upDistance;
@@ -82,7 +83,7 @@ bool TryStepMove(const PhysicsWorld& physics, const glm::vec3& position,
     // docs/ARCHITECTURE.md, "Milestone 12," for the walking-into-the-
     // spacecraft scenario this was found in).
     const ShapeSweepHit forwardHit =
-        physics.SweepPlayerShape(raisedPosition, orientation, horizontalDisplacement);
+        sweep(raisedPosition, horizontalDisplacement);
     if (forwardHit.hit && forwardHit.distance <= flatDistance + kMinStepImprovement) return false;
     const float forwardDistance = forwardHit.hit ? forwardHit.distance : horizontalLength;
 
@@ -99,12 +100,15 @@ bool TryStepMove(const PhysicsWorld& physics, const glm::vec3& position,
     // (which will very likely just block on the same obstruction it always
     // would have, rather than silently launching the player up onto
     // whatever the up-sweep happened to clear).
-    const float lookAhead = std::min(kDownProbeLookAhead, travelDistance * 0.5f);
+    // Explicit-volume consumers can probe one skin-limited lip increment even
+    // with a short fixed-step request. The legacy path retains its old rule.
+    const float lookAhead = capsule ? std::min(kDownProbeLookAhead, capsule->radius)
+                                   : std::min(kDownProbeLookAhead, travelDistance * 0.5f);
     const glm::vec3 downProbeOrigin =
         steppedForwardPosition + (horizontalDisplacement / horizontalLength) * lookAhead;
     const float downSweepDistance = maxStepHeight + kDownSweepMargin;
     const ShapeSweepHit downHit =
-        physics.SweepPlayerShape(downProbeOrigin, orientation, -localUp * downSweepDistance);
+        sweep(downProbeOrigin, -localUp * downSweepDistance);
     if (!downHit.hit) return false;
     if (glm::dot(downHit.normal, localUp) <= minGroundDot) return false;
 
@@ -115,9 +119,8 @@ bool TryStepMove(const PhysicsWorld& physics, const glm::vec3& position,
 bool TryStepDown(const PhysicsWorld& physics, const glm::vec3& position,
                   const glm::quat& orientation, const glm::vec3& localUp, float maxStepHeight,
                   float minGroundDot, float skinMargin, glm::vec3& outNewPosition,
-                  glm::vec3& outNormal, BodyHandle& outHitBody) {
-    const ShapeSweepHit downHit =
-        physics.SweepPlayerShape(position, orientation, -localUp * maxStepHeight);
+                  glm::vec3& outNormal, BodyHandle& outHitBody, const Shape* capsule, const PhysicsQueryFilter* filter, unsigned layer, CategoryMask mask) {
+    const ShapeSweepHit downHit = capsule ? physics.SweepCapsuleMotion(capsule->radius,capsule->halfHeight,position,orientation,-localUp*maxStepHeight,false,0,1,filter,layer,mask) : physics.SweepPlayerShape(position,orientation,-localUp*maxStepHeight);
     if (!downHit.hit) return false;
     if (glm::dot(downHit.normal, localUp) <= minGroundDot) return false;
 

@@ -281,6 +281,14 @@ public:
     bool SetRuntimeTransform(EntityId id,const SceneTransform& transform);
     BodyHandle RuntimeBody(EntityId id) const;
     JointHandle RuntimeJoint(EntityId owner);
+    CharacterMotor* RuntimeCharacter(EntityId id);
+    void UpdateCharacters(float dt);
+    bool SetCharacterSettings(EntityId,const CharacterMotorSettings&);
+    void ClearCharacters();
+    struct CharacterInstance {CharacterMotor motor;SceneTransform previous;};
+    struct RuntimeView {SceneTransform pose;float fov=70;};
+    std::optional<RuntimeView> view;
+    bool SetRuntimeView(const SceneTransform& pose,float fov);
     struct AnimationLayer {AnimationLayerSettings settings;AnimationPlayback playback;std::vector<int> mask;SkeletalPose reference;};
     struct AnimationInstance {std::shared_ptr<const SkeletalAsset> asset;AnimationPlayback playback;PoseMixer mixer;SkeletalPose sourcePose,finalPose;std::vector<glm::mat4> skin;std::vector<AnimationLayer> layers;std::map<std::string,PoseContribution> external;std::string error;std::vector<glm::mat4> previousWorld,recentWorld;float motionDt=0;};
     AnimationInstance* RuntimeAnimation(EntityId);
@@ -424,6 +432,7 @@ private:
     Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
     bool m_hasScripts=false;
     std::set<EntityId> m_animationOwners;
+    std::map<EntityId,CharacterInstance> m_characters;
     std::map<EntityId,AnimationInstance> m_animationInstances;
     std::map<EntityId,RagdollInstance> m_ragdolls;
     struct RagdollReturn {float elapsed=0,duration=0;};

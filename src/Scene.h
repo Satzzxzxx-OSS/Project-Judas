@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include "CharacterMotor.h"
 #include "VisualParticles.h"
 #include <string>
 #include <vector>
@@ -275,6 +276,7 @@ struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std
 struct SceneJointComponent {SceneObjectId bodyA=0,bodyB=0;JointSettings settings;};
 
 struct SceneObject {
+    std::optional<CharacterMotorSettings> characterMotor;
     std::optional<RagdollDefinition> ragdoll;
     std::optional<SceneJointComponent> joint;
     std::optional<SceneAnimationComponent> animation;

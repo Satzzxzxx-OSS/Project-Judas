@@ -8858,3 +8858,22 @@ suppression handles authored self-collision policy; query filtering is unchanged
 Transient internal bodies are not independent save entities. No motors, recovery
 or M49 control is implemented. See [RAGDOLLS.md](RAGDOLLS.md) for scale, lifetime,
 persistence and supported-shape limits. Protected research remains separate.
+
+## M49 — scriptable character motor (candidate)
+
+Judas owns collision-aware character motion; JavaScript owns character behaviour.
+The per-entity CharacterMotor generalizes the historical capsule/motion-ledger
+query and shares sweep/slide and step primitives with legacy locomotion. Scripts
+supply world velocity and one-step acceleration at fixed boundaries; motors sample
+the existing GravityField, resolve motion after the ordinary rigid step, and report
+actual displacement, velocity and generation-safe support. Support uses actual
+body transforms/point velocity and bounded collision-aware carry, not parenting.
+Finite configurable impulses replace unlimited legacy velocity seeding for motors.
+Input, camera, gameplay states, skeleton/pose and ragdoll authority stay separate.
+Motor settings serialize through scenes/prefabs with a conditional schema-5
+fingerprint extension; motor-free authored hashes remain unchanged. Existing
+entity-state saves restore position/velocity; support is transient. The current
+character project uses JS movement/launch and existing liquid-field queries for
+swimming; production fluid mechanics and protected evidence remain unchanged.
+Legacy scenes retain their compatibility controller. See
+[M49 detailed contract and limitations](M49_CHARACTER_MOTOR.md).
