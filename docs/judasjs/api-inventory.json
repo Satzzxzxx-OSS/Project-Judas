@@ -1,5 +1,5 @@
 {
-  "checkpoint": "19613298a55a2095cc856a7462f5c0babe4c1b17",
+  "checkpoint": "74da7b534831d7cb7043ed1c02970283f7078daf",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -515,6 +515,28 @@
       ],
       "native": [],
       "type": "docs/judas.d.ts:Entity.id",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.inertiaWorld",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "inertiaWorld"
+      ],
+      "type": "docs/judas.d.ts:Entity.inertiaWorld",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.mass",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "mass"
+      ],
+      "type": "docs/judas.d.ts:Entity.mass",
       "reference": "docs/judasjs/entities.md"
     },
     {
@@ -1129,6 +1151,19 @@
       "reference": "docs/judasjs/input.md"
     },
     {
+      "symbol": "input.pointerCapture",
+      "kinds": [
+        "get",
+        "set"
+      ],
+      "native": [
+        "pointerCapture",
+        "setPointerCapture"
+      ],
+      "type": "docs/judas.d.ts:input.pointerCapture",
+      "reference": "docs/judasjs/input.md"
+    },
+    {
       "symbol": "input.pressed",
       "kinds": [
         "call"
@@ -1552,16 +1587,19 @@
     "hasTag",
     "held",
     "impulse",
+    "inertiaWorld",
     "joint",
     "jointSet",
     "jointState",
     "jointValid",
     "log",
+    "mass",
     "overlap",
     "parent",
     "particles",
     "pauseAudio",
     "playAudio",
+    "pointerCapture",
     "pressed",
     "queryTags",
     "ragdollActive",
@@ -1582,6 +1620,7 @@
     "sessionGet",
     "sessionSet",
     "setAngularVelocity",
+    "setPointerCapture",
     "setTransform",
     "setVelocity",
     "setView",

@@ -8888,3 +8888,28 @@ not runtime exports; native dispatcher details and behavioural-validation limits
 are explicit inventory exceptions. M38 runtime packages do not bundle this whole
 documentation tree; developers obtain the offline reference/types from the matching
 engine checkout. Historical milestone records/evidence retain their original scope.
+
+## M51 — explicit engine/game execution boundary (candidate)
+
+The reviewed source audit found that a script-owned main camera only bypassed
+legacy locomotion; other historical GameSession controls still ran. Project
+format 1 now has optional `legacy-gameplay "true|false"`: missing preserves old
+projects, while Create New Project writes false. The setting is applied before
+world construction in editor, standalone and scene replacement. In scripted
+worlds, GameSession's player is a diagnostic observer without a collision shape;
+legacy gameplay dispatch, fallback menus, camera policy and showcase controls
+are inactive even when no script view exists. Historical adapters remain
+explicitly available for old scenes/tests, not the recommended new-project path.
+
+Ordinary project JS composes CharacterMotor, physics queries/tags, bodies/joints,
+forces/torques, UI, cameras and scene operations. New public primitives are only
+readonly body mass/world inertia snapshots and pointer-capture intent. Modal UI
+and SDL still own device reconciliation; Renderer still owns raw GL; normal
+physics/gravity/fluid/pose/resource paths remain authoritative. Scripted execution
+mode domain-separates the effective authored baseline; legacy fingerprints and
+canonical scene schema 5 are unchanged. Export carries normal project settings.
+
+Details, exact compatibility scope and limitations:
+[M51 engine/game boundary](M51_ENGINE_BOUNDARY.md). The accepted production fluid
+repair, current fluid project and protected historical/research evidence are
+unchanged. This candidate still requires operator review.

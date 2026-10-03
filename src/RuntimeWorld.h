@@ -58,6 +58,9 @@ class ProductionFluidCoupling;
 // the loop that runs it.
 class RuntimeWorld {
 public:
+    // Project execution policy, retained across Build/Destroy; not simulation state.
+    bool legacyGameplay = true;
+    bool pointerCapture = false; // Script intent; modal UI temporarily overrides capture.
     void SetSceneControl(std::shared_ptr<SceneSession> control) { m_sceneControl=std::move(control); }
     std::shared_ptr<SceneSession> SceneControl() const { return m_sceneControl; }
     struct StaticBody {
@@ -270,7 +273,7 @@ public:
     bool SetColliderEnabled(EntityId id,bool enabled);
     void FixedScripts(const InputSystem* input,float dt);
     bool RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error);
-    void EndScripts(){m_scripts.reset();m_ui.reset();}
+    void EndScripts(){m_scripts.reset();m_ui.reset();pointerCapture=false;}
     RuntimeUI& UI(){if(!m_ui)m_ui=std::make_unique<RuntimeUI>(m_assets);return *m_ui;}
     const RuntimeUI* UIIfLoaded()const{return m_ui.get();}
     void UpdateUIScripts(InputSystem* input,float dt);

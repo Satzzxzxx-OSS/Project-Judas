@@ -39,3 +39,11 @@ writes `JS: ...` to application stdout. It returns undefined. Objects generally
 print `[object Object]`; use `JSON.stringify` for structured output. No warn/error,
 log levels, file sink or developer debugger API. The virtual module also sets
 `globalThis.console` to this object.
+
+## input.pointerCapture (M51)
+
+Boolean get/set request for relative pointer capture in this runtime world.
+Modal UI temporarily releases actual capture; the getter reports script intent,
+not device state. The request resets at world destruction/authored reset.
+New projects start uncaptured until a script requests capture. Historical projects
+with `legacy-gameplay "true"` retain their compatibility capture policy.

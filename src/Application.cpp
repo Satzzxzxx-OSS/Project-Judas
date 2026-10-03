@@ -83,6 +83,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     auto worldOwner=std::make_unique<RuntimeWorld>();
     auto sceneControl=std::make_shared<SceneSession>(options.project,options.scenePath);
     sceneControl->EnableSaves(!options.worldStatePath.empty());
+    worldOwner->legacyGameplay = !options.project.IsLoaded() || options.project.Settings().legacyGameplay;
     worldOwner->SetSceneControl(sceneControl);
     RuntimeWorld& world=*worldOwner;
     if (!world.Build(scene, &host.Resources(), error, options.project.IsLoaded()?&options.project.Settings().classification:nullptr)) {

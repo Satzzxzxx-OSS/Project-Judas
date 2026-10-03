@@ -1,5 +1,5 @@
-/** Current JudasJS through M50; reviewed against ScriptSystem.cpp at M49
- * 19613298a55a2095cc856a7462f5c0babe4c1b17. Tooling only, no TS runtime.
+/** Current JudasJS through M51; reviewed against ScriptSystem.cpp based on M50
+ * 74da7b534831d7cb7043ed1c02970283f7078daf. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
@@ -53,6 +53,8 @@ declare module "judas" {
     applyForce(value: Vec3): void;
     applyImpulse(value: Vec3): void;
     applyTorque(value: Vec3): void;
+    readonly mass: number;
+    readonly inertiaWorld: {x: Vec3; y: Vec3; z: Vec3};
     velocity: Vec3;
     angularVelocity: Vec3;
     playAudio(): boolean;
@@ -173,7 +175,7 @@ declare module "judas" {
     reload(): boolean;
   };
   export const session: { get(key: string): JSONValue; set(key: string, value: JSONValue): void; delete(key: string): void };
-  export const input: { held(name: string): boolean; pressed(name: string): boolean; released(name: string): boolean; axis(name: string): number };
+  export const input: { pointerCapture: boolean; held(name: string): boolean; pressed(name: string): boolean; released(name: string): boolean; axis(name: string): number };
   export const time: { readonly elapsed: number; readonly delta: number; readonly fixed: boolean };
   export const console: { log(...args: unknown[]): void };
   export class UIElement {

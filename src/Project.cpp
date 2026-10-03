@@ -57,6 +57,7 @@ std::string Project::SerializeToString(const ProjectSettings& s) {
     out += "assets-dir " + Quote(s.assetsDir) + "\n";
     out += "scenes-dir " + Quote(s.scenesDir) + "\n";
     out += "saves-dir " + Quote(s.savesDir) + "\n";
+    out += "legacy-gameplay " + Quote(s.legacyGameplay ? "true" : "false") + "\n";
     out += "input-map " + Quote(s.input.Serialize()) + "\n";
     if (!s.classification.IsDefault()) out += "classification " + Quote(s.classification.Serialize()) + "\n";
     return out;
@@ -118,6 +119,10 @@ bool Project::ParseFromString(const std::string& text, ProjectSettings& outSetti
         else if (key == "assets-dir") s.assetsDir = value;
         else if (key == "scenes-dir") s.scenesDir = value;
         else if (key == "saves-dir") s.savesDir = value;
+        else if (key == "legacy-gameplay") {
+            if(value!="true"&&value!="false"){outError="legacy-gameplay must be true or false";return false;}
+            s.legacyGameplay=value=="true";
+        }
         else if (key == "classification") { if(!ProjectClassification::Parse(value,s.classification,outError))return false; }
         else if (key == "input-map") { if(!InputMap::Parse(value,s.input,outError)) return false; }
         else {
@@ -199,6 +204,7 @@ bool Project::CreateNew(const std::string& rootDir, const std::string& name, Pro
     }
     Project project;
     project.m_settings = ProjectSettings{};
+    project.m_settings.legacyGameplay = false;
     project.m_settings.name = name;
     std::string fileStem;
     for (char c : name) fileStem += (std::isalnum(static_cast<unsigned char>(c)) ? c : '_');

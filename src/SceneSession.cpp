@@ -46,6 +46,7 @@ bool SceneSession::Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& p
     Scene scene;
     if(!LoadSceneFromFile(m_project.Resolve(requested),scene,error))return false;
     auto next=std::make_unique<RuntimeWorld>();
+    next->legacyGameplay=m_project.Settings().legacyGameplay;
     if(!next->Build(scene,&resources,error,&m_project.Settings().classification))return false;
     // Validate ordinary player/session construction before ending the old scene.
     GameSession validation;

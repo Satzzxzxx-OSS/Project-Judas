@@ -33,13 +33,6 @@ bool Window::Init(const char* title, int width, int height, bool visible) {
 
     SDL_GL_SetSwapInterval(1);
 
-    if (visible) {
-        // The demo controls a player with mouse look, so start with the
-        // mouse captured for immediate look control. A hidden (test
-        // harness) window has no real cursor to capture.
-        SetMouseCaptured(true);
-    }
-
     m_width = width;
     m_height = height;
     return true;

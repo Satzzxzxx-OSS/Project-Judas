@@ -1014,3 +1014,8 @@ target_compile_options(judas_character_motor_application_tests PRIVATE -Wall -We
 add_executable(judasjs_examples_tests tests/JudasJSExamplesTests.cpp)
 target_link_libraries(judasjs_examples_tests PRIVATE judas_engine)
 target_compile_options(judasjs_examples_tests PRIVATE -Wall -Wextra)
+
+# M51 ordinary project behaviour composition and explicit compatibility boundary.
+add_executable(judas_boundary_migration_tests tests/BoundaryMigrationTests.cpp)
+target_link_libraries(judas_boundary_migration_tests PRIVATE judas_engine)
+target_compile_options(judas_boundary_migration_tests PRIVATE -Wall -Wextra)

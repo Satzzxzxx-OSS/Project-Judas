@@ -27,6 +27,8 @@
 // the existing assets/ tree); a new game gets Assets/ Scenes/ Saves/ from
 // the editor's New Project. Neither layout is assumed by engine code.
 struct ProjectSettings {
+    // Missing field preserves historical projects; newly created projects opt out.
+    bool legacyGameplay = true;
     InputMap input = InputMap::Defaults();
     ProjectClassification classification;
     std::string name;

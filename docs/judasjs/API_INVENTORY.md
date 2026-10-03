@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M50 review of the registered virtual module at M49 checkpoint `19613298a55a2095cc856a7462f5c0babe4c1b17`.
+M51 review of the registered virtual module based on M50 checkpoint `74da7b534831d7cb7043ed1c02970283f7078daf`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -56,6 +56,8 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.destroy` | `destroy` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.hasTag` | `hasTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.inertiaWorld` | `inertiaWorld` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.mass` | `mass` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.parent` | `parent` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.pauseAudio` | `pauseAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.playAudio` | `playAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -113,6 +115,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `input` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.axis` | `axis` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.held` | `held` | [declaration](../judas.d.ts) | [reference](input.md) |
+| `input.pointerCapture` | `pointerCapture`, `setPointerCapture` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.pressed` | `pressed` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `input.released` | `released` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `physics` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |

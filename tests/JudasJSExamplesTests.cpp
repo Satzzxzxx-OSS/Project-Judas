@@ -15,7 +15,7 @@ void Check(bool ok,const std::string& label){++checks;failures+=!ok;std::printf(
 int main(int argc,char** argv){
  fs::path out=argc>1?argv[1]:"build/m50-results";fs::create_directories(out);std::string only=argc>2?argv[2]:"";
  std::string error;EngineHost host;Check(host.Init("M50 cookbook",640,360,false,error),"real EngineHost");if(failures)return 1;host.Audio().Init(error,true);
- const char* names[]={"surface","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
+ const char* names[]={"surface","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
  for(auto name:names){if(!only.empty()&&only!=name)continue;
   std::string n=name,project=n=="audio"?"script_demo":n=="joint"?"joint_demo":n=="animation"||n=="ragdoll"?"ragdoll_demo":"character_demo";
   auto root=fs::absolute(fs::path("build/m50-examples")/n);fs::remove_all(root);fs::create_directories(root);fs::copy("projects/"+project,root,fs::copy_options::recursive);
@@ -53,6 +53,7 @@ int main(int argc,char** argv){
   std::printf("EXAMPLE %s %s\n",name,state.c_str());std::ofstream(out/(n+".json"))<<state;
   auto yes=[&](const char* key){return state.find(std::string("\"")+key+"\":true")!=std::string::npos;};
   bool ok=n=="surface"?state.find("Entity.destroy")!=std::string::npos:
+   n=="physical-control"?yes("capture")&&state.find("\"mass\":40")!=std::string::npos:
    n=="minimal"?state.find("\"started\":1")!=std::string::npos&&state.find("\"steps\":100")!=std::string::npos:
    n=="input-motion"?yes("moved"):n=="spawn"?yes("spawned"):n=="queries"?yes("ray")&&yes("shape"):
    n=="contacts"||n=="trigger"?state.find("\"enters\":1")!=std::string::npos&&state.find("\"exits\":1")!=std::string::npos&&state.find("\"stays\":0")==std::string::npos:

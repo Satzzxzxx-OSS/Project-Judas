@@ -15,17 +15,9 @@ class Interactable;
 class RuntimeWorld;
 class Window;
 
-// Milestone 28: the gameplay layer over a RuntimeWorld — the one player,
-// its view mode and torch, control of the world's vehicle (M8/M11 pilot
-// attachment, M21 SAS), M18 object carrying, and M16 interaction
-// targeting. Everything here is per-run state that exists only while a
-// scene is being played; the authored Scene knows none of it beyond the
-// player-start object it reads its spawn from.
-//
-// This is deliberately not "the game": the fixed-step ordering that
-// advances it lives in src/Simulation.h and the loop that drives that in
-// Application/EditorApplication. GameSession only owns the gameplay
-// participants and the small input decisions that belong to them.
+// Historical gameplay compatibility adapter and per-run integration context.
+// Modern projects disable legacyGameplay and compose engine primitives in JS.
+// PlayerController then exists only as a diagnostic observer, never a motor.
 class GameSession {
 public:
     GameSession() = default;
@@ -38,6 +30,7 @@ public:
     // the vehicle's initial pilot attachment if authored.
     bool Begin(RuntimeWorld& world, std::string& outError);
     void End();
+    bool UsesLegacyGameplay() const;
     bool IsActive() const { return m_world != nullptr; }
 
     // The full R-key reset: authored world state, player at spawn, control

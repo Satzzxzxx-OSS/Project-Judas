@@ -23,6 +23,7 @@ double MillisecondsSince(Clock::time_point start) {
 void StepPlayedWorld(GameSession& session, const Window& window, float fixedDeltaTime,
                      FixedStepMeasurements* measurements) {
     RuntimeWorld& world = session.World();
+    const bool legacy = session.UsesLegacyGameplay();
     world.FixedScripts(&window.Input(),fixedDeltaTime);
     PhysicsWorld& physics = world.Physics();
     const GravityField& gravity = world.Gravity();
@@ -67,7 +68,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
 
     // M20 operator thrusters: real constant forces whose directions come
     // from the current barycentric state of the Newtonian set.
-    if (!world.OperatorThrusts().empty() && world.CelestialParticipants().size() >= 2) {
+    if (legacy && !world.OperatorThrusts().empty() && world.CelestialParticipants().size() >= 2) {
         glm::vec3 barycentre(0.0f);
         glm::vec3 baryVelocity(0.0f);
         float totalMass = 0.0f;
@@ -102,7 +103,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     }
 
     ObjectManipulation& manipulation = session.Manipulation();
-    if (manipulation.IsHolding() && !session.IsPiloting()) {
+    if (legacy && manipulation.IsHolding() && !session.IsPiloting()) {
         const glm::vec3 carryTarget = ComputeCarryTarget(player.GetPosition(), player.GetOrientation(),
                                                          player.GetLookDirection(), 0.7f, 1.7f);
         manipulation.ApplyCarryForce(physics, carryTarget, player.GetVelocity());
@@ -116,10 +117,10 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
 
     // Doors write their pose to PhysicsWorld BEFORE the player's own
     // FixedUpdate so this step's move-and-slide sees the current panel.
-    for (Door& door : world.Doors()) door.FixedUpdate(physics, fixedDeltaTime);
-    for (LightSwitch& lightSwitch : world.LightSwitches()) lightSwitch.FixedUpdate(fixedDeltaTime);
+    if (legacy) for (Door& door : world.Doors()) door.FixedUpdate(physics, fixedDeltaTime);
+    if (legacy) for (LightSwitch& lightSwitch : world.LightSwitches()) lightSwitch.FixedUpdate(fixedDeltaTime);
     if (world.HasFluid()) {
-        if (!session.IsPiloting() && window.IsActionActive(Action::AddTerrainWater)) world.EmitFluidParticle();
+        if (legacy && !session.IsPiloting() && window.IsActionActive(Action::AddTerrainWater)) world.EmitFluidParticle();
         world.FluidCoupling().PrepareRigidStep(world, fixedDeltaTime);
     } else player.SetFluidSample({});
     physics.Step(fixedDeltaTime);
@@ -127,7 +128,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
         // Liquid walls follow the already resolved rigid trajectory, including
         // impacts and support correction, never a gravity-only endpoint guess.
         world.FluidCoupling().AdvanceResolvedLiquid(world, fixedDeltaTime);
-        player.SetFluidSample(world.view ? PlayerFluidSample{} : world.FluidCoupling().SamplePlayer(world, player));
+        player.SetFluidSample(!legacy || world.view ? PlayerFluidSample{} : world.FluidCoupling().SamplePlayer(world, player));
         if (measurements && measurements->measureFluid) {
             measurements->fluidMilliseconds = world.FluidCoupling().Measurements().totalMilliseconds;
             measurements->fluidMeasured = true; // includes field/coupling cost even on particle hold frames
@@ -160,7 +161,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
         // Compatibility observer for legacy diagnostics/interaction. Scripted
         // main-view projects do not run a second locomotion controller.
         player.ObserveExternalView(pose.position-pose.rotation*glm::vec3(0,.7f,0),pose.rotation);
-    }else AdvancePlayerForPiloting(vehicleControl, session.Attachment(), player, physics, window, gravity,
+    }else if (legacy) AdvancePlayerForPiloting(vehicleControl, session.Attachment(), player, physics, window, gravity,
                              fixedDeltaTime);
     world.UpdateCharacters(fixedDeltaTime);
     SyncDynamicBodiesFromPhysics(world.DynamicBodies(), physics);
@@ -176,7 +177,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     // Full whatever the policy says.
     if (world.GetFidelityPolicy()) {
         FidelityPolicyContext context;
-        context.focus = player.GetPosition();
+        context.focus = world.view ? world.view->pose.position : player.GetPosition();
         context.simulationTimeSeconds = world.SimulationTimeSeconds();
         world.EvaluateFidelityPolicy(context, session.PinnedEntities());
     }

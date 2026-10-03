@@ -58,3 +58,11 @@ set render masks or replace collider layers/masks on ordinary bodies. Character
 query configuration is an explicitly exposed exception, not a global setter API.
 An entity without a rigid body reports collision layer 0/mask "0"; this does not
 create a collider or describe its CharacterMotor query settings.
+
+## M51 rigid-body properties
+
+`entity.mass` is a readonly mass snapshot in kg. `entity.inertiaWorld` is a
+readonly world-space inertia tensor snapshot in kg m², with columns `x`, `y`, `z`
+(each a Vec3). Both require a live active dynamic body, otherwise throw TypeError
+(after normal entity validity checks). Multiplying this matrix by an angular
+acceleration gives a world torque; it does not add a controller or holding policy.

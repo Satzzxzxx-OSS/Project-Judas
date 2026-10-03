@@ -100,7 +100,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
     for(size_t i=0;i<world.LightSwitches().size();++i){r.SetRenderLayer(world.RenderLayerOf(world.LightSwitchIds()[i]));world.LightSwitches()[i].Draw(r,alpha);}
     r.SetRenderLayer(0);
 
-    if (session && !world.view) {
+    if (session && session->UsesLegacyGameplay() && !world.view) {
         // Milestone 11: while attached, the pilot is rendered from the
         // SAME presented vehicle pose the camera and vehicle mesh use.
         glm::vec3 playerPosition;
@@ -253,7 +253,7 @@ std::vector<DynamicLight> BuildWorldLights(const RuntimeWorld& world, const Game
         torch.shadowMapIndex = kTorchShadowSlot;
         lights.push_back(torch);
     }
-    if (world.GetVehicle()) {
+    if (world.legacyGameplay && world.GetVehicle()) {
         const RuntimeWorld::Vehicle& vehicle = *world.GetVehicle();
         const DynamicBody& ship = world.DynamicBodies()[vehicle.dynamicIndex];
         const glm::vec3 position = ship.GetPresentedPosition(alpha);

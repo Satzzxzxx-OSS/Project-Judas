@@ -35,3 +35,10 @@ checks declaration/example types and source/runtime coverage, then runs one curr
 character-project startup and real outer-frame scene/session reload smoke.
 No production-suite rerun for documentation.
 Results: [M50 evidence](../evidence/m50/README.md). Human review still matters.
+
+## M51 physical control
+
+[physical-control.js](examples/physical-control.js) executes on a dynamic-body
+entity: project damping uses mass/inertia snapshots and requests pointer
+capture. The complete workshop/flight compositions live in
+`projects/boundary_demo/Assets/scripts/rules.js`; no private native calls are used.

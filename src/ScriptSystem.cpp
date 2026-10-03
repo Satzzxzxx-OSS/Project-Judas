@@ -50,6 +50,8 @@ export class Entity {
  applyForce(value){call('force',this.id,value)}
  applyImpulse(value){call('impulse',this.id,value)}
  applyTorque(value){call('torque',this.id,value)}
+ get mass(){return call('mass',this.id)}
+ get inertiaWorld(){return call('inertiaWorld',this.id)}
  get velocity(){return call('velocity',this.id)}
  set velocity(value){call('setVelocity',this.id,value)}
  get angularVelocity(){return call('angularVelocity',this.id)}
@@ -129,7 +131,7 @@ export const physics={
  boxCast:(pose,halfExtents,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'box',rotation:pose.rotation,halfExtents})};
 export const scenes={get current(){return call('sceneCurrent')},get registered(){return call('sceneList')},load:name=>call('sceneLoad',name),reload:()=>call('sceneReload')};
 export const session={get:key=>call('sessionGet',key),set:(key,value)=>call('sessionSet',key,value),delete:key=>call('sessionDelete',key)};
-export const input={held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
+export const input={get pointerCapture(){return call('pointerCapture')},set pointerCapture(value){call('setPointerCapture',value)},held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
 export const time={get elapsed(){return call('elapsed')},get delta(){return call('delta')},get fixed(){return call('fixed')}};
 export const console={log:(...args)=>call('log',args.map(String).join(' '))};
 
@@ -331,6 +333,8 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(op=="elapsed")return JS_NewFloat64(c,world.SimulationTimeSeconds());
     if(op=="delta")return JS_NewFloat64(c,s->delta);
     if(op=="fixed")return JS_NewBool(c,s->fixed);
+    if(op=="pointerCapture")return JS_NewBool(c,world.pointerCapture);
+    if(op=="setPointerCapture"){if(!JS_IsBool(arg(1)))return JS_ThrowTypeError(c,"pointerCapture must be boolean");world.pointerCapture=JS_ToBool(c,arg(1));return JS_TRUE;}
     if(op=="held"||op=="pressed"||op=="released"||op=="axis"){
         auto name=String(c,arg(1));if(!s->input)return op=="axis"?JS_NewFloat64(c,0):JS_FALSE;
         if(op=="axis")return JS_NewFloat64(c,s->input->Axis(name));
@@ -537,6 +541,8 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(op=="camera"&&!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"camera enabled must be boolean");
     if(op=="camera"){for(auto& camera:world.PresentationCameras())if(camera.id==id){camera.settings.enabled=JS_ToBool(c,arg(2));return JS_TRUE;}return JS_FALSE;}
     auto body=world.RuntimeBody(id);if(!body.IsValid()||!world.Physics().IsDynamicBody(body))return JS_ThrowTypeError(c,"entity has no active dynamic body");
+    if(op=="mass")return JS_NewFloat64(c,world.Physics().GetMass(body));
+    if(op=="inertiaWorld"){const auto matrix=world.Physics().GetInertiaWorld(body);auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"x",Vec(c,matrix[0]));JS_SetPropertyStr(c,result,"y",Vec(c,matrix[1]));JS_SetPropertyStr(c,result,"z",Vec(c,matrix[2]));return result;}
     if(op=="velocity")return Vec(c,world.Physics().GetLinearVelocity(body));
     if(op=="angularVelocity")return Vec(c,world.Physics().GetAngularVelocity(body));
     glm::vec3 v;if(!ReadVec(c,arg(2),v))return JS_ThrowTypeError(c,"invalid vector");

@@ -100,9 +100,9 @@ void DrawEditorMainMenu(EditorDocument& doc, EditorPanelState& state, EditorRequ
         item("Mesh", "mesh");
         item("Point light", "point-light");
         item("Spot light", "spot-light");
-        item("Door", "door");
+        item("Door (legacy gameplay)", "door");
         item("Gravity region", "gravity-region");
-        item("Player start", "player-start");
+        item("Player start (legacy gameplay)", "player-start");
         item("Render camera", "render-camera");
         item("Audio emitter", "audio-emitter");
         item("Audio listener", "audio-listener");
@@ -597,6 +597,7 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
         return;
     }
     ProjectSettings& s = project.Settings();
+    ImGui::Checkbox("Legacy gameplay compatibility (historical scenes)", &s.legacyGameplay);
     ImGui::TextDisabled("%s", project.ProjectFile().c_str());
     char name[256];
     CopyToBuffer(s.name, name, sizeof(name));

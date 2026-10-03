@@ -280,7 +280,8 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
         e.state=StateFromDefinition(o);e.slot=std::numeric_limits<std::size_t>::max();m_extraEntities.push_back(e);
     }
-    m_baselineFingerprint = std::move(fingerprint);
+    m_baselineFingerprint = legacyGameplay ? std::move(fingerprint)
+        : SceneFingerprintSha256("Judas.ScriptedRuntime.1:" + fingerprint);
     return true;
 }
 
@@ -669,7 +670,7 @@ void RuntimeWorld::RestoreAuthoredState() {
     std::vector<EntityId> articulations;for(const auto& entry:m_ragdolls)articulations.push_back(entry.first);
     for(auto id:articulations){std::string error;LeaveRagdoll(id,0,error);}
     m_ragdollReturns.clear();m_ragdollAutostarted.clear();ClearCharacters();m_animationInstances.clear();
-    m_scripts.reset();m_ui.reset();m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
+    m_scripts.reset();m_ui.reset();pointerCapture=false;m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
     if (!m_built) return;
     for(const auto& o:ScriptObjects())if(o.ui&&o.ui->enabled){std::string error;UI().Load(o.ui->asset,o.ui->name,o.id,error);}
     for(auto& [id,info]:m_entityCategories){(void)id;info.tags=info.authoredTags;m_physics.SetBodyTags(info.body,info.tags);}
@@ -1166,7 +1167,7 @@ void RuntimeWorld::Destroy() {
     ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
-    m_scripts.reset();m_ui.reset();m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;
+    m_scripts.reset();m_ui.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;

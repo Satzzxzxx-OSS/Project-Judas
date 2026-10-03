@@ -10,6 +10,8 @@ GameSession::~GameSession() {
     End();
 }
 
+bool GameSession::UsesLegacyGameplay() const { return m_world && m_world->legacyGameplay; }
+
 bool GameSession::Begin(RuntimeWorld& world, std::string& outError) {
     End();
     m_world = &world;
@@ -29,7 +31,7 @@ bool GameSession::Begin(RuntimeWorld& world, std::string& outError) {
         const auto& start = *world.GetPlayerStart();
         m_player->SetFluidParameters(start.density, start.fluidDrag, start.swimAcceleration);
     }
-    if (!m_player->Spawn(world.Physics())) {
+    if (world.legacyGameplay && !m_player->Spawn(world.Physics())) {
         outError = "player spawn failed";
         m_player.reset();
         m_world = nullptr;
@@ -46,7 +48,7 @@ bool GameSession::Begin(RuntimeWorld& world, std::string& outError) {
     m_vehicleControl = FlyingPrimitiveControl{};
     m_pilotAttachment = PilotAttachment{};
     m_initialPilotAttached = false;
-    if (world.GetVehicle()) {
+    if (world.legacyGameplay && world.GetVehicle()) {
         m_vehicleControl.handle = world.GetVehicle()->handle;
         m_initialPilotAttached = world.GetVehicle()->component.initialPilotAttached;
         if (m_initialPilotAttached) {
@@ -63,7 +65,7 @@ bool GameSession::Begin(RuntimeWorld& world, std::string& outError) {
 
 void GameSession::End() {
     if (!m_world) return;
-    if (m_player && m_world->IsBuilt()) m_player->Destroy(m_world->Physics());
+    if (UsesLegacyGameplay() && m_player && m_world->IsBuilt()) m_player->Destroy(m_world->Physics());
     m_player.reset();
     m_interactables.clear();
     m_pickupTargets.clear();
@@ -102,6 +104,7 @@ bool GameSession::ConsumeResetOccurred() {
 }
 
 void GameSession::RefreshEntityBindings() {
+    if (!UsesLegacyGameplay()) return;
     if (!m_world || m_boundEntityVersion == m_world->EntityVersion()) return;
     m_boundEntityVersion = m_world->EntityVersion();
     RuntimeWorld& world = *m_world;
@@ -127,6 +130,15 @@ void GameSession::RefreshEntityBindings() {
 std::vector<EntityId> GameSession::PinnedEntities() const {
     std::vector<EntityId> pinned;
     if (!m_world) return pinned;
+    if (!UsesLegacyGameplay()) {
+        for (const auto& object : m_world->ScriptObjects()) {
+            auto* character = m_world->RuntimeCharacter(object.id);
+            if (!character || !character->result.supported) continue;
+            const auto id = m_world->EntityIdOfBody(character->result.support);
+            if (id != kInvalidSceneObjectId) pinned.push_back(id);
+        }
+        return pinned;
+    }
     if (m_manipulation->IsHolding()) {
         const EntityId held = m_world->EntityIdOfBody(m_manipulation->HeldBody());
         if (held != kInvalidSceneObjectId) pinned.push_back(held);
@@ -194,6 +206,7 @@ bool GameSession::DestroyTargetedEntity() {
 }
 
 void GameSession::UpdateInteractionTarget() {
+    if (!UsesLegacyGameplay()) return;
     if (!m_world) return;
     RefreshEntityBindings();
     m_interactTarget = SelectInteractable(m_player->GetPosition(), m_player->GetLookDirection(),
@@ -204,7 +217,7 @@ void GameSession::HandleFrameInput(Window& window, bool torchToggleRequested, bo
                                    bool viewToggleRequested, bool throwRequested,
                                    bool sasToggleRequested, float frameDeltaTime) {
     m_world->UpdateScripts(&window.Input(),frameDeltaTime);
-    if (!m_world) return;
+    if (!UsesLegacyGameplay()) return;
     ApplyPlayerViewToggle(m_viewMode, viewToggleRequested, /*gameplayOwnsInput=*/true);
     // Mouse look and jump-key latching happen every render frame,
     // independent of how many fixed physics steps run this frame.

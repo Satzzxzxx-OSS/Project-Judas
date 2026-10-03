@@ -54,7 +54,7 @@ const symbols=[...runtime.keys()].sort();
 const nativeOps=[...new Set([...library.matchAll(/call\(['"]([^'"]+)['"]/g)].map(m=>m[1]))].sort();
 for(const op of nativeOps)if(!source.slice(source.indexOf('JSValue ScriptSystem::Impl::Native')).match(new RegExp('op\\s*(?:==|!=)\\s*"'+op+'"')))throw Error('Unimplemented native operation '+op);
 const mapPath=path.join(root,'docs/judasjs/api-inventory.json');
-const schema={checkpoint:'19613298a55a2095cc856a7462f5c0babe4c1b17',authority:'src/ScriptSystem.cpp::library + Impl::Native',symbols:symbols.map(k=>{
+const schema={checkpoint:'74da7b534831d7cb7043ed1c02970283f7078daf',authority:'src/ScriptSystem.cpp::library + Impl::Native',symbols:symbols.map(k=>{
  const v=runtime.get(k);let native=v.native;
  if(k.startsWith('physics.')&&k!=='physics.joint')native=['cast'];
  const page=['world.setView','world.clearView','world.viewRay','world.fluidSample'].includes(k)?'effects-camera.md':pages[k.split('.')[0]];
@@ -64,7 +64,7 @@ const schema={checkpoint:'19613298a55a2095cc856a7462f5c0babe4c1b17',authority:'s
 if(args.includes('--write-inventory')){
  fs.writeFileSync(mapPath,JSON.stringify(schema,null,2)+'\n');
  const rows=schema.symbols.map(s=>`| \`${s.symbol}\` | ${s.native.map(n=>'`'+n+'`').join(', ')||'JS wrapper/data'} | [declaration](../judas.d.ts) | [reference](${path.basename(s.reference)}) |`);
- fs.writeFileSync(path.join(root,'docs/judasjs/API_INVENTORY.md'),'# Current public JudasJS inventory\n\nM50 review of the registered virtual module at M49 checkpoint `'+schema.checkpoint+'`.\nEach row is a runtime export/member (constructors and plain handle fields included).\nNative dispatcher operations are implementation details, not additional JS APIs.\n\n| Runtime symbol | Native bridge operation | Type | Reference |\n|---|---|---|---|\n'+rows.join('\n')+'\n\n## Lifecycle and dynamic exceptions\n\n'+schema.callbacks.map(n=>'`'+n+'`').join(', ')+' are structural ScriptBehaviour callbacks, not module exports.\n\n'+Object.entries(schema.exceptions).map(([k,v])=>'- **'+k+'**: '+v).join('\n')+'\n\nThe machine check fails missing/phantom exports/members, getter/setter drift and inventory drift.\nStructured return/configuration types and behavioural semantics require source review; it is not full semantic certification.\n');
+ fs.writeFileSync(path.join(root,'docs/judasjs/API_INVENTORY.md'),'# Current public JudasJS inventory\n\nM51 review of the registered virtual module based on M50 checkpoint `'+schema.checkpoint+'`.\nEach row is a runtime export/member (constructors and plain handle fields included).\nNative dispatcher operations are implementation details, not additional JS APIs.\n\n| Runtime symbol | Native bridge operation | Type | Reference |\n|---|---|---|---|\n'+rows.join('\n')+'\n\n## Lifecycle and dynamic exceptions\n\n'+schema.callbacks.map(n=>'`'+n+'`').join(', ')+' are structural ScriptBehaviour callbacks, not module exports.\n\n'+Object.entries(schema.exceptions).map(([k,v])=>'- **'+k+'**: '+v).join('\n')+'\n\nThe machine check fails missing/phantom exports/members, getter/setter drift and inventory drift.\nStructured return/configuration types and behavioural semantics require source review; it is not full semantic certification.\n');
 }
 function checkSurface(declarations){
  const missing=symbols.filter(k=>!declarations.has(k)),phantom=[...declarations.keys()].filter(k=>!runtime.has(k));

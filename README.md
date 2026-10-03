@@ -1430,3 +1430,19 @@ JavaScript. See [M49 authoring/API and checklist](docs/M49_CHARACTER_MOTOR.md).
 Start with [JUDASJS.md](docs/JUDASJS.md) for the current API, lifecycle, safe handles,
 copyable executed examples and offline editor setup. [judas.d.ts](docs/judas.d.ts)
 provides completion/type information without a TypeScript runtime dependency.
+
+## Engine/game boundary (M51 candidate)
+
+New projects default to script-owned gameplay. Existing projects without the
+optional `legacy-gameplay` setting retain historical controls for compatibility.
+The current boundary demonstration is an ordinary project:
+
+```sh
+./build/judas projects/boundary_demo/boundary_demo.judasproj
+./build/judas_editor projects/boundary_demo/boundary_demo.judasproj
+```
+
+It composes queries/tags, physical joints, force-driven holding/throwing,
+spacecraft control, CharacterMotor, cameras, authored UI and scene loading in
+project JavaScript. See [M51 workflow/controls](docs/M51_ENGINE_BOUNDARY.md) and
+[the source-backed boundary audit](docs/evidence/m51/AUDIT.md).

@@ -101,7 +101,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     const bool authoredUI=world.UIIfLoaded()&&!world.UIIfLoaded()->Empty();
     bool uiOwned=false;
     if(authoredUI){auto& ui=world.UI();uiOwned=ui.OwnsInput();int x,y;window.GetMousePosition(x,y);ui.Input(window.Input(),{x,y},!window.IsMouseCaptured(),window.Width(),window.Height());world.DispatchUIEvents(&window.Input(),frameDeltaTime);uiOwned|=ui.OwnsInput();}
-    if (window.ConsumeUIBackRequest()&&!authoredUI) m_pauseMenu.HandleBackRequest();
+    if (window.ConsumeUIBackRequest()&&!authoredUI&&world.legacyGameplay) m_pauseMenu.HandleBackRequest();
     const bool uiUp = window.ConsumeUINavigateUpRequest();
     const bool uiDown = window.ConsumeUINavigateDownRequest();
     const bool uiActivate = window.ConsumeUIActivateRequest();
@@ -121,8 +121,9 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     }
     // A replacement scene may begin after an outgoing modal menu released
     // the cursor. Reconcile ownership after the new scene's UI starts.
-    if (!m_captureInitialized || IsPaused() != m_wasPauseMenuOpen) {
-        window.SetMouseCaptured(!IsPaused());
+    const bool capture = !IsPaused() && (world.legacyGameplay || world.pointerCapture);
+    if (!m_captureInitialized || window.IsMouseCaptured() != capture) {
+        window.SetMouseCaptured(capture);
         m_wasPauseMenuOpen = IsPaused();
         m_captureInitialized = true;
     }
@@ -135,12 +136,12 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     const bool sasToggleRequested = window.ConsumeSasToggleRequest();
     // Milestone 29: persistence keys work whether or not the menu is open —
     // saving a frozen world is exactly when you want it.
-    if (window.ConsumeSaveWorldStateRequest()) {
+    if (world.legacyGameplay && window.ConsumeSaveWorldStateRequest()) {
         std::string message;
         SaveWorldStateNow(message);
         m_session.SetLastLifecycleMessage(message);
     }
-    if (window.ConsumeDeleteWorldStateRequest()) {
+    if (world.legacyGameplay && window.ConsumeDeleteWorldStateRequest()) {
         std::string message;
         DeleteWorldStateNow(message);
         m_session.SetLastLifecycleMessage(message);
@@ -195,14 +196,14 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     const int height = std::max(window.Height(), 1);
     const float aspectRatio = static_cast<float>(window.Width()) / static_cast<float>(height);
     const PlayerController& player = m_session.Player();
-    glm::mat4 view;
-    if (m_session.IsPiloting()) {
+    glm::mat4 view(1.0f);
+    if (world.legacyGameplay && m_session.IsPiloting()) {
         // Milestone 8: anchor the same camera to the vehicle's presented
         // pose while piloting.
         const DynamicBody& ship = world.DynamicBodies()[world.GetVehicle()->dynamicIndex];
         view = player.GetViewMatrix(ship.GetPresentedPosition(presentationAlpha),
                                     ship.GetPresentedOrientation(presentationAlpha));
-    } else {
+    } else if (world.legacyGameplay) {
         view = player.GetViewMatrix(presentationAlpha, m_session.ViewMode());
     }
     if(world.view){const auto& v=*world.view;view=glm::lookAt(v.pose.position,v.pose.position+v.pose.rotation*glm::vec3(0,0,-1),v.pose.rotation*glm::vec3(0,1,0));}
@@ -224,7 +225,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
         if (!hud.worldStateInfo.empty() || !hud.lifecycleMessage.empty()) hud.lifecycleAvailable = true;
         m_hud.Draw(renderer, window.Width(), window.Height(), hud);
     }
-    if(!authoredUI)m_pauseMenu.Draw(renderer, window.Width(), window.Height());
+    if(world.legacyGameplay&&!authoredUI)m_pauseMenu.Draw(renderer, window.Width(), window.Height());
     if(authoredUI)world.UI().Draw(renderer,window.Width(),window.Height());
     renderer.EndUIFrame();
     return presentationAlpha;

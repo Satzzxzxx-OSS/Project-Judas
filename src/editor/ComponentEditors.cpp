@@ -343,6 +343,7 @@ void DrawLight(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
 }
 
 void DrawDoor(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
+    ImGui::TextDisabled("Historical gameplay adapter; modern projects use ordinary components + JS.");
     if(state.project){auto& d=*o.door;DrawCategoryLayer(doc,"Collision layer",d.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",d.collisionMask,state.project->Settings().classification.collision);}
     DragVec3(doc, "Hinge axis (local)", o.door->localHingeAxis, 0.01f);
     DragScalar(doc, "Open angle (deg)", o.door->openAngleDegrees, 0.5f, 0.0f, 180.0f);
@@ -351,6 +352,7 @@ void DrawDoor(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
 }
 
 void DrawLightSwitch(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
+    ImGui::TextDisabled("Historical gameplay adapter; modern projects use ordinary components + JS.");
     SceneLightSwitchComponent& s = *o.lightSwitch;
     DragVec3(doc, "Hinge axis (local)##sw", s.localHingeAxis, 0.01f);
     DragScalar(doc, "Toggle angle (deg)", s.toggleAngleDegrees, 0.5f, 0.0f, 180.0f);
@@ -361,6 +363,7 @@ void DrawLightSwitch(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
 }
 
 void DrawVehicle(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
+    ImGui::TextDisabled("Historical gameplay adapter; modern projects use ordinary components + JS.");
     SceneVehicleComponent& v = *o.vehicle;
     Combo(doc, "Gravity source", v.gravity, kVehicleGravityNames, 2);
     Checkbox(doc, "Headlight", v.headlight);
@@ -414,6 +417,7 @@ void DrawFluidVolume(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
 }
 
 void DrawPlayerStart(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
+    ImGui::TextDisabled("Historical gameplay adapter; modern projects use ordinary components + JS.");
     if(state.project){auto& p=*o.playerStart;DrawCategoryLayer(doc,"Collision layer",p.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",p.collisionMask,state.project->Settings().classification.collision);}
     DragScalar(doc, "Yaw (deg)", o.playerStart->yawDegrees, 0.5f, -360.0f, 360.0f);
     Combo(doc, "View", o.playerStart->view, kViewNames, 2);

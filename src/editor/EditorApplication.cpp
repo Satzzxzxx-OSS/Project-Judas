@@ -467,6 +467,7 @@ bool EditorApplication::RunProject(std::string& outMessage) {
 
 bool EditorApplication::StartPlay(std::string& outError) {
     m_world = std::make_unique<RuntimeWorld>();
+    m_world->legacyGameplay = m_project.Settings().legacyGameplay;
     if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError, &m_project.Settings().classification)) {
         m_world.reset();
         return false;
@@ -497,7 +498,9 @@ bool EditorApplication::StartPlay(std::string& outError) {
     });
     m_panels.runtime = m_world.get();
     m_panels.mode = EditorMode::Play;
-    m_panels.status = "Playing: Escape pauses (menu) and frees the mouse; Stop restores the authored scene";
+    m_panels.status = m_world->legacyGameplay
+        ? "Playing historical controls: Escape pauses; Stop restores authored state"
+        : "Playing project scripts; Stop restores authored state";
     // Keys pressed while editing (F to focus, R, Space, ...) must not fire
     // as gameplay requests on the first played frame, and a gizmo drag in
     // progress is abandoned.
@@ -505,7 +508,7 @@ bool EditorApplication::StartPlay(std::string& outError) {
     m_hoverAxis = GizmoAxis::None;
     if (m_document.EditInProgress()) m_document.CancelEdit();
     m_host->GetWindow().ClearPendingRequests();
-    m_host->GetWindow().SetMouseCaptured(true);
+    m_host->GetWindow().SetMouseCaptured(m_world->legacyGameplay);
     return true;
 }
 
