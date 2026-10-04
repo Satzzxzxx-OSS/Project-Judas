@@ -1,4 +1,5 @@
 #include "PerformanceProfiler.h"
+#include "Tangents.h"
 #include "Renderer.h"
 #include "SkeletalAnimation.h"
 
@@ -29,6 +30,7 @@ const char* kVertexShaderSource = R"(#version 330 core
 layout(location = 0) in vec3 aLocalPos;
 layout(location = 1) in vec3 aLocalNormal;
 layout(location = 2) in vec2 aUV;
+layout(location = 5) in vec4 aTangent;
 
 layout(location = 3) in uvec4 aJoints;
 layout(location = 4) in vec4 aWeights;
@@ -52,6 +54,7 @@ uniform mat3 uNormalMatrix;
 uniform mat4 uLightSpaceMatrix[3];
 
 out vec3 vWorldNormal;
+out vec4 vWorldTangent;
 out vec3 vWorldPos;
 out vec2 vUV;
 out vec4 vDirLightSpacePos;
@@ -69,6 +72,8 @@ void main() {
     mat3 linear=mat3(skin);
     vec3 normal=abs(determinant(linear))>1e-8?transpose(inverse(linear))*aLocalNormal:linear*aLocalNormal;
     vWorldNormal = uNormalMatrix * normal;
+    vec3 tangent=mat3(uModel)*linear*aTangent.xyz;
+    vWorldTangent=vec4(tangent,aTangent.w*(determinant(mat3(uModel)*linear)<0.0?-1.0:1.0));
     // Milestone 14: the fragment's own world-space position, needed so the
     // fragment shader can compute a per-fragment vector TO each dynamic
     // point/spot light (distance-based attenuation, cone angle) — the
@@ -85,6 +90,7 @@ void main() {
 
 const char* kFragmentShaderSource = R"(#version 330 core
 in vec3 vWorldNormal;
+in vec4 vWorldTangent;
 in vec3 vWorldPos;
 in vec2 vUV;
 in vec4 vDirLightSpacePos;
@@ -170,8 +176,43 @@ float ComputeShadowFactor(vec4 lightSpacePos, sampler2D shadowMap, float ndotl) 
     return litSum / 9.0;
 }
 
+
+uniform int uMaterialModel,uAlphaMode;
+uniform float uAlphaCutoff,uMetallic,uRoughness,uNormalStrength,uOcclusionStrength,uEmissionIntensity;
+uniform bool uFlipV,uModern,uEnvironmentEnabled,uBaseLinear;
+uniform vec4 uBaseFactor,uUVTransform;
+uniform vec3 uEmission,uCameraPosition;
+uniform sampler2D uMR,uNormal,uOcclusion,uEmissive,uEnvDiffuse,uEnvSpecular,uBRDF;
+uniform bool uHasMR,uHasNormal,uHasOcclusion,uHasEmissive,uEmissiveLinear;
+uniform float uEnvironmentIntensity,uEnvLevels;
+uniform mat3 uEnvironmentInverse;
+const float PI=3.14159265358979323846;
+vec3 decodeSRGB(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
+vec2 envUV(vec3 d){return vec2(atan(d.z,d.x)/(2.0*PI),acos(clamp(d.y,-1.0,1.0))/PI);}
+vec3 BRDF(vec3 base,float metal,float rough,vec3 n,vec3 v,vec3 l){
+ float nl=max(dot(n,l),0.0),nv=max(dot(n,v),0.0001);if(nl<=0.0)return vec3(0.0);
+ vec3 h=normalize(v+l);float nh=max(dot(n,h),0.0),vh=max(dot(v,h),0.0);
+ float a=max(rough*rough,0.0025),a2=a*a,den=nh*nh*(a2-1.0)+1.0;
+ float D=a2/(PI*den*den);
+ float visibility=0.5/max(nl*sqrt(nv*nv*(1.0-a2)+a2)+nv*sqrt(nl*nl*(1.0-a2)+a2),0.000001);
+ vec3 f0=mix(vec3(0.04),base,metal),f=f0+(vec3(1.0)-f0)*pow(1.0-vh,5.0);
+ return ((vec3(1.0)-f)*(1.0-metal)*base/PI+D*visibility*f)*nl;
+}
+vec3 pbrLight(vec3 base,float metal,float rough,vec3 n,vec3 v,vec2 uv){
+ vec3 result=BRDF(base,metal,rough,n,v,uLightDirection)*uLightColor*ComputeShadowFactor(vDirLightSpacePos,uShadowMapDir,max(dot(n,uLightDirection),0.0));
+ for(int i=0;i<uLightCount;++i){vec3 to=uDynamicLightPosition[i]-vWorldPos;float distance=length(to);vec3 l=distance>0.00001?to/distance:n;float f=clamp(distance/max(uDynamicLightRange[i],0.0001),0.0,1.0),w=clamp(1.0-f*f*f*f,0.0,1.0);float attenuation=w*w/(distance*distance+1.0);float spot=uDynamicLightIsSpot[i]!=0?smoothstep(uDynamicLightOuterCos[i],uDynamicLightInnerCos[i],dot(-l,uDynamicLightDirection[i])):1.0;float shadow=1.0;if(uDynamicLightShadowIndex[i]==1)shadow=ComputeShadowFactor(vTorchLightSpacePos,uShadowMapTorch,max(dot(n,l),0.0));else if(uDynamicLightShadowIndex[i]==2)shadow=ComputeShadowFactor(vShipLightSpacePos,uShadowMapShip,max(dot(n,l),0.0));result+=BRDF(base,metal,rough,n,v,l)*uDynamicLightColor[i]*attenuation*spot*shadow;}
+ float ao=uHasOcclusion?mix(1.0,texture(uOcclusion,uv).r,uOcclusionStrength):1.0;
+ vec3 f0=mix(vec3(0.04),base,metal);
+ if(uEnvironmentEnabled){float nv=max(dot(n,v),0.0);vec3 f=f0+(max(vec3(1.0-rough),f0)-f0)*pow(1.0-nv,5.0);vec3 diffuse=texture(uEnvDiffuse,envUV(uEnvironmentInverse*n)).rgb*base*(vec3(1.0)-f)*(1.0-metal);vec3 reflection=reflect(-v,n);vec3 spec=textureLod(uEnvSpecular,envUV(uEnvironmentInverse*reflection),rough*(uEnvLevels-1.0)).rgb;vec2 brdf=texture(uBRDF,vec2(nv,rough)).rg;result+=(diffuse+spec*(f0*brdf.x+brdf.y))*uEnvironmentIntensity*ao;
+ }else result+=uAmbientColor*base*(1.0-metal)*ao;
+ return result;
+}
+
 void main() {
-    vec3 normal = normalize(vWorldNormal);
+    vec2 materialUV=vUV*uUVTransform.xy+uUVTransform.zw;if(uFlipV)materialUV.y=1.0-materialUV.y;
+    vec3 normal = normalize(vWorldNormal);if(uMaterialModel!=0&&!gl_FrontFacing)normal=-normal;
+    if(uMaterialModel!=0&&uHasNormal){vec3 t=vWorldTangent.xyz-normal*dot(normal,vWorldTangent.xyz);if(dot(t,t)>0.000001){t=normalize(t);vec3 b=cross(normal,t)*vWorldTangent.w;t*=uUVTransform.x<0.0?-1.0:1.0;b*=uUVTransform.y<0.0?-1.0:1.0;vec3 map=texture(uNormal,materialUV).xyz*2.0-1.0;map.xy*=uNormalStrength;normal=normalize(mat3(t,b,normal)*map);}}
+
 
     float diffuseFactor = max(dot(normal, uLightDirection), 0.0);
     float dirShadow = ComputeShadowFactor(vDirLightSpacePos, uShadowMapDir, diffuseFactor);
@@ -211,8 +252,12 @@ void main() {
         lighting += uDynamicLightColor[i] * lightDiffuse * attenuation * spotFactor * shadow;
     }
 
-    vec4 texColor = texture(uTexture, vUV);
-    FragColor = vec4(lighting, 1.0) * texColor * uColor;
+    vec4 texColor = texture(uTexture,materialUV);
+    vec4 base=vec4((uMaterialModel==0||uBaseLinear)?texColor.rgb:decodeSRGB(texColor.rgb),texColor.a)*uBaseFactor*uColor;
+    if(uAlphaMode==1&&base.a<uAlphaCutoff)discard;
+    if(uMaterialModel==0){FragColor=vec4(lighting*base.rgb,base.a);if(uModern)FragColor.rgb=decodeSRGB(FragColor.rgb);}
+    else {vec3 emission=uEmission*(uHasEmissive?(uEmissiveLinear?texture(uEmissive,materialUV).rgb:decodeSRGB(texture(uEmissive,materialUV).rgb)):vec3(1.0))*uEmissionIntensity;float metal=uMetallic,rough=uRoughness;if(uHasMR){vec4 mr=texture(uMR,materialUV);rough*=mr.g;metal*=mr.b;}vec3 v=normalize(uCameraPosition-vWorldPos);FragColor=vec4((uMaterialModel==2?base.rgb:pbrLight(base.rgb,metal,clamp(rough,0.05,1.0),normal,v,materialUV))+emission,uAlphaMode==0?1.0:base.a);}
+
     if (uWaterEnabled) {
         vec4 clip = uWaterViewProjection * vec4(vWorldPos,1.0);
         vec2 uv = clip.xy / clip.w * .5 + .5;
@@ -223,6 +268,8 @@ void main() {
         vec3 transmission = exp(-vec3(.32,.12,.075)*waterLength);
         FragColor.rgb = FragColor.rgb*transmission + vec3(.025,.18,.24)*(vec3(1.0)-transmission);
     }
+    if(uModern||uMaterialModel!=0)FragColor.rgb=clamp(FragColor.rgb,vec3(0.0),vec3(60000.0));
+    if(!uModern&&uMaterialModel!=0){vec3 c=max(FragColor.rgb,vec3(0.0));if(uMaterialModel==1)c/=1.0+dot(c,vec3(.2126,.7152,.0722));FragColor.rgb=mix(c*12.92,1.055*pow(c,vec3(1.0/2.4))-0.055,step(vec3(.0031308),c));}
 }
 )";
 
@@ -236,6 +283,8 @@ void main() {
 // kUIFragmentShaderSource already established for the UI overlay.
 const char* kShadowVertexShaderSource = R"(#version 330 core
 layout(location = 0) in vec3 aLocalPos;
+layout(location = 2) in vec2 aUV;
+out vec2 shadowUV;
 
 layout(location = 3) in uvec4 aJoints;
 layout(location = 4) in vec4 aWeights;
@@ -247,13 +296,16 @@ uniform mat4 uLightViewProj;
 void main() {
     mat4 skin=mat4(1.0);
     if(uSkinned)skin=uBones[aJoints.x]*aWeights.x+uBones[aJoints.y]*aWeights.y+uBones[aJoints.z]*aWeights.z+uBones[aJoints.w]*aWeights.w;
-    gl_Position = uLightViewProj * uModel * skin * vec4(aLocalPos, 1.0);
+    shadowUV=aUV;gl_Position = uLightViewProj * uModel * skin * vec4(aLocalPos, 1.0);
 }
 )";
 
 const char* kShadowFragmentShaderSource = R"(#version 330 core
+in vec2 shadowUV;uniform sampler2D uTexture;uniform int uAlphaMode;uniform float uAlphaCutoff,uAlphaFactor;uniform bool uFlipV;uniform vec4 uUVTransform;
 void main() {
-    // Intentionally empty: this FBO has no color attachment (see
+    vec2 uv=shadowUV*uUVTransform.xy+uUVTransform.zw;if(uFlipV)uv.y=1.0-uv.y;
+    if(uAlphaMode==1&&texture(uTexture,uv).a*uAlphaFactor<uAlphaCutoff)discard;
+    // This FBO has no color attachment (see
     // Renderer::Init's glDrawBuffer(GL_NONE)) — only gl_FragDepth's
     // implicit default (gl_FragCoord.z) is ever written, by the ordinary
     // depth test every draw call already performs.
@@ -494,6 +546,7 @@ void main() {
 }  // namespace
 
 bool Renderer::Init() {
+    GLint units=0;glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,&units);m_textureUnitLimit=unsigned(units);std::fprintf(stderr,"Renderer fragment texture units: %d (material path uses 12)\n",units);if(units<12){std::fprintf(stderr,"M57 requires 12 fragment texture units, available %d\n",units);return false;}
     GLuint vertexShader = 0;
     if (!CompileShader(GL_VERTEX_SHADER, kVertexShaderSource, vertexShader)) {
         return false;
@@ -573,8 +626,8 @@ bool Renderer::Init() {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
 
-    m_cubeMesh = CreateMesh(BuildCubeMeshData());
-    m_sphereMesh = CreateMesh(GenerateUnitSphereMeshData(kSphereLatitudeSegments, kSphereLongitudeSegments));
+    auto cube=BuildCubeMeshData();GenerateMeshTangents(cube);m_cubeMesh=CreateMesh(cube);
+    auto sphere=GenerateUnitSphereMeshData(kSphereLatitudeSegments,kSphereLongitudeSegments);GenerateMeshTangents(sphere);m_sphereMesh=CreateMesh(sphere);
 
     // The "no real texture" fallback DrawMesh substitutes for an invalid
     // TextureHandle (see ResolveTexture) — a single opaque white pixel, so
@@ -770,6 +823,7 @@ void Renderer::Shutdown() {
     PerformanceProfiler::Get().GPUAvailability(false,"Renderer/context shut down");
     TraceResourceOperation(ResourceTracePoint::RendererShutdownBegin);
     EndRenderTarget();
+    ShutdownAppearance();
     if(m_particleProgram)glDeleteProgram(m_particleProgram);
     if(m_particleVbo)glDeleteBuffers(1,&m_particleVbo);
     if(m_particleVao)glDeleteVertexArrays(1,&m_particleVao);
@@ -858,6 +912,7 @@ void Renderer::BeginFrame(int windowWidth, int windowHeight) {
     PollProfileGPU();
     glViewport(0, 0, windowWidth, windowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if(m_linearRendering)BeginLinearPass(windowWidth,windowHeight);
 }
 
 void Renderer::SetCamera(const glm::mat4& view, const glm::mat4& projection) {
@@ -957,6 +1012,7 @@ MeshHandle Renderer::CreateMesh(const MeshData& data) {
         }
     }else if(!data.skinVertices.empty())return {};
     GpuMesh mesh;
+    mesh.primitives=data.primitives;for(const auto& material:data.materials)mesh.materials.push_back(CreateMaterial(material));
     mesh.alive = true;
     if(data.skeletal)mesh.restSkin=ResolveSkinMatrices(data.skeletal->skeleton,data.skeletal->skeleton.rest);
     for(const auto& v:data.vertices)mesh.bounds.Include(v.position);
@@ -980,6 +1036,7 @@ MeshHandle Renderer::CreateMesh(const MeshData& data) {
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshVertex),
                            reinterpret_cast<const void*>(offsetof(MeshVertex, uv)));
     glEnableVertexAttribArray(2);
+    glVertexAttribPointer(5,4,GL_FLOAT,GL_FALSE,sizeof(MeshVertex),reinterpret_cast<void*>(offsetof(MeshVertex,tangent)));glEnableVertexAttribArray(5);
     if(!data.skinVertices.empty()){
         glGenBuffers(1,&mesh.skinVbo);glBindBuffer(GL_ARRAY_BUFFER,mesh.skinVbo);
         glBufferData(GL_ARRAY_BUFFER,GLsizeiptr(data.skinVertices.size()*sizeof(MeshSkinVertex)),data.skinVertices.data(),GL_STATIC_DRAW);
@@ -1034,6 +1091,7 @@ void Renderer::DestroyMesh(MeshHandle handle) {
     if (!mesh) return;
     if (mesh->ebo) glDeleteBuffers(1, &mesh->ebo);
     glDeleteBuffers(1, &mesh->vbo);
+    for(auto material:mesh->materials)DestroyMaterial(material);
     if(mesh->skinVbo)glDeleteBuffers(1,&mesh->skinVbo);
     glDeleteVertexArrays(1, &mesh->vao);
     const std::size_t bytes = static_cast<std::size_t>(mesh->vertexCount) * sizeof(MeshVertex) +
@@ -1042,14 +1100,14 @@ void Renderer::DestroyMesh(MeshHandle handle) {
     TraceResourceOperation(ResourceTracePoint::MeshDestroyed, handle.id, bytes);
 }
 
-TextureHandle Renderer::CreateTexture(const TextureData& data) {
-    GpuTexture texture;texture.width=data.width;texture.height=data.height;
+TextureHandle Renderer::CreateTexture(const TextureData& data,bool srgb) {
+    GpuTexture texture;texture.width=data.width;texture.height=data.height;texture.srgb=srgb;
     texture.alive = true;
     texture.uploadedBytes = data.pixels.size();
 
     glGenTextures(1, &texture.textureId);
     glBindTexture(GL_TEXTURE_2D, texture.textureId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, data.width, data.height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+    glTexImage2D(GL_TEXTURE_2D, 0, srgb?GL_SRGB8_ALPHA8:GL_RGBA8, data.width, data.height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
                  data.pixels.data());
     glGenerateMipmap(GL_TEXTURE_2D);
 
@@ -1075,6 +1133,7 @@ void Renderer::DestroyTexture(TextureHandle handle) {
     if (!handle.IsValid() || handle.id >= m_textures.size() || !m_textures[handle.id].alive) {
         return;
     }
+    auto colour=m_textures[handle.id].colourView;if(colour.IsValid())DestroyTexture(colour);
     glDeleteTextures(1, &m_textures[handle.id].textureId);
     const std::size_t bytes = m_textures[handle.id].uploadedBytes;
     m_textures[handle.id] = GpuTexture{};
@@ -1172,9 +1231,13 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
     if (!gpuMesh) return;
     if(!m_shadowPassActive&&!AllowsLayer(m_renderLayer)){++m_stats.layerRejectedDraws;return;}
 
-    const glm::mat4 model = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(rotation) *
-                             glm::scale(glm::mat4(1.0f), scale);
-
+    static const GpuMaterial failed=[](){GpuMaterial m;m.definition.model=MaterialModel::Unlit;m.definition.baseColor={.8f,.02f,.65f,1};return m;}();
+    static const GpuMaterial pending=[](){GpuMaterial m;m.definition.model=MaterialModel::Unlit;m.definition.baseColor={.25f,.25f,.28f,1};return m;}();
+    auto materialAt=[&](size_t slot)->const GpuMaterial* {MaterialHandle handle;if(slot<m_materialBindings.size())handle=m_materialBindings[slot].handle;if(!handle.IsValid()&&slot<m_materialBindings.size()&&m_materialBindings[slot].explicitAsset)return m_materialBindings[slot].failed?&failed:&pending;if(!handle.IsValid()&&slot<gpuMesh->primitives.size()&&m_linearRendering){int index=gpuMesh->primitives[slot].material;if(index>=0&&size_t(index)<gpuMesh->materials.size())handle=gpuMesh->materials[index];}return handle.IsValid()&&handle.id<m_materials.size()&&m_materials[handle.id].alive?&m_materials[handle.id]:nullptr;};
+    size_t parts=std::max(size_t(1),gpuMesh->primitives.size());bool blended=false;for(size_t i=0;i<parts;++i)if(auto* m=materialAt(i))blended|=m->definition.alpha==MaterialAlpha::Blend;
+    if(blended&&!m_shadowPassActive&&!m_flushingBlends){BlendDraw draw{mesh,position,scale,tintColor,rotation,texture,alpha,skin?*skin:std::vector<glm::mat4>{},m_materialBindings,-(m_view*glm::vec4(position,1)).z,m_renderLayer};m_blendDraws.push_back(std::move(draw));}
+    const glm::mat4 model = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(rotation) * glm::scale(glm::mat4(1.0f), scale);
+    auto submit=[&](bool shadow){for(size_t i=0;i<parts;++i){auto* m=materialAt(i);bool isBlend=m&&m->definition.alpha==MaterialAlpha::Blend;if((shadow&&isBlend)||(!shadow&&isBlend!=m_flushingBlends))continue;MaterialOverride overrides;if(i<m_materialBindings.size())overrides=m_materialBindings[i].overrides;BindMaterial(m,overrides,texture,tintColor,alpha,shadow);glFrontFace(glm::determinant(glm::mat3(model))<0?GL_CW:GL_CCW);unsigned first=0,count=unsigned(gpuMesh->ebo?gpuMesh->indexCount:gpuMesh->vertexCount);if(!gpuMesh->primitives.empty()){first=gpuMesh->primitives[i].first;count=gpuMesh->primitives[i].count;}glBindVertexArray(gpuMesh->vao);if(gpuMesh->ebo)glDrawElements(GL_TRIANGLES,GLsizei(count),GL_UNSIGNED_INT,reinterpret_cast<void*>(size_t(first)*4));else glDrawArrays(GL_TRIANGLES,GLint(first),GLsizei(count));++m_stats.drawCalls;m_stats.triangles+=count/3;}glFrontFace(GL_CCW);};
     const auto* palette=skin&&!skin->empty()?skin:&gpuMesh->restSkin;
     if(palette->size()>48||palette->size()!=gpuMesh->restSkin.size())return;
     VisualBounds bounds=gpuMesh->bounds;
@@ -1188,21 +1251,13 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
     // projection, through the separate minimal shadow shader — normals,
     // UVs, textures, and every lighting uniform are irrelevant to a depth-
     // only pass, so none of them are touched here.
-    const unsigned int triangles =
-        static_cast<unsigned int>((gpuMesh->ebo ? gpuMesh->indexCount : gpuMesh->vertexCount) / 3);
-    ++m_stats.drawCalls;
-    m_stats.triangles += triangles;
+
 
     if (m_shadowPassActive) {
         glUseProgram(m_shadowShaderProgram);
         glUniform1i(m_uShadowSkinned,!palette->empty());if(!palette->empty())glUniformMatrix4fv(m_uShadowBones,GLsizei(palette->size()),GL_FALSE,glm::value_ptr(palette->front()));
         glUniformMatrix4fv(m_uShadowModel, 1, GL_FALSE, glm::value_ptr(model));
-        glBindVertexArray(gpuMesh->vao);
-        if (gpuMesh->ebo) {
-            glDrawElements(GL_TRIANGLES, gpuMesh->indexCount, GL_UNSIGNED_INT, nullptr);
-        } else {
-            glDrawArrays(GL_TRIANGLES, 0, gpuMesh->vertexCount);
-        }
+        submit(true);
         return;
     }
 
@@ -1239,12 +1294,7 @@ void Renderer::DrawMesh(MeshHandle mesh, const glm::vec3& position, const glm::q
     }
     glActiveTexture(GL_TEXTURE0);  // restore the default active unit other calls (UI, texture creation) assume
 
-    glBindVertexArray(gpuMesh->vao);
-    if (gpuMesh->ebo) {
-        glDrawElements(GL_TRIANGLES, gpuMesh->indexCount, GL_UNSIGNED_INT, nullptr);
-    } else {
-        glDrawArrays(GL_TRIANGLES, 0, gpuMesh->vertexCount);
-    }
+    submit(false);
 }
 
 void Renderer::DrawBox(const glm::vec3& position, const glm::quat& rotation,
@@ -1293,6 +1343,7 @@ void Renderer::CaptureFrame(int width, int height, std::vector<unsigned char>& o
 }
 
 void Renderer::EndFrame() {
+    FlushMaterialBlends();ResolveLinearPass();
     // Nothing to do yet; kept as an explicit boundary for future per-frame
     // work (batching, multiple draw calls, etc.) rather than for any
     // behavior this milestone needs.
@@ -1322,6 +1373,7 @@ bool Renderer::LoadFont(const char* path, float pixelHeight, std::string& outErr
 }
 
 void Renderer::BeginUIFrame(int windowWidth, int windowHeight) {
+    glActiveTexture(GL_TEXTURE0);glBindSampler(0,0);glDisable(GL_CULL_FACE);
     m_profileUI=BeginProfilePass("Runtime UI");
     m_uiDrawCalls=0;
     m_uiScreenSize = glm::vec2(static_cast<float>(std::max(windowWidth, 1)),
@@ -1415,9 +1467,9 @@ RenderTargetHandle Renderer::CreateRenderTarget(int width, int height, std::stri
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw); glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture); glGetIntegerv(GL_RENDERBUFFER_BINDING, &depth);
     GpuTarget target; target.width = width; target.height = height;
-    GpuTexture color;color.width=width;color.height=height; color.uploadedBytes = static_cast<std::size_t>(width) * height * 4;
+    GpuTexture color;color.width=width;color.height=height; color.sceneLinear=m_linearRendering;color.renderTarget=true;color.uploadedBytes = static_cast<std::size_t>(width) * height * (color.sceneLinear?8:4);
     glGenTextures(1, &color.textureId); glBindTexture(GL_TEXTURE_2D, color.textureId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, color.sceneLinear?GL_RGBA16F:GL_RGBA8, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -1447,7 +1499,7 @@ bool Renderer::ResizeRenderTarget(RenderTargetHandle& target, int width, int hei
     if (m_activeTarget.IsValid()) { error = "cannot resize during a target pass"; return false; }
     if (target.IsValid() && target.id < m_targets.size()) {
         const auto& old = m_targets[target.id];
-        if (old.framebuffer && old.width == width && old.height == height) { error.clear(); return true; }
+        if (old.framebuffer && old.width == width && old.height == height && m_textures[old.color.id].sceneLinear==m_linearRendering) { error.clear(); return true; }
     }
     auto replacement = CreateRenderTarget(width, height, error);
     if (!replacement.IsValid()) return false;
@@ -1486,6 +1538,7 @@ bool Renderer::BeginRenderTarget(RenderTargetHandle target) {
 
 void Renderer::EndRenderTarget() {
     if (!m_activeTarget.IsValid()) return;
+    FlushMaterialBlends();ResolveLinearPass(m_textures[m_targets[m_activeTarget.id].color.id].sceneLinear);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(m_savedDrawFramebuffer));
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(m_savedReadFramebuffer));
     glViewport(m_savedViewport[0], m_savedViewport[1], m_savedViewport[2], m_savedViewport[3]);
@@ -1520,8 +1573,9 @@ layout(location=0)in vec3 position;layout(location=1)in vec2 uv;layout(location=
 uniform mat4 vp;out vec2 texcoord;out vec4 tint;
 void main(){gl_Position=vp*vec4(position,1);texcoord=uv;tint=color;})";
         const char* fs=R"(#version 330 core
-in vec2 texcoord;in vec4 tint;uniform sampler2D image;out vec4 result;
-void main(){result=texture(image,texcoord)*tint;})";
+in vec2 texcoord;in vec4 tint;uniform sampler2D image;uniform bool modern,imageLinear;out vec4 result;
+vec3 linear(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(.04045),c));}
+void main(){vec4 sampleColour=texture(image,texcoord);result=sampleColour*tint;if(modern)result.rgb=(imageLinear?sampleColour.rgb:linear(sampleColour.rgb))*linear(tint.rgb);})";
         GLuint v=0,f=0;
         if(!CompileShader(GL_VERTEX_SHADER,vs,v))return;
         if(!CompileShader(GL_FRAGMENT_SHADER,fs,f)){glDeleteShader(v);return;}
@@ -1541,7 +1595,8 @@ void main(){result=texture(image,texcoord)*tint;})";
     const glm::vec2 corners[4]={{-0.5f,-0.5f},{0.5f,-0.5f},{0.5f,0.5f},{-0.5f,0.5f}};
     const unsigned indices[6]={0,1,2,0,2,3};m_particleVertices.clear();m_particleVertices.reserve(particles.size()*6);
     for(size_t i:m_particleOrder){const auto& p=particles[i];for(auto k:indices){auto c=corners[k];m_particleVertices.push_back({p.position+p.size*(right*c.x+up*c.y),c+glm::vec2(0.5f),p.color});}}
-    glUseProgram(m_particleProgram);glUniformMatrix4fv(glGetUniformLocation(m_particleProgram,"vp"),1,GL_FALSE,glm::value_ptr(m_projection*m_view));
+    if(m_linearRendering)texture=ColourTexture(texture);
+    glUseProgram(m_particleProgram);glUniform1i(glGetUniformLocation(m_particleProgram,"imageLinear"),texture.IsValid()&&texture.id<m_textures.size()&&(m_textures[texture.id].srgb||m_textures[texture.id].sceneLinear));glUniform1i(glGetUniformLocation(m_particleProgram,"modern"),m_linearRendering);glBindSampler(0,0);glUniformMatrix4fv(glGetUniformLocation(m_particleProgram,"vp"),1,GL_FALSE,glm::value_ptr(m_projection*m_view));
     if(m_activeTarget.IsValid()&&texture.id==RenderTargetTexture(m_activeTarget).id){texture={};++m_stats.feedbackFallbacks;}
     glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,ResolveTexture(texture));glUniform1i(glGetUniformLocation(m_particleProgram,"image"),0);
     glBindVertexArray(m_particleVao);glBindBuffer(GL_ARRAY_BUFFER,m_particleVbo);
@@ -1604,3 +1659,5 @@ void Renderer::PollProfileGPU(){
         p.GPUComplete(q.frame,q.record,double(b>=a?b-a:0)/1e6);q.pending=q.ended=false;
     }
 }
+
+#include "RendererMaterials.inl"

@@ -1,6 +1,8 @@
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
 #include "AssetDatabase.h"
+#include "Material.h"
+#include "Environment.h"
 #include "Prefab.h"
 #include "SceneSerialization.h"
 
@@ -85,6 +87,8 @@ bool CanCreateMetadata(const std::string& metaPath, std::string& outError) {
 
 const char* AssetTypeName(AssetType type) {
     switch (type) {
+        case AssetType::Material:return "material";
+        case AssetType::Environment:return "environment";
         case AssetType::Mesh: return "mesh";
         case AssetType::Texture: return "texture";
         case AssetType::Font: return "font";
@@ -100,6 +104,8 @@ const char* AssetTypeName(AssetType type) {
 
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
+    if(e==".judasmat"){outType=AssetType::Material;return true;}
+    if(e==".judasenv"){outType=AssetType::Environment;return true;}
     if(e==".judasbasin"||e==".judascavity"){outType=AssetType::Liquid;return true;}
     if(e==".judasnav"){outType=AssetType::Navigation;return true;}
     if(e==".judasui"){outType=AssetType::UI;return true;}
@@ -137,6 +143,8 @@ AssetId MintAssetId() {
 
 bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, std::string& outError) {
     switch (type) {
+        case AssetType::Material:{MaterialDefinition m;return LoadMaterial(path,m,outError);}
+        case AssetType::Environment:{EnvironmentData d;return LoadEnvironment(path,d,outError);}
         case AssetType::Mesh: {
             MeshData data;
             return LoadModelMesh(path, data, outError);
@@ -206,7 +214,9 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
             idSeen = true;
         } else if (key == "type") {
             if (typeSeen) return fail("duplicate type");
-            if (tokens[1].first == "mesh") outType = AssetType::Mesh;
+            if(tokens[1].first=="material")outType=AssetType::Material;
+            else if(tokens[1].first=="environment")outType=AssetType::Environment;
+            else if (tokens[1].first == "mesh") outType = AssetType::Mesh;
             else if (tokens[1].first == "texture") outType = AssetType::Texture;
             else if (tokens[1].first == "font") outType = AssetType::Font;
             else if (tokens[1].first == "audio") outType = AssetType::Audio;

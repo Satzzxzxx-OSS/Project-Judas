@@ -1,5 +1,5 @@
 {
-  "checkpoint": "7b1e5ea1eab46456bead72b0dcdc7b7fdc9b36fd",
+  "checkpoint": "a428d98f3e57a7bc087f165f0d135368f3b4ffab",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -562,6 +562,15 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.material",
+      "kinds": [
+        "call"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Entity.material",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
       "symbol": "Entity.navigation",
       "kinds": [
         "get"
@@ -970,6 +979,86 @@
       ],
       "type": "docs/judas.d.ts:LiquidVolume.valid",
       "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "Material",
+      "kinds": [
+        "class"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Material",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
+      "symbol": "Material.assign",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "materialAssign"
+      ],
+      "type": "docs/judas.d.ts:Material.assign",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
+      "symbol": "Material.clearOverrides",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "materialClear"
+      ],
+      "type": "docs/judas.d.ts:Material.clearOverrides",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
+      "symbol": "Material.constructor",
+      "kinds": [
+        "call"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Material.constructor",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
+      "symbol": "Material.entityId",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Material.entityId",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
+      "symbol": "Material.set",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "materialOverride"
+      ],
+      "type": "docs/judas.d.ts:Material.set",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
+      "symbol": "Material.slot",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Material.slot",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
+      "symbol": "Material.state",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "materialInfo"
+      ],
+      "type": "docs/judas.d.ts:Material.state",
+      "reference": "docs/judasjs/materials.md"
     },
     {
       "symbol": "NavigationAgent",
@@ -1924,6 +2013,17 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "world.appearance",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "appearanceInfo"
+      ],
+      "type": "docs/judas.d.ts:world.appearance",
+      "reference": "docs/judasjs/materials.md"
+    },
+    {
       "symbol": "world.clearView",
       "kinds": [
         "call"
@@ -1975,6 +2075,17 @@
       ],
       "type": "docs/judas.d.ts:world.queryTags",
       "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "world.setAppearance",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "appearanceSet"
+      ],
+      "type": "docs/judas.d.ts:world.setAppearance",
+      "reference": "docs/judasjs/materials.md"
     },
     {
       "symbol": "world.setView",
@@ -2034,6 +2145,8 @@
     "animationSeek",
     "animationSet",
     "animationStop",
+    "appearanceInfo",
+    "appearanceSet",
     "audioEnabled",
     "audioInfo",
     "axis",
@@ -2082,6 +2195,10 @@
     "liquidValid",
     "log",
     "mass",
+    "materialAssign",
+    "materialClear",
+    "materialInfo",
+    "materialOverride",
     "navAgentExists",
     "navAgentState",
     "navAreas",

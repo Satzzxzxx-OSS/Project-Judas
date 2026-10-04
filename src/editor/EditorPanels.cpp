@@ -1,4 +1,6 @@
 #include "ProfilerView.h"
+#include "Environment.h"
+#include "ResourceManager.h"
 #include "EditorPanels.h"
 #include "Prefab.h"
 #include "RuntimeUI.h"
@@ -402,6 +404,11 @@ void DrawSceneSettingsPanel(EditorDocument& doc, EditorPanelState& state) {
     DragVec3(doc, "Sun direction", s.sunDirection, 0.01f);
     ColorEdit(doc, "Sun color", s.sunColor);
     ColorEdit(doc, "Ambient", s.ambientColor);
+    Checkbox(doc,"Linear HDR world rendering",s.linearRendering);DragScalar(doc,"Manual exposure",s.exposure,.01f,.001f,10000);
+    std::vector<std::string> names,ids;if(state.assets)for(const auto& [id,a]:state.assets->Records())if(a.type==AssetType::Environment){names.push_back(a.relativePath);ids.push_back(id);}LabelledCombo(doc,"Environment lighting",s.environmentAsset,names,ids,true);
+    DragScalar(doc,"Environment intensity",s.environmentIntensity,.01f,0,10000);Checkbox(doc,"Environment background",s.environmentBackground);
+    auto angles=glm::degrees(glm::eulerAngles(s.environmentRotation));if(ImGui::DragFloat3("Environment rotation degrees",&angles.x,.5f)){doc.BeginEdit();s.environmentRotation=glm::quat(glm::radians(angles));doc.CommitEdit();}
+    ImGui::TextDisabled("Background is independent of lighting. Colour factors are linear; UI ignores world exposure.");
     DragScalar(doc, "Fluid scale", s.fluidScale, 0.1f, 0.01f, 1000.0f);
     DragScalar(doc, "Fluid updates (Hz)", s.fluidUpdateRateHz, 1.0f, 0.1f, 1000.0f);
     DragScalar(doc, "Fluid drag (1/s)", s.fluidHydrostaticDragRate, 0.05f, 0.0f, 1000.0f);
@@ -453,6 +460,9 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
         return;
     }
     const AssetDatabase& db = *state.assets;
+    if(state.mode==EditorMode::Edit&&ImGui::Button("Create material")){auto directory=std::filesystem::path(db.AssetsDir())/"materials";std::filesystem::create_directories(directory);auto path=directory/"material.judasmat";unsigned n=2;while(std::filesystem::exists(path))path=directory/("material"+std::to_string(n++)+".judasmat");std::string error;if(SaveMaterial(path.string(),MaterialDefinition{},error))requests.trackAssetPath=path.string();else state.status=error;}
+    if(state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Bake HDR environment")){static char source[1024]{};static int width=128,samples=128;ImGui::InputText("Radiance .hdr source",source,sizeof(source));ImGui::InputInt("Bake width (power of two)",&width);ImGui::InputInt("Bake samples",&samples);ImGui::TextWrapped("Offline bake; may briefly block editor. Derived data is exported, never regenerated during play.");if(ImGui::Button("Bake and register environment")){auto directory=std::filesystem::path(db.AssetsDir())/"environments";std::filesystem::create_directories(directory);auto path=directory/(std::filesystem::path(source).stem().string()+".judasenv");unsigned n=2;while(std::filesystem::exists(path))path=directory/(std::filesystem::path(source).stem().string()+std::to_string(n++)+".judasenv");EnvironmentData data;std::string error;if(BakeEnvironment(source,unsigned(width),unsigned(samples),data,error)&&SaveEnvironment(path.string(),data,error))requests.trackAssetPath=path.string();else state.status=error;}}
+
     if(state.mode==EditorMode::Edit&&ImGui::Button("Create UI document")){
         UIDocument d;UIElement root;root.id="canvas";root.kind=UIKind::Canvas;d.elements.push_back(root);UIElement panel;panel.id="panel";panel.parent="canvas";panel.background={.1f,.12f,.18f,.95f};d.elements.push_back(panel);
         auto directory=std::filesystem::path(db.AssetsDir())/"ui";std::filesystem::create_directories(directory);auto path=directory/"layout.judasui";int n=2;while(std::filesystem::exists(path))path=directory/("layout"+std::to_string(n++)+".judasui");std::string error;
@@ -544,6 +554,13 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
         if (const AssetRecord* record = db.Find(state.browserSelection)) {
             ImGui::Separator();
             ImGui::Text("Selected: %s", record->relativePath.c_str());
+            if(record->type==AssetType::Material&&state.mode==EditorMode::Edit){
+                static std::string selected,error;static MaterialDefinition draft;if(selected!=record->id){selected=record->id;LoadMaterial(record->path,draft,error);}
+                if(ImGui::CollapsingHeader("Edit SHARED material source",ImGuiTreeNodeFlags_DefaultOpen)){int model=int(draft.model),alpha=int(draft.alpha);const char* models[]={"Legacy","PBR metallic / roughness","Unlit"};const char* modes[]={"Opaque","Alpha cutout","Alpha blend"};if(ImGui::Combo("Model",&model,models,3))draft.model=MaterialModel(model);if(ImGui::Combo("Alpha mode",&alpha,modes,3))draft.alpha=MaterialAlpha(alpha);ImGui::ColorEdit4("Base colour factor (linear)",&draft.baseColor.x);ImGui::SliderFloat("Metallic",&draft.metallic,0,1);ImGui::SliderFloat("Roughness",&draft.roughness,0,1);ImGui::ColorEdit3("Emission (linear)",&draft.emissive.x);ImGui::DragFloat("Emission intensity",&draft.emissiveIntensity,.05f,0,100000);ImGui::SliderFloat("Normal strength",&draft.normalStrength,0,8);ImGui::SliderFloat("Occlusion strength",&draft.occlusionStrength,0,1);ImGui::SliderFloat("Alpha cutoff",&draft.alphaCutoff,0,1);ImGui::Checkbox("Double sided",&draft.doubleSided);ImGui::Checkbox("Flip texture V",&draft.flipV);ImGui::DragFloat2("UV tiling",&draft.uvScale.x,.01f);ImGui::DragFloat2("UV offset",&draft.uvOffset.x,.01f);
+                    const char* labels[]={"Base colour sRGB","Metallic B / roughness G linear","Normal linear","Occlusion R linear","Emission sRGB"};for(size_t i=0;i<5;++i){auto& map=draft.maps[i];std::string label=map.asset.empty()?"(none)":map.asset;if(ImGui::BeginCombo(labels[i],label.c_str())){if(ImGui::Selectable("(none)",map.asset.empty()))map.asset.clear();for(const auto& [id,a]:db.Records())if(a.type==AssetType::Texture&&ImGui::Selectable(a.relativePath.c_str(),map.asset==id))map.asset=id;ImGui::EndCombo();}ImGui::PushID(int(i));const char* wrap[]={"Repeat","Clamp","Mirror"};int values[]={10497,33071,33648};int ws=map.sampler.wrapS==33071?1:map.sampler.wrapS==33648?2:0,wt=map.sampler.wrapT==33071?1:map.sampler.wrapT==33648?2:0;if(ImGui::Combo("Wrap U",&ws,wrap,3))map.sampler.wrapS=values[ws];if(ImGui::Combo("Wrap V",&wt,wrap,3))map.sampler.wrapT=values[wt];ImGui::PopID();}
+                    ImGui::TextWrapped("In-scene preview: assign this asset to a render slot. Saving intentionally updates all non-overridden users.");if(ImGui::Button("Save shared material")){if(SaveMaterial(record->path,draft,error)){if(state.resources)state.resources->Invalidate(record->id);state.status="Saved shared material; instances reload normally";}else state.status=error;}ImGui::SameLine();if(ImGui::Button("Reload source"))LoadMaterial(record->path,draft,error);if(!error.empty())ImGui::TextWrapped("%s",error.c_str());
+                }
+            }
             if(record->type==AssetType::UI&&state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Edit UI document",ImGuiTreeNodeFlags_DefaultOpen))DrawUILayoutEditor(*record,state);
             if(record->type==AssetType::Prefab&&state.mode==EditorMode::Edit&&ImGui::Button("Place prefab instance")){
                 Scene source;std::string error;SceneObjectId root=0;

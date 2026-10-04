@@ -35,7 +35,19 @@ declare module "judas" {
   export interface LegacySweepHit { hit: boolean; distance: number; normal: Vec3; entityId: EntityId }
   export interface FluidSample { immersion: number; density: number; velocity: Vec3; acceleration: Vec3 }
   /** Plain wrappers reacquire native state. Treat the writable ID as opaque. */
+  export interface Appearance {linearRendering:boolean;exposure:number;environmentAsset:AssetId;environmentIntensity:number;environmentRotation:Quat;environmentBackground:boolean}
+  export interface MaterialParameters {baseColor?:Vec3 & {a:number};metallic?:number;roughness?:number;emissive?:Vec3;emissiveIntensity?:number}
+  export interface MaterialState {asset:AssetId;ready:boolean;model:"legacy"|"pbr"|"unlit";alphaMode:"opaque"|"mask"|"blend";baseColor:Vec3 & {a:number};metallic:number;roughness:number;emissive:Vec3;emissiveIntensity:number;overridden:boolean}
+  export class Material {
+    constructor(entityId:EntityId,slot?:number);
+    entityId:EntityId;slot:number;
+    readonly state:MaterialState;
+    assign(asset:AssetId):boolean;
+    set(parameters:MaterialParameters):boolean;
+    clearOverrides():boolean;
+  }
   export class Entity {
+    material(slot?:number):Material;
     readonly liquid:LiquidVolume|null;
     constructor(id: string | number | bigint);
     id: EntityId;
@@ -84,6 +96,8 @@ declare module "judas" {
   export function entity(id: string | number | bigint | null | undefined): Entity | null;
   export const world: {
     entity: typeof entity;
+    readonly appearance:Appearance;
+    setAppearance(settings:Partial<Appearance>):boolean;
     setView(pose: TransformPatch, fov?: number): boolean;
     clearView(): boolean;
     fluidSample(point: Vec3, up: Vec3, halfHeight: number, radius: number, tangent: Vec3): FluidSample;

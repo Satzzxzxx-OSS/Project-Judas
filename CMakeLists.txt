@@ -81,7 +81,14 @@ add_library(judas_profiler STATIC src/PerformanceProfiler.cpp)
 target_include_directories(judas_profiler PUBLIC src)
 target_compile_options(judas_profiler PRIVATE -Wall -Wextra)
 
+add_library(judas_materials STATIC third_party/mikktspace/mikktspace.c)
+target_include_directories(judas_materials PUBLIC src)
+target_link_libraries(judas_materials PUBLIC ${JUDAS_GLM} judas_profiler)
+
 add_library(judas_engine STATIC
+    src/Material.cpp
+    src/Environment.cpp
+    src/Tangents.cpp
     src/LiquidGeometry.cpp
     src/LiquidTypes.cpp
     src/LiquidSystem.cpp
@@ -184,7 +191,7 @@ target_link_libraries(judas_audio_backend PUBLIC Threads::Threads ${CMAKE_DL_LIB
 if(UNIX)
     target_link_libraries(judas_audio_backend PUBLIC m)
 endif()
-target_link_libraries(judas_engine PUBLIC SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads judas_audio_backend judas_navigation_backend)
+target_link_libraries(judas_engine PUBLIC judas_materials SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads judas_audio_backend judas_navigation_backend)
 target_compile_options(judas_engine PRIVATE -Wall -Wextra)
 
 add_executable(judas
@@ -1100,4 +1107,17 @@ foreach(JUDAS_LOCAL_TARGET IN LISTS JUDAS_LOCAL_TARGETS)
     if(JUDAS_LOCAL_TYPE STREQUAL "EXECUTABLE")
         target_link_libraries(${JUDAS_LOCAL_TARGET} PRIVATE judas_profiler)
     endif()
+endforeach()
+
+# M57 offline preprocessing; exported games only load the derived asset.
+add_executable(judas_environment_bake tools/EnvironmentBake.cpp)
+target_link_libraries(judas_environment_bake PRIVATE judas_engine)
+add_executable(judas_material_tests tests/MaterialTests.cpp)
+target_link_libraries(judas_material_tests PRIVATE judas_engine)
+add_executable(judas_material_application_tests tests/MaterialApplicationTests.cpp src/Application.cpp src/TestHarness.cpp src/RuntimeDiagnostics.cpp src/RuntimeOptions.cpp)
+target_link_libraries(judas_material_application_tests PRIVATE judas_engine)
+
+# Legacy direct-Renderer test targets need the reusable M57 material implementation.
+foreach(target judas_ui_tests judas_lighting_tests judas_interactable_tests)
+    target_link_libraries(${target} PRIVATE judas_engine)
 endforeach()

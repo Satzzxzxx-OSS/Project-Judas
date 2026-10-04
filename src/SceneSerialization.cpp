@@ -149,6 +149,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("render.secondary-alpha", F(r.secondaryAlpha));
         w.Line("render.mesh-asset", Quote(r.meshAsset));
         w.Line("render.texture-asset", Quote(r.textureAsset));
+        if(!r.materials.empty())w.Line("render.materials",Quote(EncodeMaterialSlots(r.materials)));
         if (r.textureCamera) w.Line("render.texture-camera", std::to_string(r.textureCamera));
     }
     if(o.particleEmitter){const auto& e=*o.particleEmitter;w.Line("particle-emitter", "");
@@ -580,6 +581,8 @@ bool ParseSettings(Reader& reader, const Block& block, Scene& scene) {
     if (!p.Vec3("sun-direction", s.sunDirection)) return false;
     if (!p.Vec3("sun-color", s.sunColor)) return false;
     if (!p.Vec3("ambient", s.ambientColor)) return false;
+    if((p.Has("linear-rendering")&&!p.Bool("linear-rendering",s.linearRendering))||(p.Has("exposure")&&!p.Float("exposure",s.exposure))||(p.Has("environment")&&!p.String("environment",s.environmentAsset))||(p.Has("environment-intensity")&&!p.Float("environment-intensity",s.environmentIntensity))||(p.Has("environment-rotation")&&!p.Quat("environment-rotation",s.environmentRotation))||(p.Has("environment-background")&&!p.Bool("environment-background",s.environmentBackground)))return false;
+    if(!(s.exposure>0)||s.exposure>10000||s.environmentIntensity<0||s.environmentIntensity>10000||(!s.environmentAsset.empty()&&!IsValidAssetId(s.environmentAsset)))return reader.Fail("invalid display/environment settings");
     if (!p.Float("fluid-scale", s.fluidScale)) return false;
     // New authored fields are optional when reading existing version-3 scenes; their
     // declared defaults are always serialized and fingerprinted on output.
@@ -702,6 +705,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         if (!p.Float("render.secondary-alpha", r.secondaryAlpha)) return false;
         if (!p.String("render.mesh-asset", r.meshAsset)) return false;
         if (!p.String("render.texture-asset", r.textureAsset)) return false;
+        if(p.Has("render.materials")){std::string text;if(!p.String("render.materials",text))return false;std::string error;if(!DecodeMaterialSlots(text,r.materials,error))return reader.Fail(error);}
         if (p.Has("render.texture-camera") && !p.Id("render.texture-camera", r.textureCamera)) return false;
         o.render = r;
     }
@@ -1049,6 +1053,7 @@ bool SaveSceneToString(const Scene& scene, std::string& outText) {
     w.Line("sun-direction", V(s.sunDirection));
     w.Line("sun-color", V(s.sunColor));
     w.Line("ambient", V(s.ambientColor));
+    if(s.linearRendering||!s.environmentAsset.empty()){w.Line("linear-rendering",B(s.linearRendering));w.Line("exposure",F(s.exposure));w.Line("environment",Quote(s.environmentAsset));w.Line("environment-intensity",F(s.environmentIntensity));w.Line("environment-rotation",Q(s.environmentRotation));w.Line("environment-background",B(s.environmentBackground));}
     w.Line("fluid-scale", F(s.fluidScale));
     w.Line("fluid-update-rate-hz", F(s.fluidUpdateRateHz));
     w.Line("fluid-hydrostatic-drag-rate", F(s.fluidHydrostaticDragRate));

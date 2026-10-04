@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M56 review of the registered virtual module based on M55 checkpoint `7b1e5ea1eab46456bead72b0dcdc7b7fdc9b36fd`.
+M57 review of the registered virtual module based on M56 checkpoint `a428d98f3e57a7bc087f165f0d135368f3b4ffab`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -60,6 +60,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.inertiaWorld` | `inertiaWorld` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.liquid` | `liquidOwner` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.mass` | `mass` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.material` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](materials.md) |
 | `Entity.navigation` | `navAgentExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.navigationLink` | `navLinkInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.navigationObstacle` | `navObstacleInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -98,6 +99,14 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `LiquidVolume.surfaceEnabled` | `liquidSurfaceEnabled` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.transferTo` | `liquidTransfer` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.valid` | `liquidValid` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `Material` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](materials.md) |
+| `Material.assign` | `materialAssign` | [declaration](../judas.d.ts) | [reference](materials.md) |
+| `Material.clearOverrides` | `materialClear` | [declaration](../judas.d.ts) | [reference](materials.md) |
+| `Material.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](materials.md) |
+| `Material.entityId` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](materials.md) |
+| `Material.set` | `materialOverride` | [declaration](../judas.d.ts) | [reference](materials.md) |
+| `Material.slot` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](materials.md) |
+| `Material.state` | `materialInfo` | [declaration](../judas.d.ts) | [reference](materials.md) |
 | `NavigationAgent` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `NavigationAgent.clear` | `navClear` | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `NavigationAgent.completeLink` | `navCompleteLink` | [declaration](../judas.d.ts) | [reference](navigation.md) |
@@ -188,11 +197,13 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `ui.load` | `uiLoad` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `ui.quit` | `uiQuit` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `world` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.appearance` | `appearanceInfo` | [declaration](../judas.d.ts) | [reference](materials.md) |
 | `world.clearView` | `clearView` | [declaration](../judas.d.ts) | [reference](effects-camera.md) |
 | `world.entity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `world.fluidSample` | `fluidSample` | [declaration](../judas.d.ts) | [reference](effects-camera.md) |
 | `world.overlap` | `overlap` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `world.queryTags` | `queryTags` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `world.setAppearance` | `appearanceSet` | [declaration](../judas.d.ts) | [reference](materials.md) |
 | `world.setView` | `setView` | [declaration](../judas.d.ts) | [reference](effects-camera.md) |
 | `world.spawnPrefab` | `spawn` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `world.sweepCapsule` | `sweep` | [declaration](../judas.d.ts) | [reference](entities.md) |

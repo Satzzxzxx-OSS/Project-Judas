@@ -1,5 +1,6 @@
 #pragma once
 #include "Classification.h"
+#include "Material.h"
 #include "NavigationTypes.h"
 #include "LiquidTypes.h"
 #include "AudioTypes.h"
@@ -58,6 +59,7 @@ enum class SceneShape { Box, Sphere, Compound, Mesh, Terrain };
 // component's geometry (there is nothing sensible to draw otherwise);
 // Box/Sphere/Mesh are self-contained and need no body at all.
 struct SceneRenderComponent {
+    std::vector<MaterialSlot> materials;
     SceneShape shape = SceneShape::Box;
     glm::vec3 halfExtents{0.5f};   // Box
     float radius = 0.5f;           // Sphere
@@ -327,6 +329,10 @@ enum class SceneFidelityPolicy { None, Distance };
 
 // Scene-wide authored settings.
 struct SceneSettings {
+    bool linearRendering=false,environmentBackground=false;
+    float exposure=1,environmentIntensity=1;
+    glm::quat environmentRotation{1,0,0,0};
+    std::string environmentAsset;
     CategoryMask mainCameraRenderMask = kAllCategories;
     std::string name;
     // M23 absolute world origin of this local scene, metres.

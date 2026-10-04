@@ -1,3 +1,5 @@
+#include "Material.h"
+#include "Environment.h"
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
 #include "ProjectExporter.h"
@@ -61,12 +63,14 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
         Require(record && !record->missing && record->type == type,
                 "Missing or wrong-type required " + std::string(AssetTypeName(type)) + " asset " + id);
     };
+    check(scene.Settings().environmentAsset,AssetType::Environment);
     for (const auto& object : scene.Objects()) {
         checkUI(object);
         check(object.prefabAsset, AssetType::Prefab);
         if (object.render) {
             check(object.render->meshAsset, AssetType::Mesh);
             check(object.render->textureAsset, AssetType::Texture);
+            for(auto& slot:object.render->materials)check(slot.asset,AssetType::Material);
         }
         for(const auto& slot:object.scripts)check(slot.asset,AssetType::Script);
         if (object.audioEmitter) check(object.audioEmitter->asset, AssetType::Audio);
@@ -86,6 +90,7 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
         if (object.render) {
             check(object.render->meshAsset, AssetType::Mesh);
             check(object.render->textureAsset, AssetType::Texture);
+            for(auto& slot:object.render->materials)check(slot.asset,AssetType::Material);
         }
         for(const auto& slot:object.scripts)check(slot.asset,AssetType::Script);
         if (object.audioEmitter) check(object.audioEmitter->asset, AssetType::Audio);
@@ -155,6 +160,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             Require(Inside(fs::canonical(record.path), root), "Asset escapes project root: " + record.relativePath);
             const bool valid = AssetDatabase::ValidateAssetFile(record.path, record.type, detail);
             Require(valid, "Invalid asset " + record.relativePath + ": " + detail);
+            if(record.type==AssetType::Material){MaterialDefinition m;Require(LoadMaterial(record.path,m,detail),detail);for(auto& map:m.maps)if(!map.asset.empty()){auto* texture=assets.Find(map.asset);Require(texture&&!texture->missing&&texture->type==AssetType::Texture,"Missing material texture "+map.asset);}}
             if(record.type==AssetType::UI){UIDocument d;Require(LoadUIDocument(record.path,d,detail)&&ValidateUIAssets(d,assets,detail),"UI dependency: "+detail);}
             if (record.type == AssetType::Prefab) {
                 Scene prefab; Require(LoadSceneFromFile(record.path, prefab, detail), detail);

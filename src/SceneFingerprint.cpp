@@ -289,6 +289,8 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
         if (o.id >= scene.NextId()) w.Fail("stable ID must precede NextId");
         WriteObject(w, o);
     }
+    size_t materialCount=0;for(const auto& o:scene.Objects())materialCount+=o.render&&!o.render->materials.empty();
+    if(materialCount||s.linearRendering||!s.environmentAsset.empty()){w.Text("Judas.Materials.1");w.Boolean(s.linearRendering);w.Number(s.exposure);w.Text(s.environmentAsset);w.Number(s.environmentIntensity);w.Quaternion(s.environmentRotation);w.Boolean(s.environmentBackground);w.U64(materialCount);for(const auto& o:scene.Objects())if(o.render&&!o.render->materials.empty()){w.U64(o.id);w.Text(EncodeMaterialSlots(o.render->materials));}}
     // Optional tagged extension: old scenes retain identical schema-5 bytes.
     // No pre-M37 baseline could contain this component; new configurations are
     // covered completely without invalidating unrelated existing saves.

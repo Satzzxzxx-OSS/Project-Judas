@@ -1,0 +1,1 @@
+MikkTSpace by Morten S. Mikkelsen. Pinned upstream commit 3e895b49d05ea07e4c2133156cfa94369e19e409 (https://github.com/mmikk/MikkTSpace). Unmodified reference sources. zlib-style license is embedded in both files. Compiled as C; Renderer retains ownership of GPU resources.

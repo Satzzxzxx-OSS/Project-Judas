@@ -163,6 +163,18 @@ void DrawRenderCamera(EditorDocument& doc, SceneObject& o, EditorPanelState& sta
 void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     SceneRenderComponent& r = *o.render;
     Combo(doc, "Shape", r.shape, kShapeNames, 5);
+    if(ImGui::Button("Add material slot")){doc.BeginEdit();if(r.materials.size()<64)r.materials.push_back({});doc.CommitEdit();}
+    for(size_t i=0;i<r.materials.size();++i){ImGui::PushID(int(i));auto& slot=r.materials[i];ImGui::Text("Material slot %zu (shared asset)",i);AssetField(doc,"Shared material",slot.asset,AssetType::Material,true,state);
+        MaterialDefinition source;source.model=MaterialModel::Legacy;if(state.assets){if(auto* record=state.assets->Find(slot.asset)){std::string error;LoadMaterial(record->path,source,error);}}
+        auto resolved=ApplyMaterialOverride(source,slot.overrides);
+        auto set=[&](bool changed,auto apply){if(changed){doc.BeginEdit();apply();doc.CommitEdit();}};
+        auto colour=resolved.baseColor;set(ImGui::ColorEdit4("Instance base colour (linear)",&colour.x),[&]{slot.overrides.baseColor=colour;});
+        float rough=resolved.roughness;set(ImGui::SliderFloat("Instance roughness",&rough,0,1),[&]{slot.overrides.roughness=rough;});float metal=resolved.metallic;set(ImGui::SliderFloat("Instance metallic",&metal,0,1),[&]{slot.overrides.metallic=metal;});
+        auto emission=resolved.emissive;set(ImGui::ColorEdit3("Instance emission (linear)",&emission.x),[&]{slot.overrides.emissive=emission;});float intensity=resolved.emissiveIntensity;set(ImGui::DragFloat("Instance emission intensity",&intensity,.05f,0,100000),[&]{slot.overrides.emissiveIntensity=intensity;});
+        if(slot.overrides.baseColor||slot.overrides.roughness||slot.overrides.metallic||slot.overrides.emissive||slot.overrides.emissiveIntensity)ImGui::TextColored(ImVec4(1,.8f,.3f,1),"INSTANCE OVERRIDE (does not edit source)");
+        if(ImGui::Button("Revert all slot overrides")){doc.BeginEdit();slot.overrides={};doc.CommitEdit();}ImGui::PopID();
+    }
+
     if (r.shape == SceneShape::Box) DragVec3(doc, "Half extents", r.halfExtents, 0.01f);
     if (r.shape == SceneShape::Sphere) DragScalar(doc, "Radius", r.radius, 0.01f, 0.001f, 100000.0f);
     ColorEdit(doc, "Color", r.color);

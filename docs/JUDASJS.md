@@ -77,3 +77,5 @@ remains authoritative.
 ## Diagnostic instrumentation (M56)
 
 [profiler.scope / profiler.counter](judasjs/profiling.md) and [integrated profiler controls](PROFILER.md).
+
+- [M57 materials, overrides and scene appearance](judasjs/materials.md)

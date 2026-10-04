@@ -6,6 +6,7 @@
 struct SkeletalAsset;
 
 #include <glm/glm.hpp>
+#include "Material.h"
 
 // Judas-owned, importer-agnostic CPU-side mesh representation. This is what
 // a model importer (src/ModelLoader.h) produces and what Renderer::CreateMesh
@@ -15,21 +16,24 @@ struct SkeletalAsset;
 // docs/ARCHITECTURE.md, "Milestone 9," for the ownership boundary this
 // enforces.
 //
-// Deliberately minimal: position/normal/uv per vertex is exactly what this
-// milestone's lighting + texturing needs, nothing more (no tangents/
-// bitangents — no normal mapping exists to need them; no vertex color, bone
-// weights in the static stream, or per-vertex material index). M46 skin
-// indices/weights live in a separate optional stream.
+// Position/normal/UV/tangent are importer-independent. M46 skin indices and
+// weights stay in a separate optional stream; M57 primitive slots refer to
+// immutable material definitions without coupling collision geometry to shading.
 struct MeshVertex {
     glm::vec3 position{0.0f};
     glm::vec3 normal{0.0f};
     glm::vec2 uv{0.0f};
+    glm::vec4 tangent{1,0,0,1};
 
 };
 
 struct MeshSkinVertex {glm::uvec4 joints{0};glm::vec4 weights{1,0,0,0};};
 
+struct MeshPrimitive {unsigned first=0,count=0;int material=-1;};
 struct MeshData {
+    std::vector<MaterialDefinition> materials;
+    std::vector<MeshPrimitive> primitives;
+    std::vector<std::string> importWarnings;
     std::vector<MeshSkinVertex> skinVertices;
     std::shared_ptr<const SkeletalAsset> skeletal;
     std::vector<MeshVertex> vertices;

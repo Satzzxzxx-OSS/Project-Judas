@@ -8966,3 +8966,7 @@ visibility are independent. Exported runtime capture defaults off, opt-in throug
 `profiler.scope` / `profiler.counter` add exception-safe, bounded project annotations.
 The liquid scopes distinguish storage rebuilding, solve, loading and presentation
 without changing M54/M55 behaviour. See [profiler guide](PROFILER.md) and M56 evidence.
+
+## M57 optional materials and environment lighting
+
+Current reusable `.judasmat` definitions and isolated instance overrides, core glTF primitive slots, PBR/unlit/legacy models and baked `.judasenv` resources use AssetDatabase/async ResourceManager and Renderer-owned GL3.3 lifetime. Opted-in scenes accumulate linear HDR, apply exposure/Reinhard/sRGB once, then display-stage UI. Modern secondary targets carry scene-linear radiance. Physics, liquid simulation and resolved skeletal poses remain independent of material policy. See [Materials](MATERIALS.md) for exact shading, colour/import/pass contracts and [JudasJS material API](judasjs/materials.md). Candidate awaits human visual/gameplay acceptance; historical milestone evidence is preserved.

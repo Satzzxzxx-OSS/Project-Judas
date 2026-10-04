@@ -1,3 +1,4 @@
+#include "Tangents.h"
 #include "PerformanceProfiler.h"
 #include "ResourceManager.h"
 
@@ -32,6 +33,7 @@ ResourceManager::~ResourceManager() {
 
 std::uint64_t ResourceManager::EstimateMeshBytes(const MeshData& data) {
     uint64_t bytes=static_cast<uint64_t>(data.vertices.size())*sizeof(MeshVertex)+static_cast<uint64_t>(data.skinVertices.size())*sizeof(MeshSkinVertex)+static_cast<uint64_t>(data.indices.size())*sizeof(uint32_t);
+    for(auto& material:data.materials)for(auto& map:material.maps)bytes+=EstimateTextureBytes(map.embedded);
     if(data.skeletal){const auto& s=data.skeletal->skeleton;bytes+=s.rest.local.size()*sizeof(JointTransform)+(s.parents.size()+s.order.size()+s.skinNodes.size())*sizeof(int)+s.inverseBind.size()*sizeof(glm::mat4);for(const auto& name:s.names)bytes+=name.size();for(const auto& clip:data.skeletal->clips){bytes+=clip.name.size();for(const auto& track:clip.tracks)bytes+=track.times.size()*sizeof(float)+track.values.size()*sizeof(glm::vec4);}}
     return bytes;
 }
@@ -104,6 +106,11 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
     TraceTask(task, ResourceTracePoint::DecodeBegin, bytes.size());
     if (task.type == AssetType::Mesh) {
         task.succeeded = ParseModelMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
+        if(task.succeeded&&task.mesh.materials.empty()&&!GenerateMeshTangents(task.mesh)){task.succeeded=false;task.error="could not generate mesh tangents";}
+    } else if(task.type==AssetType::Material){
+        task.material=std::make_shared<MaterialDefinition>();task.succeeded=ParseMaterial(std::string(bytes.begin(),bytes.end()),*task.material,task.error);
+        if(task.succeeded)for(auto& map:task.material->maps)if(!map.asset.empty()){auto path=task.texturePaths.find(map.asset);if(path==task.texturePaths.end()){task.succeeded=false;task.error="missing/wrong-type material texture "+map.asset;break;}std::vector<uint8_t> imageBytes;if(!ReadWholeFile(path->second,imageBytes,task.error,context,&cancelled)||!DecodeTextureFromMemory(imageBytes.data(),imageBytes.size(),path->second,map.embedded,task.error)){task.cancelled=cancelled;task.succeeded=false;break;}}
+    } else if(task.type==AssetType::Environment){task.succeeded=DecodeEnvironment(bytes,task.environment,task.error);
     } else if(task.type==AssetType::Liquid){task.liquid=std::make_shared<LiquidResource>();task.succeeded=DecodeLiquidResource(bytes,*task.liquid,task.error);
     } else if (task.type == AssetType::Navigation) {
         task.navigation=std::make_shared<NavigationData>();task.succeeded=DecodeNavigation(bytes,*task.navigation,task.error);
@@ -144,6 +151,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     task->type = expected;
     task->path = path;
     task->generation = entry.generation;
+    if(expected==AssetType::Material&&m_assets)for(const auto& [key,record]:m_assets->Records())if(record.type==AssetType::Texture&&!record.missing)task->texturePaths.emplace(key,record.path);
     task->requested = std::chrono::steady_clock::now();
     task->trace = m_trace;
     entry.task = task;
@@ -197,7 +205,12 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
     if (task->type == AssetType::Mesh) {
         if (m_renderer) entry.mesh = m_renderer->CreateMesh(task->mesh);
         entry.bytes = EstimateMeshBytes(task->mesh);
-        entry.skeletal=task->mesh.skeletal;
+        for(auto& warning:task->mesh.importWarnings)std::fprintf(stderr,"asset %s: %s\n",task->id.c_str(),warning.c_str());
+        entry.skeletal=task->mesh.skeletal;entry.meshMaterials=task->mesh.materials;entry.meshPrimitives=task->mesh.primitives;for(auto& m:entry.meshMaterials)for(auto& map:m.maps)map.embedded=TextureData{};
+    } else if(task->type==AssetType::Material){
+        if(m_renderer)entry.material=m_renderer->CreateMaterial(*task->material);
+        entry.bytes=sizeof(MaterialDefinition);for(auto& map:task->material->maps){entry.bytes+=EstimateTextureBytes(map.embedded);map.embedded=TextureData{};}entry.materialDefinition=task->material;
+    } else if(task->type==AssetType::Environment){if(m_renderer)entry.environment=m_renderer->CreateEnvironment(task->environment);entry.bytes=0;for(auto& level:task->environment.specular)entry.bytes+=level.pixels.size()*6;entry.bytes+=task->environment.diffuse.pixels.size()*6+task->environment.brdf.size()*4;
     } else if(task->type==AssetType::Liquid){entry.liquid=task->liquid;entry.bytes=entry.liquid->geometry.cells.size()*sizeof(LiquidTet);if(entry.liquid->basin)entry.bytes+=entry.liquid->basin->geometry.cells.size()*sizeof(LiquidTet)+entry.liquid->basin->curve.size()*sizeof(LiquidCurvePoint);
     } else if (task->type == AssetType::Navigation) {
         entry.navigation=task->navigation;entry.bytes=0;for(auto& layer:entry.navigation->layers)entry.bytes+=layer.size();
@@ -225,6 +238,11 @@ bool TypeMismatch(ResourceState state, AssetType actual, AssetType expected) {
 }
 }  // namespace
 
+ResourceState ResourceManager::RequestMaterial(const AssetId& id,JobPriority priority){if(id.empty())return ResourceState::Unloaded;auto& e=Begin(id,AssetType::Material,priority);return TypeMismatch(e.state,e.type,AssetType::Material)?ResourceState::Failed:e.state;}
+ResourceState ResourceManager::RequestEnvironment(const AssetId& id,JobPriority priority){if(id.empty())return ResourceState::Unloaded;auto& e=Begin(id,AssetType::Environment,priority);return TypeMismatch(e.state,e.type,AssetType::Environment)?ResourceState::Failed:e.state;}
+MaterialHandle ResourceManager::TryGetMaterial(const AssetId& id){auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready)return {};it->second.lastUse=++m_useClock;return it->second.material;}
+EnvironmentHandle ResourceManager::TryGetEnvironment(const AssetId& id){auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready)return {};it->second.lastUse=++m_useClock;return it->second.environment;}
+std::shared_ptr<const MaterialDefinition> ResourceManager::TryGetMaterialDefinition(const AssetId& id)const{auto it=m_entries.find(id);return it!=m_entries.end()&&it->second.state==ResourceState::Ready?it->second.materialDefinition:nullptr;}
 ResourceState ResourceManager::RequestAudio(const AssetId& id, JobPriority priority) {
     if(id.empty())return ResourceState::Unloaded;
     const auto& e=Begin(id,AssetType::Audio,priority);
@@ -416,11 +434,13 @@ std::size_t ResourceManager::EvictToFit(std::uint64_t targetBytes) {
 
 void ResourceManager::DestroyGpu(Entry& entry) {
     if (entry.state == ResourceState::Ready) {
+        if(m_renderer){m_renderer->DestroyMaterial(entry.material);m_renderer->DestroyEnvironment(entry.environment);}
         if (m_renderer && entry.mesh.IsValid()) m_renderer->DestroyMesh(entry.mesh);
         if (m_renderer && entry.texture.IsValid()) m_renderer->DestroyTexture(entry.texture);
         if (m_audio && entry.audio.IsValid()) m_audio->DestroyClip(entry.audio);
         m_stats.bytesResident -= std::min(m_stats.bytesResident, entry.bytes);
     }
+    entry.material={};entry.environment={};entry.materialDefinition.reset();
     entry.mesh = MeshHandle{};
     entry.skeletal.reset();entry.navigation.reset();entry.liquid.reset();
     entry.texture = TextureHandle{};
@@ -568,3 +588,7 @@ std::shared_ptr<const NavigationData> ResourceManager::GetNavigation(const Asset
 
 ResourceState ResourceManager::RequestLiquid(const AssetId& id,JobPriority p){auto& e=Begin(id,AssetType::Liquid,p);return TypeMismatch(e.state,e.type,AssetType::Liquid)?ResourceState::Failed:e.state;}
 std::shared_ptr<const LiquidResource> ResourceManager::GetLiquid(const AssetId& id,std::string& error){auto& e=Begin(id,AssetType::Liquid,JobPriority::Normal);if(e.type!=AssetType::Liquid){error="asset is not liquid data";return nullptr;}if(e.state!=ResourceState::Ready){error=e.state==ResourceState::Failed?e.error:"loading";return nullptr;}error.clear();return e.liquid;}
+
+std::optional<MaterialDefinition> ResourceManager::TryGetMeshMaterial(const AssetId& id,unsigned slot)const{auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready||slot>=it->second.meshPrimitives.size())return {};int index=it->second.meshPrimitives[slot].material;if(index<0||size_t(index)>=it->second.meshMaterials.size())return {};return it->second.meshMaterials[index];}
+
+void ResourceManager::Invalidate(const AssetId& id){std::vector<AssetId> dependent;for(auto& [key,e]:m_entries)if(e.materialDefinition)for(auto& map:e.materialDefinition->maps)if(map.asset==id){dependent.push_back(key);break;}Release(id);for(auto& key:dependent)Release(key);}

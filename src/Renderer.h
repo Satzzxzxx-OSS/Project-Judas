@@ -13,6 +13,8 @@
 #include "MeshData.h"
 #include "DebugDraw.h"
 #include "TextureData.h"
+#include "Material.h"
+#include "Environment.h"
 #include <map>
 #include "ResourceTrace.h"
 #include "Visibility.h"
@@ -34,6 +36,9 @@ struct RenderTargetHandle {
     bool IsValid() const { return id != 0xFFFFFFFFu; }
 };
 
+struct MaterialHandle {unsigned id=0xFFFFFFFFu;bool IsValid()const{return id!=0xFFFFFFFFu;}};
+struct EnvironmentHandle {unsigned id=0xFFFFFFFFu;bool IsValid()const{return id!=0xFFFFFFFFu;}};
+struct MaterialBinding {MaterialHandle handle;MaterialOverride overrides;bool explicitAsset=false,failed=false;};
 struct TextureHandle {
     static constexpr unsigned int kInvalidId = 0xFFFFFFFFu;
     unsigned int id = kInvalidId;
@@ -69,6 +74,16 @@ struct RenderStats {
 class Renderer {
 public:
     bool Init();
+    MaterialHandle CreateMaterial(const MaterialDefinition&);
+    void DestroyMaterial(MaterialHandle);
+    EnvironmentHandle CreateEnvironment(const EnvironmentData&);
+    void DestroyEnvironment(EnvironmentHandle);
+    void SetMaterialBindings(const std::vector<MaterialBinding>& slots){m_materialBindings=slots;}
+    void SetSceneAppearance(bool linear,float exposure,EnvironmentHandle environment,float intensity,const glm::quat& rotation,bool background);
+    void FlushMaterialBlends();
+    unsigned TextureUnitLimit()const{return m_textureUnitLimit;}
+    std::size_t AppearanceBytes()const;
+
     unsigned BeginProfilePass(const char* name,std::uint64_t camera=0);
     void EndProfilePass(unsigned token);
     void PollProfileGPU();
@@ -105,6 +120,7 @@ public:
     void SetRenderLayer(unsigned layer){m_renderLayer=layer;}
     bool AllowsLayer(unsigned layer)const{return (m_renderMask&CategoryBit(layer))!=0;}
     bool IsVisible(const VisualBounds& bounds)const{return !m_cullingEnabled || m_frustum.IsVisible(bounds);}
+    void DrawSphereTransformed(const glm::vec3& p,const glm::quat& q,const glm::vec3& scale,float radius,const glm::vec3& color,float alpha,TextureHandle texture){DrawMesh(m_sphereMesh,p,q,scale*radius,texture,color,alpha);}
     void DrawParticles(const std::vector<ParticleBillboard>& particles,const VisualBounds& bounds,TextureHandle texture={});
 
     // Milestone 9: the demo's one directional light, plus a small constant
@@ -153,7 +169,7 @@ public:
     // repeat wrapping — see docs/ARCHITECTURE.md for why these were judged
     // sufficient for one demo texture) and returns a handle. Same ownership
     // split as CreateMesh.
-    TextureHandle CreateTexture(const TextureData& data);
+    TextureHandle CreateTexture(const TextureData& data,bool srgb=false);
     void DestroyTexture(TextureHandle handle);
 
     // Read the actual GPU payload, not a retained CPU copy. Diagnostic use on
@@ -337,6 +353,8 @@ private:
         bool alive = false;
         VisualBounds bounds;
         std::vector<glm::mat4> restSkin;
+        std::vector<MeshPrimitive> primitives;
+        std::vector<MaterialHandle> materials;
     };
     struct GpuTarget { GLuint framebuffer = 0, depth = 0; TextureHandle color; int width = 0, height = 0; };
     std::vector<GpuTarget> m_targets;
@@ -351,7 +369,8 @@ private:
         GLuint textureId = 0;
         int width=0,height=0;
         std::size_t uploadedBytes = 0;  // base-level RGBA payload, excluding generated mipmaps
-        bool alive = false;
+        bool alive = false,sceneLinear=false,srgb=false,renderTarget=false;
+        TextureHandle colourView;
     };
 
     void TraceResourceOperation(ResourceTracePoint point, unsigned int handle = 0, std::size_t bytes = 0) const;
@@ -363,6 +382,26 @@ private:
     std::vector<GpuMesh> m_meshes;
     std::vector<GpuTexture> m_textures;
 
+    struct GpuMaterial {bool alive=false;MaterialDefinition definition;std::array<TextureHandle,5> textures;std::array<GLuint,5> samplers{};};
+    struct GpuEnvironment {bool alive=false;GLuint diffuse=0,specular=0,brdf=0;unsigned levels=0;std::size_t bytes=0;};
+    std::vector<GpuMaterial> m_materials;std::vector<GpuEnvironment> m_environments;
+    std::vector<MaterialBinding> m_materialBindings;
+    MaterialDefinition m_fallbackMaterial;
+    std::map<std::string,GLint> m_materialUniforms;
+    GLint MaterialUniform(const char* name);
+    TextureHandle ColourTexture(TextureHandle);
+    void BindMaterial(const GpuMaterial*,const MaterialOverride&,TextureHandle,const glm::vec3&,float,bool shadow);
+    void BeginLinearPass(int width,int height);
+    void ResolveLinearPass(bool sceneLinear=false);
+    void ShutdownAppearance();
+    bool m_linearRendering=false,m_linearPass=false,m_environmentBackground=false;
+    float m_exposure=1,m_environmentIntensity=1;glm::quat m_environmentRotation{1,0,0,0};EnvironmentHandle m_environment;
+    struct LinearTarget {GLuint fbo=0,color=0,depth=0;int width=0,height=0;};
+    std::vector<LinearTarget> m_linearTargets;
+    GLuint m_hdrFbo=0,m_hdrColor=0,m_hdrDepth=0,m_outputProgram=0,m_outputVao=0;
+    GLint m_outputFramebuffer=0;int m_hdrWidth=0,m_hdrHeight=0;unsigned m_textureUnitLimit=0;
+    struct BlendDraw {MeshHandle mesh;glm::vec3 position,scale,tint;glm::quat rotation;TextureHandle texture;float alpha;std::vector<glm::mat4> skin;std::vector<MaterialBinding> materials;float depth;unsigned layer;};
+    std::vector<BlendDraw> m_blendDraws;bool m_flushingBlends=false;
     GLuint m_waterPathTexture=0;unsigned m_waterColumns=0,m_waterRows=0;
     GLuint m_shaderProgram = 0;
 

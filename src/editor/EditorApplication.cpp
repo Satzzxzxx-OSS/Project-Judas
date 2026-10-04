@@ -836,6 +836,8 @@ void EditorApplication::FrameEditMode(float deltaSeconds) {
     const float aspect = static_cast<float>(window.Width()) / static_cast<float>(height);
     renderer.SetLighting(glm::normalize(scene.Settings().sunDirection), scene.Settings().sunColor,
                          scene.Settings().ambientColor);
+    const auto& appearance=scene.Settings();m_host->Resources().RequestEnvironment(appearance.environmentAsset);
+    renderer.SetSceneAppearance(appearance.linearRendering,appearance.exposure,m_host->Resources().TryGetEnvironment(appearance.environmentAsset),appearance.environmentIntensity,appearance.environmentRotation,appearance.environmentBackground);
     RendererProfileScope editorCameraGPU(renderer, "Editor camera");
     renderer.BeginFrame(window.Width(), window.Height());
     renderer.SetCamera(m_camera.ViewMatrix(), m_camera.ProjectionMatrix(aspect));
@@ -847,8 +849,10 @@ void EditorApplication::FrameEditMode(float deltaSeconds) {
 
 void EditorApplication::RefreshAssetDemand() {
     std::vector<std::string> wanted;
+    if(!m_document.GetScene().Settings().environmentAsset.empty())wanted.push_back(m_document.GetScene().Settings().environmentAsset);
     for (const SceneObject& o : m_document.GetScene().Objects()) {
-        if (!o.render || o.render->shape != SceneShape::Mesh) continue;
+        if (!o.render) continue;
+        for(const auto& slot:o.render->materials)if(!slot.asset.empty())wanted.push_back(slot.asset);
         if (!o.render->meshAsset.empty()) wanted.push_back(o.render->meshAsset);
         if (!o.render->textureAsset.empty()) wanted.push_back(o.render->textureAsset);
     }

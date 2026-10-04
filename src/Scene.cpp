@@ -106,7 +106,7 @@ bool SceneObjectsEqual(const SceneObject& a, const SceneObject& b) {
             return x.shape == y.shape && Eq(x.halfExtents, y.halfExtents) && x.radius == y.radius &&
                    Eq(x.color, y.color) && x.alpha == y.alpha &&
                    Eq(x.secondaryColor, y.secondaryColor) && x.secondaryAlpha == y.secondaryAlpha &&
-                   x.meshAsset == y.meshAsset && x.textureAsset == y.textureAsset && x.textureCamera == y.textureCamera;
+                   x.meshAsset == y.meshAsset && x.textureAsset == y.textureAsset && x.textureCamera == y.textureCamera && EncodeMaterialSlots(x.materials)==EncodeMaterialSlots(y.materials);
         })) {
         return false;
     }
@@ -240,6 +240,7 @@ bool ScenesEqual(const Scene& a, const Scene& b) {
         sa.fidelityCoarseRadius != sb.fidelityCoarseRadius) {
         return false;
     }
+    if(sa.linearRendering!=sb.linearRendering||sa.exposure!=sb.exposure||sa.environmentAsset!=sb.environmentAsset||sa.environmentIntensity!=sb.environmentIntensity||sa.environmentRotation!=sb.environmentRotation||sa.environmentBackground!=sb.environmentBackground)return false;
     if (a.Objects().size() != b.Objects().size()) return false;
     for (std::size_t i = 0; i < a.Objects().size(); ++i) {
         if (!SceneObjectsEqual(a.Objects()[i], b.Objects()[i])) return false;

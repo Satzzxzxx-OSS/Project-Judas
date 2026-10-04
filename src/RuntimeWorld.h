@@ -113,7 +113,7 @@ public:
         SceneRenderCameraComponent settings;
         RenderTargetHandle target;
         std::string error;
-        bool allocationAttempted = false;
+        bool allocationAttempted = false,attemptedLinear=false;
         int attemptedWidth = 0, attemptedHeight = 0;
         std::uint64_t updates = 0;
     };
@@ -285,6 +285,8 @@ public:
     std::vector<SceneObject> ScriptObjects() const;
     const SceneObject* RuntimeDefinition(EntityId id) const;
     bool SetRuntimeTransform(EntityId id,const SceneTransform& transform);
+    bool SetMaterialSlot(EntityId,unsigned,const MaterialSlot&);
+    bool SetAppearance(const SceneSettings&);
     BodyHandle RuntimeBody(EntityId id) const;
     JointHandle RuntimeJoint(EntityId owner);
     CharacterMotor* RuntimeCharacter(EntityId id);

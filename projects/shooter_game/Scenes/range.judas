@@ -3,13 +3,19 @@ settings
   name "Spring Range"
   world-origin 0 0 0
   sun-direction -0.3 0.8 0.5
-  sun-color 1 0.94 0.83
+  sun-color 2.5 2.35 2.1
   ambient 0.38 0.4 0.45
   fluid-scale 13
   fluid-update-rate-hz 30
   fluid-hydrostatic-drag-rate 2
   fidelity-policy none
   next-id 2000
+ linear-rendering true
+ exposure 1
+ environment "f7cb1f66fa37defe9cdc0cf455a31be1"
+ environment-intensity .8
+ environment-rotation 1 0 0 0
+ environment-background false
 end
 
 object 1 "Arena floor"
@@ -19,7 +25,7 @@ object 1 "Arena floor"
   render box
   render.half-extents 24 0.5 32
   render.radius 0.5
-  render.color 0.13 0.2 0.23
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -37,6 +43,7 @@ object 1 "Arena floor"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"660beba47936b2e5f45b8891284a0c11\" 0"
 end
 
 object 2 "Local gravity"
@@ -99,12 +106,13 @@ object 11 "Character torso"
   render box
   render.half-extents 0.26 0.5 0.2
   render.radius 0.5
-  render.color 0.15 0.65 0.8
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
   render.mesh-asset ""
   render.texture-asset ""
+ render.materials "1 \"6db22e916b49219ce65af182694c572c\" 0"
 end
 
 object 12 "Character head"
@@ -114,12 +122,13 @@ object 12 "Character head"
   render box
   render.half-extents 0.2 0.2 0.2
   render.radius 0.5
-  render.color 0.95 0.71 0.42
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
   render.mesh-asset ""
   render.texture-asset ""
+ render.materials "1 \"6db22e916b49219ce65af182694c572c\" 0"
 end
 
 object 20 "Impact feedback"
@@ -196,7 +205,7 @@ object 30 "Non-scoring physical crate"
   render box
   render.half-extents 0.6 0.6 0.6
   render.radius 0.5
-  render.color 0.78 0.58 0.28
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -214,6 +223,7 @@ object 30 "Non-scoring physical crate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 50 "Lane stripe"
@@ -223,12 +233,13 @@ object 50 "Lane stripe"
   render box
   render.half-extents 0.035 0.01 16
   render.radius 0.5
-  render.color 0.42 0.5 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
   render.mesh-asset ""
   render.texture-asset ""
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 51 "Lane stripe"
@@ -238,12 +249,13 @@ object 51 "Lane stripe"
   render box
   render.half-extents 0.035 0.01 16
   render.radius 0.5
-  render.color 0.42 0.5 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
   render.mesh-asset ""
   render.texture-asset ""
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 52 "Lane stripe"
@@ -253,12 +265,13 @@ object 52 "Lane stripe"
   render box
   render.half-extents 0.035 0.01 16
   render.radius 0.5
-  render.color 0.42 0.5 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
   render.mesh-asset ""
   render.texture-asset ""
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 53 "Lane stripe"
@@ -268,12 +281,13 @@ object 53 "Lane stripe"
   render box
   render.half-extents 0.035 0.01 16
   render.radius 0.5
-  render.color 0.42 0.5 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
   render.mesh-asset ""
   render.texture-asset ""
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 54 "Lane stripe"
@@ -283,12 +297,13 @@ object 54 "Lane stripe"
   render box
   render.half-extents 0.035 0.01 16
   render.radius 0.5
-  render.color 0.42 0.5 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
   render.mesh-asset ""
   render.texture-asset ""
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 102 "Target base"
@@ -298,7 +313,7 @@ object 102 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -316,6 +331,7 @@ object 102 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 100 "Hinged plate"
@@ -331,7 +347,7 @@ object 100 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.85 0.5 0.18
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -349,6 +365,7 @@ object 100 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 101 "Target constraint"
@@ -382,7 +399,7 @@ object 105 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -400,6 +417,7 @@ object 105 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 103 "Hinged plate"
@@ -415,7 +433,7 @@ object 103 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.85 0.5 0.18
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -433,6 +451,7 @@ object 103 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 104 "Target constraint"
@@ -466,7 +485,7 @@ object 108 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -484,6 +503,7 @@ object 108 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 106 "Hinged plate"
@@ -499,7 +519,7 @@ object 106 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.85 0.5 0.18
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -517,6 +537,7 @@ object 106 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 107 "Target constraint"
@@ -550,7 +571,7 @@ object 111 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -568,6 +589,7 @@ object 111 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 109 "Hinged plate"
@@ -583,7 +605,7 @@ object 109 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.85 0.5 0.18
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -601,6 +623,7 @@ object 109 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 110 "Target constraint"
@@ -634,7 +657,7 @@ object 114 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -652,6 +675,7 @@ object 114 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 112 "Hinged plate"
@@ -667,7 +691,7 @@ object 112 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.2 0.7 0.75
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -685,6 +709,7 @@ object 112 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 113 "Target constraint"
@@ -718,7 +743,7 @@ object 117 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -736,6 +761,7 @@ object 117 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 115 "Hinged plate"
@@ -751,7 +777,7 @@ object 115 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.2 0.7 0.75
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -769,6 +795,7 @@ object 115 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 116 "Target constraint"
@@ -802,7 +829,7 @@ object 120 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -820,6 +847,7 @@ object 120 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 118 "Hinged plate"
@@ -835,7 +863,7 @@ object 118 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.2 0.7 0.75
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -853,6 +881,7 @@ object 118 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 119 "Target constraint"
@@ -886,7 +915,7 @@ object 123 "Target base"
   render box
   render.half-extents 0.73 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -904,6 +933,7 @@ object 123 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 121 "Hinged plate"
@@ -919,7 +949,7 @@ object 121 "Hinged plate"
   render mesh
   render.half-extents 0.55 0.65 0.09
   render.radius 0.5
-  render.color 0.2 0.7 0.75
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -937,6 +967,7 @@ object 121 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 122 "Target constraint"
@@ -970,7 +1001,7 @@ object 126 "Target base"
   render box
   render.half-extents 0.88 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -988,6 +1019,7 @@ object 126 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 124 "Hinged plate"
@@ -1003,7 +1035,7 @@ object 124 "Hinged plate"
   render mesh
   render.half-extents 0.7 0.65 0.09
   render.radius 0.5
-  render.color 0.75 0.35 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1021,6 +1053,7 @@ object 124 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 125 "Target constraint"
@@ -1054,7 +1087,7 @@ object 129 "Target base"
   render box
   render.half-extents 0.88 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1072,6 +1105,7 @@ object 129 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 127 "Hinged plate"
@@ -1087,7 +1121,7 @@ object 127 "Hinged plate"
   render mesh
   render.half-extents 0.7 0.65 0.09
   render.radius 0.5
-  render.color 0.75 0.35 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1105,6 +1139,7 @@ object 127 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 128 "Target constraint"
@@ -1138,7 +1173,7 @@ object 132 "Target base"
   render box
   render.half-extents 0.88 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1156,6 +1191,7 @@ object 132 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 130 "Hinged plate"
@@ -1171,7 +1207,7 @@ object 130 "Hinged plate"
   render mesh
   render.half-extents 0.7 0.65 0.09
   render.radius 0.5
-  render.color 0.75 0.35 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1189,6 +1225,7 @@ object 130 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 131 "Target constraint"
@@ -1222,7 +1259,7 @@ object 135 "Target base"
   render box
   render.half-extents 0.88 0.25 0.35
   render.radius 0.5
-  render.color 0.27 0.34 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1240,6 +1277,7 @@ object 135 "Target base"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 133 "Hinged plate"
@@ -1255,7 +1293,7 @@ object 133 "Hinged plate"
   render mesh
   render.half-extents 0.7 0.65 0.09
   render.radius 0.5
-  render.color 0.75 0.35 0.5
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1273,6 +1311,7 @@ object 133 "Hinged plate"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"7ebbcc473197ad7422e9a5d61a0b19ba\" 0"
 end
 
 object 134 "Target constraint"
@@ -1306,7 +1345,7 @@ object 510 "Navigation arena wall"
   render box
   render.half-extents 0.3 2 15.25
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1324,6 +1363,7 @@ object 510 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 511 "Navigation arena wall"
@@ -1333,7 +1373,7 @@ object 511 "Navigation arena wall"
   render box
   render.half-extents 0.3 2 32
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1351,6 +1391,7 @@ object 511 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 512 "Navigation arena wall"
@@ -1360,7 +1401,7 @@ object 512 "Navigation arena wall"
   render box
   render.half-extents 24 2 0.3
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1378,6 +1419,7 @@ object 512 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 513 "Navigation arena wall"
@@ -1387,7 +1429,7 @@ object 513 "Navigation arena wall"
   render box
   render.half-extents 24 2 0.3
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1405,6 +1447,7 @@ object 513 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 514 "Navigation arena wall"
@@ -1414,7 +1457,7 @@ object 514 "Navigation arena wall"
   render box
   render.half-extents 0.35 1.5 12
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1432,6 +1475,7 @@ object 514 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 515 "Navigation arena wall"
@@ -1441,7 +1485,7 @@ object 515 "Navigation arena wall"
   render box
   render.half-extents 5 1.5 0.35
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1459,6 +1503,7 @@ object 515 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 516 "Navigation arena wall"
@@ -1468,7 +1513,7 @@ object 516 "Navigation arena wall"
   render box
   render.half-extents 0.35 1.5 12
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1486,6 +1531,7 @@ object 516 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 517 "Navigation arena wall"
@@ -1495,7 +1541,7 @@ object 517 "Navigation arena wall"
   render box
   render.half-extents 5 1.5 0.35
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1513,6 +1559,7 @@ object 517 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 520 "Walkable ramp"
@@ -1522,7 +1569,7 @@ object 520 "Walkable ramp"
   render box
   render.half-extents 4 0.2 2
   render.radius 0.5
-  render.color 0.4 0.5 0.6
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1540,6 +1587,7 @@ object 520 "Walkable ramp"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 521 "Raised platform"
@@ -1549,7 +1597,7 @@ object 521 "Raised platform"
   render box
   render.half-extents 1.3 0.2 2
   render.radius 0.5
-  render.color 0.4 0.5 0.6
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1567,6 +1615,7 @@ object 521 "Raised platform"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end
 
 object 522 "Independent landing"
@@ -1576,7 +1625,7 @@ object 522 "Independent landing"
   render box
   render.half-extents 3 0.5 3
   render.radius 0.5
-  render.color 0.5 0.3 0.65
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1594,6 +1643,7 @@ object 522 "Independent landing"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 550 "Arena navigation surface"
@@ -1666,7 +1716,7 @@ object 554 "Movable navigation blocker"
   render box
   render.half-extents 2 1.5 0.7
   render.radius 0.5
-  render.color 0.95 0.45 0.1
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1684,6 +1734,7 @@ object 554 "Movable navigation blocker"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
 end
 
 object 1000 "Navigator prefab"
@@ -1770,7 +1821,7 @@ object 523 "Navigation arena wall"
   render box
   render.half-extents 0.3 2 15.25
   render.radius 0.5
-  render.color 0.25 0.33 0.4
+  render.color 1 1 1
   render.alpha 1
   render.secondary-color 0.8 0.8 0.8
   render.secondary-alpha 1
@@ -1788,4 +1839,5 @@ object 523 "Navigation arena wall"
   body.managed false
   body.compound-count 0
   body.fluid-cavity-count 0
+ render.materials "1 \"e08c50f055b5b94a9795c50d381e0c2e\" 0"
 end

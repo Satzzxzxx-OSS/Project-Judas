@@ -132,6 +132,12 @@ public:
     std::shared_ptr<const SkeletalAsset> TryGetSkeletal(const AssetId& id) const;
     TextureHandle TryGetTexture(const AssetId& id);
 
+    ResourceState RequestMaterial(const AssetId&,JobPriority priority=JobPriority::Normal);
+    ResourceState RequestEnvironment(const AssetId&,JobPriority priority=JobPriority::Normal);
+    MaterialHandle TryGetMaterial(const AssetId&);
+    EnvironmentHandle TryGetEnvironment(const AssetId&);
+    std::optional<MaterialDefinition> TryGetMeshMaterial(const AssetId&,unsigned slot)const;
+    std::shared_ptr<const MaterialDefinition> TryGetMaterialDefinition(const AssetId&)const;
     // Terrain surfaces are engine-constructed (TerrainLibrary), keyed by
     // identifier rather than asset id, and still built synchronously.
     MeshHandle GetTerrainMesh(const std::string& identifier, const RadialTerrain& surface);
@@ -164,7 +170,7 @@ public:
     // bumps the generation; the next request loads afresh. Invalidate is
     // the same plus forgetting a failure (a re-imported or moved file).
     void Release(const AssetId& id);
-    void Invalidate(const AssetId& id) { Release(id); }
+    void Invalidate(const AssetId& id);
     void ReleaseAll();
     void Shutdown();
 
@@ -206,6 +212,8 @@ private:
         AudioData audio;
         std::shared_ptr<NavigationData> navigation;
         std::shared_ptr<LiquidResource> liquid;
+        std::shared_ptr<MaterialDefinition> material;EnvironmentData environment;
+        std::map<std::string,std::string> texturePaths;
         std::thread::id decodeThread;
         ResourceTrace trace;
         JobHandle job;
@@ -220,6 +228,8 @@ private:
         AudioClipHandle audio;
         std::shared_ptr<const NavigationData> navigation;
         std::shared_ptr<const LiquidResource> liquid;
+        std::vector<MaterialDefinition> meshMaterials;std::vector<MeshPrimitive> meshPrimitives;
+        std::shared_ptr<const MaterialDefinition> materialDefinition;MaterialHandle material;EnvironmentHandle environment;
         std::string error;
         unsigned int generation = 0;
         unsigned int refs = 0;

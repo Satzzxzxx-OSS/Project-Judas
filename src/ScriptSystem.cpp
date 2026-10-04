@@ -54,6 +54,7 @@ export class Entity {
  get audio(){return call('audioInfo',this.id)}
  setAudioEnabled(enabled){return call('audioEnabled',this.id,enabled)}
  get camera(){return call('cameraInfo',this.id)}
+ material(slot=0){return new Material(this.id,slot)}
  scriptState(slot){return call('scriptState',this.id,slot)}
  applyForce(value){call('force',this.id,value)}
  applyImpulse(value){call('impulse',this.id,value)}
@@ -74,11 +75,18 @@ export class Entity {
  setCameraEnabled(enabled){return call('camera',this.id,enabled)}
 }
 export const entity=id=>id&&id!=='0'?new Entity(id):null;
-export const world={entity,setView:(pose,fov=70)=>call("setView",pose,fov),clearView:()=>call("clearView"),fluidSample:(point,up,halfHeight,radius,tangent)=>call("fluidSample",point,up,halfHeight,radius,tangent),get viewRay(){return call('viewRay')},queryTags:(required=[],excluded=[])=>call('queryTags',required,excluded).map(entity),
+export const world={entity,get appearance(){return call('appearanceInfo')},setAppearance:settings=>call('appearanceSet',settings),setView:(pose,fov=70)=>call("setView",pose,fov),clearView:()=>call("clearView"),fluidSample:(point,up,halfHeight,radius,tangent)=>call("fluidSample",point,up,halfHeight,radius,tangent),get viewRay(){return call('viewRay')},queryTags:(required=[],excluded=[])=>call('queryTags',required,excluded).map(entity),
  spawnPrefab:(asset,transform)=>entity(call('spawn',asset,transform)),
  overlap:(min,max,filter={})=>call('overlap',min,max,filter).map(entity),
  sweepCapsule:(from,displacement,rotation={w:1,x:0,y:0,z:0},filter={})=>call('sweep',from,displacement,filter,rotation)};
 const cast=(origin,direction,maximum,filter,shape)=>{const hit=call('cast',origin,direction,filter,{...shape,maximum});return hit?{...hit,entity:entity(hit.entityId)}:null};
+export class Material {
+ constructor(entityId,slot=0){this.entityId=entityId;this.slot=slot}
+ get state(){return call('materialInfo',this.entityId,this.slot)}
+ assign(asset){return call('materialAssign',this.entityId,this.slot,asset)}
+ set(parameters){return call('materialOverride',this.entityId,this.slot,parameters)}
+ clearOverrides(){return call('materialClear',this.entityId,this.slot)}
+}
 export class Character {
  constructor(id){this.id=id}
  get state(){const v=call('characterState',this.id);return {...v,supportEntity:entity(v.supportEntityId)}}
@@ -350,6 +358,20 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
 
+
+    if(op=="appearanceInfo"||op=="appearanceSet"){
+        auto appearance=world.Settings();auto options=arg(1);
+        auto has=[&](const char* name){auto v=JS_GetPropertyStr(c,options,name);bool found=!JS_IsUndefined(v);JS_FreeValue(c,v);return found;};
+        if(op=="appearanceSet"){
+            for(auto pair:{std::pair<const char*,float*>{"exposure",&appearance.exposure},{"environmentIntensity",&appearance.environmentIntensity}})if(has(pair.first)&&!Number(c,options,pair.first,*pair.second))return JS_ThrowTypeError(c,"finite appearance parameter required");
+            for(auto pair:{std::pair<const char*,bool*>{"linearRendering",&appearance.linearRendering},{"environmentBackground",&appearance.environmentBackground}})if(has(pair.first)){auto v=JS_GetPropertyStr(c,options,pair.first);if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"boolean appearance setting required");}*pair.second=JS_ToBool(c,v);JS_FreeValue(c,v);}
+            if(has("environmentAsset")){auto v=JS_GetPropertyStr(c,options,"environmentAsset");if(!JS_IsString(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"environment asset ID required");}appearance.environmentAsset=String(c,v);JS_FreeValue(c,v);}
+            if(has("environmentRotation")){auto v=JS_GetPropertyStr(c,options,"environmentRotation");bool ok=Number(c,v,"w",appearance.environmentRotation.w)&&Number(c,v,"x",appearance.environmentRotation.x)&&Number(c,v,"y",appearance.environmentRotation.y)&&Number(c,v,"z",appearance.environmentRotation.z);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"finite environment quaternion required");}
+            if(!world.SetAppearance(appearance))return JS_ThrowTypeError(c,"invalid appearance/environment asset");
+            return JS_TRUE;
+        }
+        auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"linearRendering",JS_NewBool(c,appearance.linearRendering));JS_SetPropertyStr(c,result,"exposure",JS_NewFloat64(c,appearance.exposure));JS_SetPropertyStr(c,result,"environmentAsset",JS_NewString(c,appearance.environmentAsset.c_str()));JS_SetPropertyStr(c,result,"environmentIntensity",JS_NewFloat64(c,appearance.environmentIntensity));JS_SetPropertyStr(c,result,"environmentBackground",JS_NewBool(c,appearance.environmentBackground));auto q=Vec(c,{appearance.environmentRotation.x,appearance.environmentRotation.y,appearance.environmentRotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,appearance.environmentRotation.w));JS_SetPropertyStr(c,result,"environmentRotation",q);return result;
+    }
     auto liquidHandle=[&](JSValueConst value){LiquidHandle h;std::istringstream text(String(c,value));char separator=0;if(!(text>>h.generation>>separator>>h.id)||separator!=':')return LiquidHandle{};text>>std::ws;return text.eof()?h:LiquidHandle{};};
     if(op=="liquidValid")return JS_NewBool(c,world.Liquids().Get(liquidHandle(arg(1)))!=nullptr);
     if(op=="liquidState"||op=="liquidEnabled"||op=="liquidTransfer"||op=="liquidImpulse"||op=="liquidSurfaceEnabled"){
@@ -574,6 +596,24 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     const auto* definition=world.RuntimeDefinition(id);
     if(op=="valid")return JS_NewBool(c,definition!=nullptr);
     if(!definition)return JS_ThrowReferenceError(c,"stale or invalid entity %llu",(unsigned long long)id);
+
+    if(op=="materialInfo"||op=="materialAssign"||op=="materialOverride"||op=="materialClear"){
+        unsigned slot=0;double number;if(JS_ToFloat64(c,&number,arg(2))||!std::isfinite(number)||number<0||number>=64||std::floor(number)!=number)return JS_ThrowTypeError(c,"material slot must be integer 0..63");slot=unsigned(number);
+        if(!definition->render)return JS_ThrowTypeError(c,"entity has no render component");
+        MaterialSlot value;const auto* current=world.FindEntity(id);const auto& currentSlots=current->definition.render->materials;if(slot<currentSlots.size())value=currentSlots[slot];
+        if(op=="materialAssign"){if(!JS_IsString(arg(3)))return JS_ThrowTypeError(c,"registered material ID required");value.asset=String(c,arg(3));if(!world.SetMaterialSlot(id,slot,value))return JS_ThrowTypeError(c,"missing/wrong-type material asset");return JS_TRUE;}
+        if(op=="materialClear"){value.overrides={};return JS_NewBool(c,world.SetMaterialSlot(id,slot,value));}
+        if(op=="materialOverride"){
+            auto options=arg(3);auto has=[&](const char* name){auto v=JS_GetPropertyStr(c,options,name);bool found=!JS_IsUndefined(v);JS_FreeValue(c,v);return found;};
+            if(has("baseColor")){auto v=JS_GetPropertyStr(c,options,"baseColor");glm::vec3 rgb;float alpha;bool ok=ReadVec(c,v,rgb)&&Number(c,v,"a",alpha);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"baseColor requires finite x,y,z,a");value.overrides.baseColor=glm::vec4(rgb,alpha);}
+            if(has("emissive")){auto v=JS_GetPropertyStr(c,options,"emissive");glm::vec3 rgb;bool ok=ReadVec(c,v,rgb);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"emissive requires finite x,y,z");value.overrides.emissive=rgb;}
+            for(auto pair:{std::pair<const char*,std::optional<float>*>{"metallic",&value.overrides.metallic},{"roughness",&value.overrides.roughness},{"emissiveIntensity",&value.overrides.emissiveIntensity}})if(has(pair.first)){float v;if(!Number(c,options,pair.first,v))return JS_ThrowTypeError(c,"finite material parameter required");*pair.second=v;}
+            if(!world.SetMaterialSlot(id,slot,value))return JS_ThrowTypeError(c,"material parameter out of range");
+            return JS_TRUE;
+        }
+        MaterialDefinition source;source.model=MaterialModel::Legacy;bool ready=value.asset.empty();if(!value.asset.empty()&&world.Resources()){auto m=world.Resources()->TryGetMaterialDefinition(value.asset);ready=bool(m);if(m)source=*m;}else if(world.Resources()){auto m=world.Resources()->TryGetMeshMaterial(definition->render->meshAsset,slot);if(m)source=*m;}
+        auto m=ApplyMaterialOverride(source,value.overrides);auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"asset",JS_NewString(c,value.asset.c_str()));JS_SetPropertyStr(c,result,"ready",JS_NewBool(c,ready));const char* models[]={"legacy","pbr","unlit"};const char* alphas[]={"opaque","mask","blend"};JS_SetPropertyStr(c,result,"model",JS_NewString(c,models[int(m.model)]));JS_SetPropertyStr(c,result,"alphaMode",JS_NewString(c,alphas[int(m.alpha)]));auto base=Vec(c,glm::vec3(m.baseColor));JS_SetPropertyStr(c,base,"a",JS_NewFloat64(c,m.baseColor.a));JS_SetPropertyStr(c,result,"baseColor",base);JS_SetPropertyStr(c,result,"emissive",Vec(c,m.emissive));JS_SetPropertyStr(c,result,"metallic",JS_NewFloat64(c,m.metallic));JS_SetPropertyStr(c,result,"roughness",JS_NewFloat64(c,m.roughness));JS_SetPropertyStr(c,result,"emissiveIntensity",JS_NewFloat64(c,m.emissiveIntensity));JS_SetPropertyStr(c,result,"overridden",JS_NewBool(c,bool(value.overrides.baseColor||value.overrides.emissive||value.overrides.roughness||value.overrides.metallic||value.overrides.emissiveIntensity)));return result;
+    }
     if(op=="liquidOwner"){auto h=world.Liquids().Handle(id);if(!world.Liquids().Get(h))return JS_NULL;return JS_NewString(c,(std::to_string(h.generation)+":"+std::to_string(h.id)).c_str());}
     if(op=="navEnabled"){if(!JS_IsBool(arg(3)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.SetNavigationEnabled(id,String(c,arg(2)),JS_ToBool(c,arg(3))));}
     if(op=="navObstacleInfo"){if(!definition->navigationObstacle)return JS_NULL;const auto& n=*definition->navigationObstacle;auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"enabled",JS_NewBool(c,n.enabled));JS_SetPropertyStr(c,v,"cylinder",JS_NewBool(c,n.cylinder));JS_SetPropertyStr(c,v,"halfExtents",Vec(c,n.halfExtents));JS_SetPropertyStr(c,v,"radius",JS_NewFloat64(c,n.radius));JS_SetPropertyStr(c,v,"height",JS_NewFloat64(c,n.height));return v;}

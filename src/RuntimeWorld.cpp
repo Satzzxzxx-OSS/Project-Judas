@@ -82,6 +82,7 @@ bool RuntimeWorld::ValidateVisualAssets(const SceneObject& o, std::string& error
 bool RuntimeWorld::RequestVisualAssets(const SceneObject& o, std::string* outError) {
     std::string error;
     if (!ValidateVisualAssets(o, error)) { if (outError) *outError = error; return false; }
+    if(o.render&&m_assets)for(const auto& slot:o.render->materials)if(!slot.asset.empty()){m_assets->AddRef(slot.asset);m_referencedAssets.push_back(slot.asset);m_assets->RequestMaterial(slot.asset,JobPriority::High);}
     if (!o.render || o.render->shape != SceneShape::Mesh || !m_assets) return true;
     // Demand: referenced for the life of this world; the load runs in the
     // background and presentation picks it up when Ready.
@@ -230,6 +231,28 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     }
     std::string fingerprint;
     if (!ComputeSceneFingerprint(scene, fingerprint, outError)) return false;
+    bool appearanceDependencies=scene.Settings().linearRendering||!scene.Settings().environmentAsset.empty();
+    for(const auto& o:scene.Objects())appearanceDependencies|=o.render&&!o.render->materials.empty();
+    if(resources&&resources->Assets()){
+        // Registered M57 resources may be assigned later by project scripts.
+        // Projects without optional M57 content retain their previous baseline.
+        for(const auto& [id,record]:resources->Assets()->Records())
+            appearanceDependencies|=record.type==AssetType::Material||record.type==AssetType::Environment;
+        if(appearanceDependencies){
+            std::string content="Judas.MaterialSources.1";
+            for(const auto& [id,record]:resources->Assets()->Records()){
+                if(record.type!=AssetType::Material&&record.type!=AssetType::Environment&&record.type!=AssetType::Texture&&record.type!=AssetType::Mesh)continue;
+                if(record.missing){outError="missing appearance asset "+record.relativePath;return false;}
+                std::ifstream file(record.path,std::ios::binary);
+                if(!file){outError="cannot read appearance asset "+record.relativePath;return false;}
+                std::string bytes{std::istreambuf_iterator<char>(file),{}};
+                if(file.bad()){outError="failed reading appearance asset "+record.relativePath;return false;}
+                content+=id+SceneFingerprintSha256(bytes);
+            }
+            fingerprint=SceneFingerprintSha256(fingerprint+content);
+        }
+    }
+
     if(std::any_of(scene.Objects().begin(),scene.Objects().end(),[](const auto& o){return !o.scripts.empty();})){
         if(!resources||!resources->Assets()){outError="scripted scene requires a project asset database";return false;}
         std::string scripts;if(!ScriptSystem::SourceFingerprint(*resources->Assets(),scene,scripts,outError,false))return false;
@@ -250,6 +273,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     m_assets = resources;
     m_audioSystem=resources?resources->GetAudioSystem():nullptr;
     m_settings = scene.Settings();
+    if(m_assets&&!m_settings.environmentAsset.empty()){m_assets->AddRef(m_settings.environmentAsset);m_referencedAssets.push_back(m_settings.environmentAsset);m_assets->RequestEnvironment(m_settings.environmentAsset,JobPriority::High);}
     if(std::any_of(resolved.Objects().begin(),resolved.Objects().end(),[](const auto& o){return o.parent!=0;}))m_hierarchy=resolved;
     if (!m_physics.Init()) {
         outError = "physics initialization failed";
@@ -1310,3 +1334,6 @@ std::vector<EntityId> RuntimeWorld::QueryEntities(CategoryMask required,Category
 bool RuntimeWorld::SetNavigationAgentSettings(EntityId id,const NavigationAgentSettings& settings){auto it=m_scriptDefinitions.find(id);if(it==m_scriptDefinitions.end()||!it->second.navigationAgent)return false;SceneObject check;check.navigationAgent=settings;std::string error;if(!ValidateNavigationComponents(check,error)||!m_navigation->Configuration().profiles.count(settings.profile))return false;it->second.navigationAgent=settings;if(auto agent=m_navigation->Agent(id))agent->elapsed=1e10f;return true;}
 
 bool RuntimeWorld::SetNavigationEnabled(EntityId id,const std::string& kind,bool enabled){auto it=m_scriptDefinitions.find(id);if(it==m_scriptDefinitions.end())return false;auto& o=it->second;if(kind=="agent"&&o.navigationAgent)o.navigationAgent->enabled=enabled;else if(kind=="obstacle"&&o.navigationObstacle)o.navigationObstacle->enabled=enabled;else if(kind=="link"&&o.navigationLink)o.navigationLink->enabled=enabled;else return false;return true;}
+
+bool RuntimeWorld::SetMaterialSlot(EntityId id,unsigned slot,const MaterialSlot& value){auto* entity=FindEntity(id);if(!entity||entity->lifecycle==EntityLifecycle::Destroyed||!entity->definition.render||slot>=64)return false;std::string error;if(!ValidateMaterial(ApplyMaterialOverride(MaterialDefinition{},value.overrides),error))return false;if(!value.asset.empty()){auto* record=m_assets&&m_assets->Assets()?m_assets->Assets()->Find(value.asset):nullptr;if(!record||record->missing||record->type!=AssetType::Material)return false;if(std::find(m_referencedAssets.begin(),m_referencedAssets.end(),value.asset)==m_referencedAssets.end()){m_assets->AddRef(value.asset);m_referencedAssets.push_back(value.asset);}m_assets->RequestMaterial(value.asset);}auto& slots=entity->definition.render->materials;if(slots.size()<=slot)slots.resize(slot+1);slots[slot]=value;if(auto it=m_scriptDefinitions.find(id);it!=m_scriptDefinitions.end()&&it->second.render)it->second.render->materials=slots;for(auto& render:m_staticRenderables)if(render.id==id)render.render.materials=slots;for(auto& render:m_dynamicVisuals)if(render.id==id)render.render.materials=slots;return true;}
+bool RuntimeWorld::SetAppearance(const SceneSettings& s){if(!std::isfinite(s.exposure)||s.exposure<=0||s.exposure>10000||!std::isfinite(s.environmentIntensity)||s.environmentIntensity<0||s.environmentIntensity>10000||!std::isfinite(s.environmentRotation.w)||!std::isfinite(s.environmentRotation.x)||!std::isfinite(s.environmentRotation.y)||!std::isfinite(s.environmentRotation.z)||glm::length(s.environmentRotation)<1e-6f)return false;if(!s.environmentAsset.empty()){auto* r=m_assets&&m_assets->Assets()?m_assets->Assets()->Find(s.environmentAsset):nullptr;if(!r||r->missing||r->type!=AssetType::Environment)return false;if(std::find(m_referencedAssets.begin(),m_referencedAssets.end(),s.environmentAsset)==m_referencedAssets.end()){m_assets->AddRef(s.environmentAsset);m_referencedAssets.push_back(s.environmentAsset);}m_assets->RequestEnvironment(s.environmentAsset);}m_settings.linearRendering=s.linearRendering;m_settings.exposure=s.exposure;m_settings.environmentAsset=s.environmentAsset;m_settings.environmentIntensity=s.environmentIntensity;m_settings.environmentRotation=glm::normalize(s.environmentRotation);m_settings.environmentBackground=s.environmentBackground;return true;}
