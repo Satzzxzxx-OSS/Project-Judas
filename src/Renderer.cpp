@@ -93,6 +93,10 @@ out vec4 FragColor;
 
 uniform sampler2D uTexture;
 uniform vec4 uColor;
+uniform bool uWaterEnabled;
+uniform sampler2D uWaterPaths;
+uniform mat4 uWaterViewProjection;
+uniform mat4 uWaterInverseViewProjection;
 uniform vec3 uLightDirection;  // world-space, normalized, points FROM the surface TOWARD the light
 uniform vec3 uLightColor;
 uniform vec3 uAmbientColor;
@@ -208,6 +212,16 @@ void main() {
 
     vec4 texColor = texture(uTexture, vUV);
     FragColor = vec4(lighting, 1.0) * texColor * uColor;
+    if (uWaterEnabled) {
+        vec4 clip = uWaterViewProjection * vec4(vWorldPos,1.0);
+        vec2 uv = clip.xy / clip.w * .5 + .5;
+        vec2 path = texture(uWaterPaths,uv).rg;
+        vec4 nearPoint = uWaterInverseViewProjection * vec4(uv*2.0-1.0,-1.0,1.0);
+        float distance = length(vWorldPos-nearPoint.xyz/nearPoint.w);
+        float waterLength = max(0.0,min(distance,path.y)-path.x);
+        vec3 transmission = exp(-vec3(.32,.12,.075)*waterLength);
+        FragColor.rgb = FragColor.rgb*transmission + vec3(.025,.18,.24)*(vec3(1.0)-transmission);
+    }
 }
 )";
 
@@ -770,6 +784,7 @@ void Renderer::Shutdown() {
     m_textures.clear();
 
     if (m_shaderProgram) {
+        if(m_waterPathTexture){glDeleteTextures(1,&m_waterPathTexture);m_waterPathTexture=0;m_waterColumns=m_waterRows=0;}
         glDeleteProgram(m_shaderProgram);
         m_shaderProgram = 0;
     }
@@ -844,6 +859,23 @@ void Renderer::SetCamera(const glm::mat4& view, const glm::mat4& projection) {
     m_view = view;
     m_projection = projection;
     m_frustum=Frustum(projection*view);
+    if(m_shaderProgram){glUseProgram(m_shaderProgram);glUniform1i(glGetUniformLocation(m_shaderProgram,"uWaterEnabled"),0);}
+}
+
+void Renderer::SetWaterPaths(unsigned columns,unsigned rows,const std::vector<glm::vec2>& paths){
+    if(!m_shaderProgram||paths.size()!=size_t(columns)*rows||!columns||!rows)return;
+    if(!m_waterPathTexture){glGenTextures(1,&m_waterPathTexture);}
+    glActiveTexture(GL_TEXTURE4);glBindTexture(GL_TEXTURE_2D,m_waterPathTexture);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    if(columns!=m_waterColumns||rows!=m_waterRows){glTexImage2D(GL_TEXTURE_2D,0,GL_RG32F,columns,rows,0,GL_RG,GL_FLOAT,paths.data());m_waterColumns=columns;m_waterRows=rows;}
+    else glTexSubImage2D(GL_TEXTURE_2D,0,0,0,columns,rows,GL_RG,GL_FLOAT,paths.data());
+    glUseProgram(m_shaderProgram);glUniform1i(glGetUniformLocation(m_shaderProgram,"uWaterEnabled"),1);
+    glUniform1i(glGetUniformLocation(m_shaderProgram,"uWaterPaths"),4);
+    glm::mat4 matrix=m_projection*m_view,inverse=glm::inverse(matrix);
+    glUniformMatrix4fv(glGetUniformLocation(m_shaderProgram,"uWaterViewProjection"),1,GL_FALSE,glm::value_ptr(matrix));
+    glUniformMatrix4fv(glGetUniformLocation(m_shaderProgram,"uWaterInverseViewProjection"),1,GL_FALSE,glm::value_ptr(inverse));
+    glActiveTexture(GL_TEXTURE0);
 }
 
 void Renderer::SetLighting(const glm::vec3& direction, const glm::vec3& lightColor,

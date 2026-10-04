@@ -157,7 +157,11 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
     const std::vector<RuntimeWorld::DynamicVisual>& visuals = world.DynamicVisuals();
     if(!world.Liquids().States().empty()){
       r.BeginTransparentPass();
-      for(const auto& [id,s]:world.Liquids().States())if(s.enabled&&s.equilibriumValid&&s.volume>0){MeshData mesh=s.surface;auto pose=s.pose;if(s.container)if(auto* o=world.RuntimeDefinition(s.entity))pose=world.PresentedTransform(s.entity,o->transform,alpha);for(auto& v:mesh.vertices){v.position=pose.position+pose.rotation*v.position;v.normal=pose.rotation*v.normal;}r.SetRenderLayer(world.RenderLayerOf(s.entity));r.DrawTransientSurface(mesh,{.035f,.34f,.72f},.76f);}
+      for(const auto& [id,s]:world.Liquids().States())if(s.enabled&&s.equilibriumValid&&s.volume>0){
+        auto pose=s.pose;if(s.container)if(auto* o=world.RuntimeDefinition(s.entity))pose=world.PresentedTransform(s.entity,o->transform,alpha);
+        VisualBounds localBounds;localBounds.Include(glm::vec3(s.minimum));localBounds.Include(glm::vec3(s.maximum));
+        if(!r.AllowsLayer(world.RenderLayerOf(s.entity))||!r.IsVisible(TransformBounds(localBounds,glm::translate(glm::mat4(1),pose.position)*glm::mat4_cast(pose.rotation))))continue;
+        MeshData mesh=s.dynamicSurface?s.dynamicSurface->Mesh(alpha):s.surface;for(auto& v:mesh.vertices){v.position=pose.position+pose.rotation*v.position;v.normal=pose.rotation*v.normal;}r.SetRenderLayer(world.RenderLayerOf(s.entity));r.DrawTransientSurface(mesh,{.035f,.34f,.72f},.76f);}
       r.SetRenderLayer(0);for(const auto& [id,p]:world.Liquids().Parcels())r.DrawSphere(p.position,float(std::cbrt(3*p.volume/(4*3.141592653589793))),{.05f,.5f,.9f},.85f);
       r.EndTransparentPass();
     }
@@ -411,6 +415,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
                 glm::perspective(glm::radians(c.verticalFovDegrees), static_cast<float>(c.width)/c.height, c.nearPlane, c.farPlane));
             renderer.SetRenderMask(c.renderMask);
             renderer.SetDynamicLights(lights);
+            renderer.SetWaterPaths(32,18,world.Liquids().OpticalPaths(renderer.ViewMatrix(),renderer.ProjectionMatrix(),32,18,alpha));
             DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});
             DrawWorldTransparents(renderer, world, session, alpha);
             renderer.EndRenderTarget(); ++camera.updates;
@@ -422,6 +427,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
     }else renderer.SetCamera(view, projection);
     renderer.SetRenderMask(world.Settings().mainCameraRenderMask);
     renderer.SetDynamicLights(lights);
+    renderer.SetWaterPaths(32,18,world.Liquids().OpticalPaths(renderer.ViewMatrix(),renderer.ProjectionMatrix(),32,18,alpha));
     DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});
     DrawWorldTransparents(renderer, world, session, alpha);
     renderer.EndFrame();

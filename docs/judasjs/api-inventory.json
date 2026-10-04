@@ -1,5 +1,5 @@
 {
-  "checkpoint": "16f7d59fa3289e7e7c43aaeb7e88471be6fe348f",
+  "checkpoint": "d9ebc8c7a987047b1d4175ed5d5de7da8dea472d",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -888,6 +888,17 @@
       "reference": "docs/judasjs/liquid.md"
     },
     {
+      "symbol": "LiquidVolume.applyImpulse",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "liquidImpulse"
+      ],
+      "type": "docs/judas.d.ts:LiquidVolume.applyImpulse",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
       "symbol": "LiquidVolume.constructor",
       "kinds": [
         "call"
@@ -925,6 +936,17 @@
         "liquidState"
       ],
       "type": "docs/judas.d.ts:LiquidVolume.state",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "LiquidVolume.surfaceEnabled",
+      "kinds": [
+        "set"
+      ],
+      "native": [
+        "liquidSurfaceEnabled"
+      ],
+      "type": "docs/judas.d.ts:LiquidVolume.surfaceEnabled",
       "reference": "docs/judasjs/liquid.md"
     },
     {
@@ -1510,6 +1532,17 @@
       "reference": "docs/judasjs/liquid.md"
     },
     {
+      "symbol": "liquid.samplePresented",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "liquidPresentedSample"
+      ],
+      "type": "docs/judas.d.ts:liquid.samplePresented",
+      "reference": "docs/judasjs/liquid.md"
+    },
+    {
       "symbol": "liquid.submerged",
       "kinds": [
         "call"
@@ -2007,10 +2040,13 @@
     "liquidConnections",
     "liquidEnabled",
     "liquidErrors",
+    "liquidImpulse",
     "liquidOwner",
+    "liquidPresentedSample",
     "liquidSample",
     "liquidState",
     "liquidSubmerged",
+    "liquidSurfaceEnabled",
     "liquidTransfer",
     "liquidValid",
     "log",

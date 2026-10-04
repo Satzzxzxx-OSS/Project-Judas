@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M54 review of the registered virtual module based on M53 checkpoint `16f7d59fa3289e7e7c43aaeb7e88471be6fe348f`.
+M55 review of the registered virtual module based on M54 checkpoint `d9ebc8c7a987047b1d4175ed5d5de7da8dea472d`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -90,10 +90,12 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Joint.state` | `jointState` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.valid` | `jointValid` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `LiquidVolume` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.applyImpulse` | `liquidImpulse` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.enabled` | `liquidEnabled` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.handle` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.state` | `liquidState` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `LiquidVolume.surfaceEnabled` | `liquidSurfaceEnabled` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.transferTo` | `liquidTransfer` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `LiquidVolume.valid` | `liquidValid` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `NavigationAgent` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
@@ -149,6 +151,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `liquid.connections` | `liquidConnections` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `liquid.errors` | `liquidErrors` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `liquid.sample` | `liquidSample` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `liquid.samplePresented` | `liquidPresentedSample` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `liquid.submerged` | `liquidSubmerged` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `navigation` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `navigation.areas` | `navAreas` | [declaration](../judas.d.ts) | [reference](navigation.md) |

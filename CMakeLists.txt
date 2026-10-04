@@ -81,6 +81,7 @@ add_library(judas_engine STATIC
     src/LiquidGeometry.cpp
     src/LiquidTypes.cpp
     src/LiquidSystem.cpp
+    src/LiquidSurface.cpp
     src/NavigationSystem.cpp
     src/NavigationTypes.cpp
     src/NavigationAsset.cpp
@@ -1064,3 +1065,15 @@ target_link_libraries(judas_liquid_bake PRIVATE judas_engine)
 
 add_executable(judas_liquid_application_tests tests/LiquidApplicationTests.cpp)
 target_link_libraries(judas_liquid_application_tests PRIVATE judas_engine)
+
+add_executable(judas_liquid_surface_tests tests/LiquidSurfaceTests.cpp)
+target_link_libraries(judas_liquid_surface_tests PRIVATE judas_engine)
+
+add_executable(judas_liquid_surface_application_tests tests/LiquidSurfaceApplicationTests.cpp)
+target_link_libraries(judas_liquid_surface_application_tests PRIVATE judas_engine)
+
+add_executable(judas_liquid_surface_refill_tests tests/LiquidSurfaceRefillTests.cpp)
+target_link_libraries(judas_liquid_surface_refill_tests PRIVATE judas_engine)
+
+add_executable(judas_liquid_surface_loop_tests tests/LiquidSurfaceLoopTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_liquid_surface_loop_tests PRIVATE judas_engine)

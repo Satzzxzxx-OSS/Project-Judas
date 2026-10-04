@@ -3,11 +3,12 @@
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
-  export interface LiquidState {entityId:EntityId;entity:Entity|null;enabled:boolean;equilibriumValid:boolean;container:boolean;material:string;density:number;volume:number;capacity:number;stableCapacity:number;coordinate:number}
+  export interface LiquidState {entityId:EntityId;entity:Entity|null;enabled:boolean;equilibriumValid:boolean;container:boolean;material:string;density:number;volume:number;capacity:number;stableCapacity:number;coordinate:number;surface:LiquidSurfaceState|null}
+  export interface LiquidSurfaceState {enabled:boolean;cells:number;faces:number;volume:number;iterations:number;retries:number;limitedFaces:number;residual:number;partitionError:number;stepSeconds:number}
   export interface LiquidAccounting {reservoirs:number;containers:number;detached:number;total:number;expected:number;error:number;tolerance:number}
-  export interface LiquidSample {entityId:EntityId;entity:Entity|null;material:string;density:number;depth:number;coordinate:number;surfacePoint:Vec3;normal:Vec3;velocity:Vec3}
-  export class LiquidVolume {constructor(handle:string);handle:string;readonly valid:boolean;readonly state:LiquidState;set enabled(value:boolean);transferTo(destination:LiquidVolume,volume:number):number}
-  export const liquid:{sample(point:Vec3):LiquidSample|null;accounting(material?:string):LiquidAccounting;readonly errors:{entityId:EntityId;message:string}[];readonly connections:{entityId:EntityId;active:boolean}[];submerged(target:Entity):{volume:number;center:Vec3;buoyancy:Vec3}};
+  export interface LiquidSample {entityId:EntityId;entity:Entity|null;material:string;density:number;depth:number;coordinate:number;surfacePoint:Vec3;normal:Vec3;up:Vec3;velocity:Vec3}
+  export class LiquidVolume {constructor(handle:string);handle:string;readonly valid:boolean;readonly state:LiquidState;set enabled(value:boolean);transferTo(destination:LiquidVolume,volume:number,options?:{sourcePoint?:Vec3;destinationPoint?:Vec3}):number;applyImpulse(point:Vec3,impulse:Vec3):boolean;set surfaceEnabled(value:boolean)}
+  export const liquid:{sample(point:Vec3):LiquidSample|null;samplePresented(point:Vec3):LiquidSample|null;accounting(material?:string):LiquidAccounting;readonly errors:{entityId:EntityId;message:string}[];readonly connections:{entityId:EntityId;active:boolean}[];submerged(target:Entity):{volume:number;center:Vec3;buoyancy:Vec3}};
   export type EntityId = string;
   export type AssetId = string;
   export type JSONValue = null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };

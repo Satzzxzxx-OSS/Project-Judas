@@ -93,6 +93,9 @@ public:
     // reacting to a resize event) is what keeps the projection's aspect
     // ratio correct across window resizes.
     void SetCamera(const glm::mat4& view, const glm::mat4& projection);
+    const glm::mat4& ViewMatrix()const{return m_view;}
+    const glm::mat4& ProjectionMatrix()const{return m_projection;}
+    void SetWaterPaths(unsigned columns,unsigned rows,const std::vector<glm::vec2>& paths);
     void SetCullingEnabled(bool enabled){m_cullingEnabled=enabled;}
     void SetRenderMask(CategoryMask mask){m_renderMask=mask;}
     void SetRenderLayer(unsigned layer){m_renderLayer=layer;}
@@ -351,6 +354,7 @@ private:
     std::vector<GpuMesh> m_meshes;
     std::vector<GpuTexture> m_textures;
 
+    GLuint m_waterPathTexture=0;unsigned m_waterColumns=0,m_waterRows=0;
     GLuint m_shaderProgram = 0;
 
     MeshHandle m_cubeMesh;

@@ -16,9 +16,9 @@ void Check(bool ok,const std::string& label){++checks;failures+=!ok;std::printf(
 int main(int argc,char** argv){
  fs::path out=argc>1?argv[1]:"build/m50-results";fs::create_directories(out);std::string only=argc>2?argv[2]:"";
  std::string error;EngineHost host;Check(host.Init("M50 cookbook",640,360,false,error),"real EngineHost");if(failures)return 1;host.Audio().Init(error,true);
- const char* names[]={"liquid","navigation","surface","presentation","impulse-point","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
+ const char* names[]={"liquid-surface","liquid","navigation","surface","presentation","impulse-point","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
  for(auto name:names){if(!only.empty()&&only!=name)continue;
-  std::string n=name,project=n=="liquid"?"liquid_reservoir_demo":n=="navigation"?"shooter_game":n=="audio"?"script_demo":n=="joint"?"joint_demo":n=="animation"||n=="ragdoll"?"ragdoll_demo":"character_demo";
+  std::string n=name,project=n=="liquid-surface"?"liquid_surface_demo":n=="liquid"?"liquid_reservoir_demo":n=="navigation"?"shooter_game":n=="audio"?"script_demo":n=="joint"?"joint_demo":n=="animation"||n=="ragdoll"?"ragdoll_demo":"character_demo";
   auto root=fs::absolute(fs::path("build/m50-examples")/n);fs::remove_all(root);fs::create_directories(root);fs::copy("projects/"+project,root,fs::copy_options::recursive);
   auto example=std::string(n=="trigger"?"contacts":name);fs::copy_file("docs/judasjs/examples/"+example+".js",root/"Assets/example.js",fs::copy_options::overwrite_existing);
   host.OpenProjectAssets(root.string(),(root/"Assets").string());AssetRecord script;
@@ -26,7 +26,7 @@ int main(int argc,char** argv){
   Project p;Check(p.Load((root/(project+".judasproj")).string(),error),n+" normal project");
   Scene scene;Check(LoadSceneFromFile(p.StartupScenePath(),scene,error),n+" ordinary scene");
   if(n=="navigation"){Scene resolved;if(!ResolvePrefabs(scene,&host.Assets(),resolved,error)){Check(false,error);continue;}scene=std::move(resolved);for(auto& o:scene.Objects()){o.prefabAsset.clear();o.prefabRoot=o.prefabSource=0;o.prefabIds.clear();o.prefabOverrides.clear();}}
-  EntityId owner=n=="liquid"?10:n=="navigation"?1000:project=="character_demo"?40:10;
+  EntityId owner=n=="liquid-surface"?10:n=="liquid"?10:n=="navigation"?1000:project=="character_demo"?40:10;
   for(auto& o:scene.Objects()){o.scripts.clear();o.ui.reset();if(n=="audio"&&o.audioEmitter)owner=o.id;}
   if(n=="joint")for(auto& o:scene.Objects())if(o.joint){owner=o.id;break;}
   if(n=="character")owner=10;
@@ -54,7 +54,7 @@ int main(int argc,char** argv){
   std::string state;for(const auto& s:world.Scripts()->Capture())if(s.entity==owner&&s.slot==1)state=s.json;
   std::printf("EXAMPLE %s %s\n",name,state.c_str());std::ofstream(out/(n+".json"))<<state;
   auto yes=[&](const char* key){return state.find(std::string("\"")+key+"\":true")!=std::string::npos;};
-  bool ok=n=="liquid"?yes("ready")&&yes("transferred")&&yes("conserved")&&yes("sample"):n=="navigation"?yes("sample")&&yes("path")&&yes("controlled"):n=="surface"?state.find("Entity.destroy")!=std::string::npos:
+  bool ok=n=="liquid-surface"?yes("ready")&&yes("conserved")&&yes("impulse")&&yes("presented"):n=="liquid"?yes("ready")&&yes("transferred")&&yes("conserved")&&yes("sample"):n=="navigation"?yes("sample")&&yes("path")&&yes("controlled"):n=="surface"?state.find("Entity.destroy")!=std::string::npos:
    n=="presentation"?yes("synchronized")&&yes("frameMode")&&state.find("\"calls\":100")!=std::string::npos:
    n=="impulse-point"?yes("angular")&&yes("rejectsInvalid")&&yes("linear")&&yes("unchanged"):
    n=="physical-control"?yes("capture")&&state.find("\"mass\":40")!=std::string::npos:

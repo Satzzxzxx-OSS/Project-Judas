@@ -1,81 +1,120 @@
-# `liquid` and `Entity.liquid` — conserved liquid (M54)
+# `liquid` and `Entity.liquid` — conserved liquid (M54–M55)
 
 Judas owns quantities, geometry and transfers. JS owns why a game drains, scoops
 or displays water. This API is separate from legacy `world.fluidSample` (PBF).
-SI units: m³, kg/m³, metres, seconds. One litre = .001 m³.
+Units: m³, kg/m³, metres, seconds, N·s for impulses. One litre = .001 m³.
 
 ## `entity.liquid: LiquidVolume | null`
 
-A component becomes available after its CPU assets load and the next fixed step
-registers it. Query again until non-null. `LiquidVolume.handle` is an opaque
-world-generation token: do not construct/parse it yourself. `valid` returns false
-after removal/world destruction; state/control on stale handles throws
-ReferenceError. Entity handle lifetimes follow [entities](entities.md).
+Available after its CPU assets load and a fixed step registers the component.
+Query again until non-null. `LiquidVolume.handle` is an opaque world-generation
+token: do not construct/parse it. `valid` becomes false after removal/world
+replacement; state/control on stale handles throws ReferenceError. See
+[entity lifetimes](entities.md) and [scene/session lifetime](scenes-state.md).
 
 ## `LiquidVolume.state`
 
-Detached snapshot: `entityId`, `entity`, `enabled`, `equilibriumValid`, `container`, `material`, `density`,
-`volume`, `capacity`, `stableCapacity`, `coordinate`.
-`coordinate` is basin-local equilibrium distance (plane coordinate or radius),
-not necessarily world height. `stableCapacity` changes with container orientation.
-Volume is authoritative; fill percentage is merely volume/capacity.
+Detached snapshot: `entityId`, `entity`, `enabled`, `equilibriumValid`, `container`,
+`material`, `density`, `volume`, `capacity`, `stableCapacity`, `coordinate`,
+`surface`. `coordinate` is the basin-local equilibrium distance/radius; for a
+moving surface it is only the equilibrium reference, not every local height.
+`surface` is null without dynamic capability; otherwise its snapshot contains
+`enabled`, `cells`, `faces`, `volume`, `iterations`, `retries`, `limitedFaces`,
+`residual`, `partitionError`, `stepSeconds`. Surface volume partitions the owner's
+volume and is never counted again in accounting. Residual is equation error in
+m³ before flux limiting, separate from ledger tolerance; the solve target is the
+authored tolerance times `max(1, owner volume in m³)`. `capacity` is available physical storage.
 
 ## `LiquidVolume.enabled = boolean`
 
-Disabling removes query/flow participation but retains owned volume. Scene reload
-restores authored initial volumes. Destruction retains the volume as a parked
-parcel instead of silently deleting it.
+Disable query/flow participation while retaining owned volume. Reload restores
+authored initial volumes. Destruction retains water in a parked parcel.
 
-## `source.transferTo(destination, cubicMetres): number`
+## `LiquidVolume.surfaceEnabled = boolean`
 
-Use in `fixedUpdate`. Returns actual transferred volume, bounded by source and
-destination capacity. Same material identity/density required. Invalid negative
-or nonfinite requests throw TypeError; stale handles throw ReferenceError.
-Disabled/self/incompatible transfers return zero. Debit/credit are one operation.
-This is an explicit plumbing/storage transaction, not the physical scoop API.
-Scooping/pouring are automatically driven by authored openings and geometry.
+Pause/resume surface dynamics, retaining allocations and flow. Requires a dynamic
+basin. This does not disable ordinary ownership/transfer or moving-solid storage
+updates. Resuming uses retained state; it does not reset waves. Fixed-update only.
+
+## `source.transferTo(destination, cubicMetres, options = {}): number`
+
+Fixed-update only. Returns the actual transfer bounded by availability/capacity.
+Options: `sourcePoint?: Vec3`, `destinationPoint?: Vec3`, in local simulation
+world coordinates. Spatial calls start at that cell and traverse its wetted face
+component; amount-only calls use a deterministic wet component and proportional
+allocation. Neither flattens waves or crosses closed/dry connections. A completely
+dry dynamic receiver may initially accept only one cell's capacity.
+Withdrawal carries away the donor fraction of existing flow momentum. Refill
+starts incoming quantity at rest while retaining existing wave/flow state;
+explicit parcel arrival impulses supply momentum separately.
+
+Same material identity/density required. Negative/nonfinite requests throw
+TypeError; stale handles throw ReferenceError. Disabled/self/incompatible transfers
+return zero. Debit/credit happen once. This is plumbing/storage control; physical
+scooping/pouring use authored openings automatically.
+
+## `LiquidVolume.applyImpulse(point, impulse): boolean`
+
+Fixed-update only. Adds tangential momentum to adjacent face discharges of the
+selected dynamic cell. Point and impulse use simulation-world coordinates. No
+water is created; the gravity-normal component is discarded. Returns false for
+inactive/non-dynamic surfaces; stale handles throw. This is a depth-reduced
+impulse, not an exact 3D fluid/body momentum solver.
 
 ## `liquid.sample(point): LiquidSample | null`
 
-World-local coordinates around Judas's fixed double-precision absolute origin.
-Returns null when dry/disabled/outside authored geometry. Snapshot fields:
-`entityId`, `entity`, `material`, `density`, `depth`, `coordinate`, `surfacePoint`, `normal`,
-`velocity`. The normal is local anti-gravity; no universal world-Y. M54 bulk
-velocity is zero (no waves/currents). Radial curvature has declared bake error.
+Authoritative occupied-water sample around Judas's fixed double absolute origin.
+Null when dry/disabled/outside available geometry (including excluded solid space).
+Fields: `entityId`, `entity`, `material`, `density`, `depth`, `coordinate`,
+`surfacePoint`, `normal`, `up`, `velocity`. `up` is local anti-gravity;
+`normal` is the represented surface normal. Do not interchange them.
+`velocity` is modeled tangential surface flow; static M54 bulk flow is zero.
+Finite-volume levels are piecewise constant; radial tetrahedra approximate curved
+coordinates within the declared bake bound. There is no universal world-Y.
+
+## `liquid.samplePresented(point): LiquidSample | null`
+
+Same shape, sampled using previous/current local surface coordinates and the
+current presentation alpha in `presentationUpdate`. Elsewhere alpha is 1.
+Use with `entity.presentedTransform` for presentation; physics/swimming use
+`sample` in fixed updates. Rendering uses this same interpolation state.
 
 ## `liquid.submerged(entity)`
 
 Actual enabled box/compound collider integration. Returns `volume`, `center`,
 `buoyancy` (newtons). Missing/stale collider throws ReferenceError; unsupported
-shape throws TypeError. Read-only; automatic force application requires the
-separate LiquidInteraction component. No entity-origin-only approximation.
+shape throws TypeError. Read-only; automatic forces require LiquidInteraction.
+Dynamic loading samples occupied cell envelopes; one hydrostatic/drag path applies
+forces through normal PhysicsWorld.
 
 ## `liquid.accounting(material = 'water')`
 
 Snapshot m³ totals: `reservoirs`, `containers`, `detached`, `total`, `expected`,
-`error`, `tolerance`. Expected includes explicitly authored/runtime-spawned initial
-volume. Different material identities have independent ledgers. Geometric solve
-error never changes ledger volume. This is session runtime data, not a save API.
+`error`, `tolerance`. Expected includes authored/runtime-spawned initial water.
+Materials have separate ledgers. Geometry/solve errors never edit the expected
+total. This is session runtime state, not liquid save-state migration.
 
 ## Diagnostics
 
 `liquid.errors`: `{entityId,message}[]`. `liquid.connections`:
-`{entityId,active}[]` (hydraulically open above authored saddle; source/destination
-keep their own volumes on opening/closing). Stable deterministic entity ordering.
+`{entityId,active}[]`, above the authored saddle. Deterministic entity order.
+Failed bounded surface solves roll back the attempted dynamic step, retain water
+and report an error; they do not switch to decorative motion. Independent accepted
+external transactions remain accepted. See [surface method/authoring](../LIQUID_SURFACES.md).
 
 ## Boundaries
 
-Static, baked basins; disjoint authored tetrahedral physical geometry. Uniform and
-constant-magnitude radial conservative gravity supported. No dynamic surface/PDE,
-particle bulk, live rebasing, sealed-air physics or nonconservative equilibrium.
-Small containers use local uniform-gravity clipping and freely vented gas.
-Detached ballistic parcels have no inter-parcel solver; unsupported solid landings
-retain parked conserved parcels. Dry body mass/inertia are not automatically
-rewritten from contained quantity. See [authoring](../LIQUID_RESERVOIRS.md),
-[physics](physics.md), [scenes/session](scenes-state.md) and [character](character.md).
+Physical disjoint tetrahedral cavities; static equilibrium or optional bounded CPU
+finite-volume surfaces. Uniform and constant-magnitude radial conservative gravity.
+No dynamic deep grid/particles, overturning waves, sealed-air physics, live rebasing
+or nonconservative equilibrium. Small containers retain their local quasi-static,
+vented lip model. Parcels are conserved ballistic quantities without a droplet
+pressure solver; unsupported landings park water. Dry body mass/inertia are not
+rewritten from contained quantity. See [M54 authoring](../LIQUID_RESERVOIRS.md),
+[physics](physics.md), [character](character.md) and the
+[copyable surface example](examples/liquid-surface.js).
 
-A moving container in unsupported/zero gravity retains volume and its authored
-enabled state, but sets `state.equilibriumValid=false`. Its queries, surface and
-transfers are suspended. Returning to supported gravity resolves the retained
-volume at its current pose and clears the diagnostic. `coordinate` and
-`stableCapacity` are last valid solve values while suspended.
+Unsupported/zero-gravity containers retain volume and enabled state but set
+`equilibriumValid=false`; queries, surface and transfers suspend. Returning to
+supported gravity resolves retained water at the current pose and clears the
+error. Coordinate/stableCapacity remain last-valid values while suspended.

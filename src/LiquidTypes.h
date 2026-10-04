@@ -1,10 +1,11 @@
 #pragma once
 #include "LiquidGeometry.h"
+#include "LiquidSurface.h"
 #include <map>
 #include <optional>
 #include <memory>
 struct LiquidMaterial {std::string id="water";double density=1000;};
-struct LiquidBasinSettings {bool enabled=true;std::string geometry,asset;LiquidMaterial material;double initialVolume=0,volumeTolerance=1e-5,heightTolerance=.002;};
+struct LiquidBasinSettings {LiquidSurfaceSettings surface;bool enabled=true;std::string geometry,asset;LiquidMaterial material;double initialVolume=0,volumeTolerance=1e-5,heightTolerance=.002;};
 struct LiquidContainerSettings {bool enabled=true;std::string geometry;LiquidMaterial material;double initialVolume=0;std::vector<glm::dvec3> opening{{-.2,.3,-.2},{.2,.3,-.2},{.2,.3,.2},{-.2,.3,.2}};double openingArea=.01,discharge=.6;};
 struct LiquidConnectionSettings {bool enabled=true,bidirectional=true;std::uint64_t source=0,destination=0;double openingArea=.01,discharge=.6;};
 struct LiquidInteractionSettings {bool enabled=true;double drag=1;};

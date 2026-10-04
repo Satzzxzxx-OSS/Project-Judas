@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M54)
+# JudasJS — current API reference (M55)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M54, based on
-M53 checkpoint `16f7d59fa3289e7e7c43aaeb7e88471be6fe348f`. It is not an
+This reference describes the public virtual `judas` module through M55, based on
+M54 checkpoint `d9ebc8c7a987047b1d4175ed5d5de7da8dea472d`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots

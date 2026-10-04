@@ -187,3 +187,7 @@ After scooping the main ledger legitimately contains less water.
 
 Human visual/interactive acceptance is authoritative. See
 [M54 evidence](evidence/m54/README.md) for measured tests, costs and limitations.
+
+## M55 optional extension
+
+The static M54 foundation remains available. See [dynamic liquid surfaces](LIQUID_SURFACES.md) for optional conserved finite-volume partitions, local transfers and current surface/swimming authoring.
