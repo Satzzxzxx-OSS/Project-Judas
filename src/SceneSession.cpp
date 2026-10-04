@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "SceneSession.h"
 #include "RuntimeWorld.h"
 #include "InteractivePlay.h"
@@ -42,6 +43,8 @@ bool SceneSession::Set(const std::string& key,const std::string& json,std::strin
 std::string SceneSession::Get(const std::string& key) const {auto it=m_values.find(key);return it==m_values.end()?"null":it->second;}
 bool SceneSession::Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& play,ResourceManager& resources,std::string& error){
     if(m_pending.empty())return true;
+    JUDAS_PROFILE_SCOPE("Scene replacement");
+    PerformanceProfiler::Get().Boundary("Scene replacement");
     const auto requested=std::move(m_pending);m_pending.clear();
     Scene scene;
     if(!LoadSceneFromFile(m_project.Resolve(requested),scene,error))return false;

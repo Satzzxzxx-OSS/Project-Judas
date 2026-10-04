@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "PoseComposition.h"
 #include <algorithm>
 #include <cmath>
@@ -62,6 +63,7 @@ void PoseMixer::CrossFade(AnimationPlayback& target,const std::string& clip,floa
  target.clip=clip;target.time=0;target.playing=true;target.stopped=false;paused=false;
 }
 SkeletalPose PoseMixer::Sample(const SkeletalAsset& a,AnimationPlayback& target,float dt){
+ JUDAS_PROFILE_SCOPE("Pose clip mixing");
  float advance=paused?0:dt;auto pose=target.Evaluate(a,advance);
  if(!Transitioning())return pose;
  elapsed=std::min(duration,elapsed+advance);float fraction=Fraction();SkeletalPose combined=a.skeleton.rest;float total=0;

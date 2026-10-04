@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "RuntimeWorld.h"
 #include <fstream>
 #include <sstream>
@@ -199,6 +200,7 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
 }
 
 bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError, const ProjectClassification* categories,const ProjectNavigation* navigation) {
+ JUDAS_PROFILE_SCOPE("World build"); PerformanceProfiler::Get().Boundary("World build");
     Scene resolved, scene;
     if (!ResolvePrefabs(authored, resources ? resources->Assets() : nullptr, resolved, outError) ||
         !FlattenHierarchy(resolved, scene, outError)) return false;
@@ -1187,6 +1189,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
+ JUDAS_PROFILE_SCOPE("World destroy"); PerformanceProfiler::Get().Boundary("World destroy");
     m_ragdolls.clear();m_ragdollReturns.clear();m_ragdollAutostarted.clear();
     ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
@@ -1268,6 +1271,7 @@ TextureHandle RuntimeWorld::CameraTexture(SceneObjectId id) const {
 
 
 void RuntimeWorld::UpdateVisualParticles(float dt){
+ JUDAS_PROFILE_SCOPE("Visual particle simulation");
     for(auto& e:m_particleEmitters){
         if(const auto* entity=FindEntity(e.id))if(entity->lifecycle==EntityLifecycle::Destroyed)continue;
         const auto t=PresentedTransform(e.id,e.transform,1);

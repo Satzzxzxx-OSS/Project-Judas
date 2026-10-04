@@ -1,9 +1,11 @@
+#include "PerformanceProfiler.h"
 #include "SkeletalAnimation.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 SkeletalPose SampleClip(const Skeleton& skeleton,const AnimationClip& clip,float time){
+ JUDAS_PROFILE_SCOPE("Animation clip sampling");
  SkeletalPose pose=skeleton.rest;
  for(const auto& track:clip.tracks){
   const auto& times=track.times;if(times.empty())continue;
@@ -21,6 +23,7 @@ SkeletalPose SampleClip(const Skeleton& skeleton,const AnimationClip& clip,float
  return pose;
 }
 std::vector<glm::mat4> ResolveSkinMatrices(const Skeleton& s,const SkeletalPose& pose){
+ JUDAS_PROFILE_SCOPE("Pose skin matrices");
  if(pose.local.size()!=s.parents.size())throw std::invalid_argument("pose does not match skeleton");
  std::vector<glm::mat4> global(pose.local.size());
  for(int i:s.order){const auto& p=pose.local[i];auto local=glm::translate(glm::mat4(1),p.translation)*glm::mat4_cast(p.rotation)*glm::scale(glm::mat4(1),p.scale);global[i]=s.parents[i]<0?local:global[s.parents[i]]*local;}

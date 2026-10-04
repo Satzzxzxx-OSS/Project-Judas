@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "RuntimeWorld.h"
 #include "ResourceManager.h"
 #include <cstdio>
@@ -23,6 +24,7 @@ void RuntimeWorld::EndAudio(){
     m_audioRunning=false;
 }
 void RuntimeWorld::UpdateAudio(const glm::mat4& activeView,float alpha){
+    JUDAS_PROFILE_SCOPE("Audio main update");
     if(!m_audioRunning||!m_audioSystem||!m_assets||m_audioEmitters.empty())return;
     glm::vec3 listenerPosition{0};glm::quat listenerOrientation{1,0,0,0};bool listenerActive=false;
     if(m_audioListener&&m_audioListener->settings.enabled){

@@ -77,6 +77,10 @@ target_compile_options(judas_glad PRIVATE -Wall -Wextra)
 # Milestone 28: engine sources shared by the runtime, the editor and the
 # scene/runtime test suites. Neither executable reimplements engine
 # startup, scene loading, instantiation, stepping or presentation.
+add_library(judas_profiler STATIC src/PerformanceProfiler.cpp)
+target_include_directories(judas_profiler PUBLIC src)
+target_compile_options(judas_profiler PRIVATE -Wall -Wextra)
+
 add_library(judas_engine STATIC
     src/LiquidGeometry.cpp
     src/LiquidTypes.cpp
@@ -215,6 +219,7 @@ add_executable(judas_editor
     src/editor/EditorCamera.cpp
     src/editor/EditorHistory.cpp
     src/editor/EditorPanels.cpp
+    src/editor/ProfilerView.cpp
     src/editor/EditorWidgets.cpp
     src/editor/ComponentEditors.cpp
     src/editor/GizmoMath.cpp
@@ -1077,3 +1082,22 @@ target_link_libraries(judas_liquid_surface_refill_tests PRIVATE judas_engine)
 
 add_executable(judas_liquid_surface_loop_tests tests/LiquidSurfaceLoopTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_liquid_surface_loop_tests PRIVATE judas_engine)
+
+add_executable(judas_profiler_tests tests/PerformanceProfilerTests.cpp)
+target_link_libraries(judas_profiler_tests PRIVATE judas_engine)
+
+add_executable(judas_profiler_script_tests tests/ProfilerScriptTests.cpp)
+target_link_libraries(judas_profiler_script_tests PRIVATE judas_engine)
+add_executable(judas_profiler_application_tests tests/ProfilerApplicationTests.cpp src/editor/ProfilerView.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_profiler_application_tests PRIVATE judas_engine judas_imgui)
+
+# Historical focused executables also compile engine subsets directly. They use
+# the same headless-capable service, rather than stub profiling implementations.
+target_link_libraries(judas_engine PUBLIC judas_profiler)
+get_property(JUDAS_LOCAL_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(JUDAS_LOCAL_TARGET IN LISTS JUDAS_LOCAL_TARGETS)
+    get_target_property(JUDAS_LOCAL_TYPE ${JUDAS_LOCAL_TARGET} TYPE)
+    if(JUDAS_LOCAL_TYPE STREQUAL "EXECUTABLE")
+        target_link_libraries(${JUDAS_LOCAL_TARGET} PRIVATE judas_profiler)
+    endif()
+endforeach()

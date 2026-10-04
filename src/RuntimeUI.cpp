@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "RuntimeUI.h"
 #include "AssetDatabase.h"
 #include "InputSystem.h"
@@ -71,7 +72,8 @@ UIElement* RuntimeUI::Element(uint32_t h,const std::string& id){auto* d=Document
 const UILayout* RuntimeUI::LayoutOf(uint32_t h,const std::string& id)const{auto it=m_documents.find(h);if(it==m_documents.end())return nullptr;auto p=it->second.layout.find(id);return p==it->second.layout.end()?nullptr:&p->second;}
 bool RuntimeUI::Paused()const{for(auto& p:m_documents)if(p.second.doc.visible&&p.second.doc.enabled&&p.second.doc.modal)return true;return false;}
 bool RuntimeUI::OwnsInput()const{return Paused();}
-void RuntimeUI::Layout(int w,int h){auto start=Clock::now();m_stats.elements=0;
+void RuntimeUI::Layout(int w,int h){
+    JUDAS_PROFILE_SCOPE("Runtime UI layout");auto start=Clock::now();m_stats.elements=0;
     for(auto& p:m_documents){auto& in=p.second;in.layout.clear();auto& d=in.doc;float scale=std::min(w/d.reference.x,h/d.reference.y);glm::vec2 origin=(glm::vec2(w,h)-d.reference*scale)*.5f;
         std::map<std::string,float> cursor;for(auto& e:d.elements){UILayout l;if(e.parent.empty()){l.rect={origin,d.reference*scale};l.clip={{0,0},{w,h}};l.visible=d.visible&&e.visible;l.enabled=d.enabled&&e.enabled;}
             else {const auto& parent=in.layout.at(e.parent);auto* pe=ById(d,e.parent);UIRect content=parent.rect;content.position+=glm::vec2(pe->padding.x,pe->padding.y)*scale;content.size=glm::max(glm::vec2(0),content.size-glm::vec2(pe->padding.x+pe->padding.z,pe->padding.y+pe->padding.w)*scale);
@@ -83,7 +85,8 @@ void RuntimeUI::Layout(int w,int h){auto start=Clock::now();m_stats.elements=0;
     m_stats.updateUs=Us(start);
 }
 void RuntimeUI::Activate(Instance& in,UIElement& e,const char* type){if(e.kind==UIKind::Toggle){e.value=e.value>.5f?0:1;type="change";}m_events.push_back({in.name,e.id,type,e.value});}
-void RuntimeUI::Input(InputSystem& input,glm::vec2 pointer,bool available,int w,int h){Layout(w,h);
+void RuntimeUI::Input(InputSystem& input,glm::vec2 pointer,bool available,int w,int h){
+    JUDAS_PROFILE_SCOPE("Runtime UI input");Layout(w,h);
     auto top=m_documents.end();for(auto it=m_documents.begin();it!=m_documents.end();++it)if(it->second.doc.visible&&it->second.doc.enabled&&(top==m_documents.end()||it->second.doc.modal||!top->second.doc.modal))top=it;
     if(top==m_documents.end())return;
     // A nonmodal HUD never steals navigation unless a pointer hits a control.
@@ -110,7 +113,8 @@ void RuntimeUI::Input(InputSystem& input,glm::vec2 pointer,bool available,int w,
     if(modal||hit||!in.pressed.empty())input.ConsumeBindings({"ui_up","ui_down","ui_left","ui_right","ui_activate","ui_click","pause"});
 }
 std::vector<UIEvent> RuntimeUI::TakeEvents(){auto events=std::move(m_events);m_events.clear();return events;}
-void RuntimeUI::Draw(Renderer& r,int w,int h){auto start=Clock::now();Layout(w,h);m_stats.draws=0;unsigned before=r.UIDrawCalls();
+void RuntimeUI::Draw(Renderer& r,int w,int h){
+    JUDAS_PROFILE_SCOPE("Runtime UI drawing");auto start=Clock::now();Layout(w,h);m_stats.draws=0;unsigned before=r.UIDrawCalls();
     for(auto& p:m_documents){auto& in=p.second;
         if(m_resources){for(auto it=in.refs.begin();it!=in.refs.end();)if(std::none_of(in.doc.elements.begin(),in.doc.elements.end(),[&](const auto& e){return e.texture==*it;})){m_resources->ReleaseRef(*it);it=in.refs.erase(it);}else ++it;}
         float scale=std::min(w/in.doc.reference.x,h/in.doc.reference.y);for(auto& e:in.doc.elements){const auto& l=in.layout.at(e.id);if(!l.visible||l.clip.size.x<=0||l.clip.size.y<=0)continue;r.SetUIClip(l.clip.position,l.clip.size);

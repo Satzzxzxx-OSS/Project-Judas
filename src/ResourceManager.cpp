@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "ResourceManager.h"
 
 #include <algorithm>
@@ -70,15 +71,20 @@ void ResourceManager::TraceTask(const LoadTask& task, ResourceTracePoint point, 
 // The CPU stage: file read + decode. Runs on a worker (async) or on the
 // caller (blocking). Touches only the task — never the manager.
 void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
+    JUDAS_PROFILE_SCOPE("Resource load");
     task.stage.store(1, std::memory_order_release);
     std::vector<std::uint8_t> bytes;
     std::string error;
     bool cancelled = false;
+    static ProfileLabel ioLabel("Resource file IO"), decodeLabel("Resource decode");
+    ProfileScope ioScope(ioLabel);
     TraceTask(task, ResourceTracePoint::FileReadBegin);
     const bool read = ReadWholeFile(task.path, bytes, error, context, &cancelled,
         task.trace ? std::function<void(std::size_t)>([&task](std::size_t count) {
             TraceTask(task, ResourceTracePoint::FileReadChunk, count);
         }) : std::function<void(std::size_t)>{});
+    ioScope.End();
+    JUDAS_PROFILE_COUNTER("Resource bytes read",double(bytes.size()),ProfileCounterMode::Sum);
     TraceTask(task, ResourceTracePoint::FileReadEnd, bytes.size());
     if (!read) {
         task.cancelled = cancelled;
@@ -94,6 +100,7 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
         return;
     }
     task.decodeThread = std::this_thread::get_id();
+    ProfileScope decodeScope(decodeLabel);
     TraceTask(task, ResourceTracePoint::DecodeBegin, bytes.size());
     if (task.type == AssetType::Mesh) {
         task.succeeded = ParseModelMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
@@ -169,6 +176,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
 // it when the entry moved on (generation mismatch) or the load was
 // cancelled/failed.
 void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>& task) {
+    JUDAS_PROFILE_SCOPE("Resource installation");
     if (entry.task != task || task->generation != entry.generation) {
         ++m_stats.staleDiscarded;
         TraceTask(*task, ResourceTracePoint::StaleDiscarded);
@@ -327,6 +335,7 @@ unsigned int ResourceManager::RefCount(const AssetId& id) const {
 }
 
 void ResourceManager::Pump(std::size_t maxUploads) {
+    JUDAS_PROFILE_SCOPE("Resource completion and budget");
     if (m_shutDown) return;
     std::size_t uploads = 0;
     for (std::size_t i = 0; i < m_inFlight.size();) {
@@ -368,9 +377,14 @@ void ResourceManager::Pump(std::size_t maxUploads) {
         m_inFlight.erase(m_inFlight.begin() + static_cast<std::ptrdiff_t>(i));
     }
     if (m_stats.bytesResident > m_budgetBytes) EvictToFit(m_budgetBytes);
+    JUDAS_PROFILE_COUNTER("Resource resident byte estimate",double(m_stats.bytesResident),ProfileCounterMode::Latest);
+    JUDAS_PROFILE_COUNTER("Resource budget bytes",double(m_budgetBytes),ProfileCounterMode::Latest);
+    JUDAS_PROFILE_COUNTER("Resource in flight",double(m_inFlight.size()),ProfileCounterMode::Latest);
+    JUDAS_PROFILE_COUNTER("Resource uploads",double(uploads),ProfileCounterMode::Sum);
 }
 
 void ResourceManager::WaitForAll() {
+    JUDAS_PROFILE_SCOPE("Resource wait");
     while (!m_inFlight.empty()) {
         if (m_jobs) {
             for (const std::shared_ptr<LoadTask>& task : m_inFlight) m_jobs->Wait(task->job);
@@ -380,6 +394,7 @@ void ResourceManager::WaitForAll() {
 }
 
 std::size_t ResourceManager::EvictToFit(std::uint64_t targetBytes) {
+    JUDAS_PROFILE_SCOPE("Resource eviction");
     std::size_t evicted = 0;
     while (m_stats.bytesResident > targetBytes) {
         // Least recently used, unreferenced, Ready.
@@ -457,6 +472,7 @@ void ResourceManager::Release(const AssetId& id) {
 }
 
 void ResourceManager::ReleaseAll() {
+    JUDAS_PROFILE_SCOPE("Resource release");
     for (auto& [id, entry] : m_entries) {
         if (entry.task && m_jobs) {
             m_jobs->Cancel(entry.task->job);

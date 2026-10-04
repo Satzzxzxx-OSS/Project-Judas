@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "Renderer.h"
 #include "SkeletalAnimation.h"
 
@@ -764,6 +765,9 @@ void Renderer::TraceResourceOperation(ResourceTracePoint point, unsigned int han
 }
 
 void Renderer::Shutdown() {
+    for(auto& q:m_profileQueries){if(q.begin)glDeleteQueries(1,&q.begin);if(q.end)glDeleteQueries(1,&q.end);q={};}
+    m_profileQueriesReady=false;
+    PerformanceProfiler::Get().GPUAvailability(false,"Renderer/context shut down");
     TraceResourceOperation(ResourceTracePoint::RendererShutdownBegin);
     EndRenderTarget();
     if(m_particleProgram)glDeleteProgram(m_particleProgram);
@@ -851,6 +855,7 @@ void Renderer::DrawDebugLines(const std::vector<DebugLine>& lines, bool depthTes
 }
 
 void Renderer::BeginFrame(int windowWidth, int windowHeight) {
+    PollProfileGPU();
     glViewport(0, 0, windowWidth, windowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
@@ -863,6 +868,7 @@ void Renderer::SetCamera(const glm::mat4& view, const glm::mat4& projection) {
 }
 
 void Renderer::SetWaterPaths(unsigned columns,unsigned rows,const std::vector<glm::vec2>& paths){
+ JUDAS_PROFILE_SCOPE("Water boundary upload");
     if(!m_shaderProgram||paths.size()!=size_t(columns)*rows||!columns||!rows)return;
     if(!m_waterPathTexture){glGenTextures(1,&m_waterPathTexture);}
     glActiveTexture(GL_TEXTURE4);glBindTexture(GL_TEXTURE_2D,m_waterPathTexture);
@@ -919,6 +925,7 @@ void Renderer::SetDynamicLights(const std::vector<DynamicLight>& lights) {
 }
 
 void Renderer::BeginShadowPass(int shadowSlot, const glm::mat4& lightViewProjection) {
+    m_profileShadow=BeginProfilePass("Shadow",std::uint64_t(shadowSlot));
     m_shadowLightSpaceMatrix[shadowSlot] = lightViewProjection;
     m_shadowPassActive = true;
     m_currentShadowSlot = shadowSlot;
@@ -933,6 +940,7 @@ void Renderer::BeginShadowPass(int shadowSlot, const glm::mat4& lightViewProject
 }
 
 void Renderer::EndShadowPass() {
+    EndProfilePass(m_profileShadow);m_profileShadow=0;
     m_shadowPassActive = false;
     m_frustum=Frustum(m_projection*m_view);
     m_currentShadowSlot = -1;
@@ -1314,6 +1322,7 @@ bool Renderer::LoadFont(const char* path, float pixelHeight, std::string& outErr
 }
 
 void Renderer::BeginUIFrame(int windowWidth, int windowHeight) {
+    m_profileUI=BeginProfilePass("Runtime UI");
     m_uiDrawCalls=0;
     m_uiScreenSize = glm::vec2(static_cast<float>(std::max(windowWidth, 1)),
                                 static_cast<float>(std::max(windowHeight, 1)));
@@ -1388,6 +1397,8 @@ float Renderer::GetUITextLineHeight(float scale) const {
 }
 
 void Renderer::EndUIFrame() {
+    EndProfilePass(m_profileUI);m_profileUI=0;
+    JUDAS_PROFILE_COUNTER("Runtime UI draws",double(UIDrawCalls()),ProfileCounterMode::Latest);
     ClearUIClip();
     glBindVertexArray(0);
     glDisable(GL_BLEND);
@@ -1564,9 +1575,32 @@ void Renderer::DrawUIImage(glm::vec2 position,glm::vec2 size,TextureHandle textu
 }
 
 void Renderer::DrawTransientSurface(const MeshData& data,const glm::vec3& tint,float alpha){
+ JUDAS_PROFILE_SCOPE("Water surface upload and submission");
  if(m_shadowPassActive||data.vertices.empty())return;
  if(!m_transientSurface.IsValid())m_transientSurface=CreateMesh(data);else UpdateMeshVertices(m_transientSurface,data.vertices);
  GLboolean cull=glIsEnabled(GL_CULL_FACE);glDisable(GL_CULL_FACE);
  DrawMesh(m_transientSurface,{0,0,0},{1,0,0,0},{1,1,1},{},tint,alpha);
  if(cull)glEnable(GL_CULL_FACE);
+}
+
+unsigned Renderer::BeginProfilePass(const char* name,std::uint64_t camera){
+    auto& p=PerformanceProfiler::Get();if(!p.Active())return 0;
+    if(!glQueryCounter||!glGetQueryObjectui64v){p.GPUAvailability(false,"GL timestamp entry points unavailable");return 0;}
+    p.GPUAvailability(true,"Asynchronous GL 3.3 timestamp pairs");
+    if(!m_profileQueriesReady){for(auto& q:m_profileQueries){glGenQueries(1,&q.begin);glGenQueries(1,&q.end);}m_profileQueriesReady=true;}
+    for(unsigned i=0;i<m_profileQueries.size();++i){auto& q=m_profileQueries[i];if(q.pending)continue;
+        auto record=p.GPUPending(name,camera);if(!record)return 0;
+        q.frame=p.FrameId();q.record=record;q.pending=true;q.ended=false;
+        glQueryCounter(q.begin,GL_TIMESTAMP);return i+1;
+    }p.DropGPU();return 0;
+}
+void Renderer::EndProfilePass(unsigned token){if(!token||token>m_profileQueries.size())return;auto& q=m_profileQueries[token-1];if(!q.pending||q.ended)return;glQueryCounter(q.end,GL_TIMESTAMP);q.ended=true;}
+void Renderer::PollProfileGPU(){
+    if(!m_profileQueriesReady)return;
+    auto& p=PerformanceProfiler::Get();
+    for(auto& q:m_profileQueries){if(!q.pending||!q.ended||q.frame==p.FrameId())continue;
+        GLint available=0;glGetQueryObjectiv(q.end,GL_QUERY_RESULT_AVAILABLE,&available);if(!available)continue;
+        GLuint64 a=0,b=0;glGetQueryObjectui64v(q.begin,GL_QUERY_RESULT,&a);glGetQueryObjectui64v(q.end,GL_QUERY_RESULT,&b);
+        p.GPUComplete(q.frame,q.record,double(b>=a?b-a:0)/1e6);q.pending=q.ended=false;
+    }
 }

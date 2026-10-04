@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "PhysicsWorld.h"
 #include "PhysicsCastGeometry.h"
 
@@ -1560,6 +1561,7 @@ void PhysicsWorld::SetAngularVelocity(BodyHandle handle, const glm::vec3& angula
 }
 
 void PhysicsWorld::Step(float fixedDeltaTime) {
+    JUDAS_PROFILE_SCOPE("Rigid physics");
     Impl& w = *m_impl;
     const Clock::time_point stepStart = Clock::now();
     w.stats = StepStats{};
@@ -1593,9 +1595,12 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     // 2) Broadphase: every fat bound contains its body's current pose
     // (refreshed at the end of the previous Step and by ResetBody), so every
     // touching pair is among the candidates. Static-static pairs never are.
+    static ProfileLabel broadLabel("Physics broadphase"), narrowLabel("Physics contacts"), solverLabel("Physics contact and joint solver"), proxiesLabel("Physics proxy refresh");
+    ProfileScope broadScope(broadLabel);
     const Clock::time_point broadphaseStart = Clock::now();
     w.GenerateCandidatePairs();
     w.stats.candidatePairs = w.candidatePairs.size();
+    broadScope.End(); ProfileScope narrowScope(narrowLabel);
     const Clock::time_point narrowphaseStart = Clock::now();
 
     // 3) Narrowphase at the current poses — the sole authority on contact.
@@ -1693,6 +1698,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         if (pairPoints > 0) ++w.stats.collidingPairs;
     }
     w.stats.contactPoints = w.lastStepContacts.size();
+    narrowScope.End(); ProfileScope solverScope(solverLabel);
     const Clock::time_point solverStart = Clock::now();
 
     // 4) Accumulated-impulse velocity solve (src/ContactSolver.h), then
@@ -1727,6 +1733,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         if(body.isDynamic) w.solver.UpdatePreparedRotation(body.rigidBody,w.Orientation(body).rotation);
     }
     w.solver.SolvePositions();
+    solverScope.End(); ProfileScope proxyScope(proxiesLabel);
     const Clock::time_point solverEnd = Clock::now();
 
     // 5) Keep every dynamic proxy's fat bound around its previous-to-current
@@ -1753,6 +1760,10 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     w.stats.broadphaseMilliseconds = MillisecondsBetween(broadphaseStart, narrowphaseStart) +
                                      MillisecondsBetween(solverEnd, stepEnd);
     w.stats.narrowphaseMilliseconds = MillisecondsBetween(narrowphaseStart, solverStart);
+    JUDAS_PROFILE_COUNTER("Physics bodies last step",double(w.stats.bodies),ProfileCounterMode::Latest);
+    JUDAS_PROFILE_COUNTER("Physics candidate pairs last step",double(w.stats.candidatePairs),ProfileCounterMode::Latest);
+    JUDAS_PROFILE_COUNTER("Physics contacts last step",double(w.stats.contactPoints),ProfileCounterMode::Latest);
+    JUDAS_PROFILE_COUNTER("Physics joints",double(w.joints.size()),ProfileCounterMode::Latest);
     w.stats.solverMilliseconds = MillisecondsBetween(solverStart, solverEnd);
     w.stats.totalMilliseconds = MillisecondsBetween(stepStart, stepEnd);
     const ContactGeometryDiagnostics geometryAfter = GetContactGeometryDiagnostics();
@@ -2068,6 +2079,7 @@ void PhysicsWorld::ClearTouchHistory(){m_impl->previousTouches.clear();m_impl->s
 
 PhysicsCastHit PhysicsWorld::Cast(const Shape& shape,const BodyTransform& pose,const glm::vec3& direction,float maximum,
     const PhysicsQueryFilter& filter,PhysicsCastStats* stats) const {
+    JUDAS_PROFILE_SCOPE("Physics shape query");
     if(stats)*stats={};
     auto finite=[](glm::vec3 v){return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);};
     double q2=glm::dot(glm::dvec4(pose.rotation.x,pose.rotation.y,pose.rotation.z,pose.rotation.w),

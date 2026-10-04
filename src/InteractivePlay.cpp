@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "ScriptSystem.h"
 #include "InteractivePlay.h"
 
@@ -22,6 +23,7 @@ double MillisecondsSince(Clock::time_point start) {
 }  // namespace
 
 bool InteractivePlay::Begin(RuntimeWorld& world, const WorldCoordinates& worldCoordinates, std::string& outError) {
+    PerformanceProfiler::Get().Boundary("Play begin");
     End();
     m_worldCoordinates = worldCoordinates;
     if (!m_session.Begin(world, outError)) return false;
@@ -37,6 +39,7 @@ bool InteractivePlay::Begin(RuntimeWorld& world, const WorldCoordinates& worldCo
 }
 
 void InteractivePlay::End() {
+ PerformanceProfiler::Get().Boundary("Play end");
     if(m_session.IsActive()){m_session.World().EndScripts();m_session.World().EndAudio();}
     m_session.End();
 }
@@ -91,6 +94,7 @@ bool InteractivePlay::ConsumeResetOccurred() {
 }
 
 float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDeltaTime, bool drawHud) {
+    JUDAS_PROFILE_SCOPE("Play frame");
     RuntimeWorld& world = m_session.World();
 
     // --- Milestone 13: the single input-routing boundary ---
@@ -121,7 +125,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     }
     // A replacement scene may begin after an outgoing modal menu released
     // the cursor. Reconcile ownership after the new scene's UI starts.
-    const bool capture = !IsPaused() && (world.legacyGameplay || world.pointerCapture);
+    const bool capture = m_pointerCaptureAllowed && !IsPaused() && (world.legacyGameplay || world.pointerCapture);
     if (!m_captureInitialized || window.IsMouseCaptured() != capture) {
         window.SetMouseCaptured(capture);
         m_wasPauseMenuOpen = IsPaused();
@@ -152,6 +156,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
 
     // Milestone 13 pause policy: while the menu is open nothing advances —
     // no input, no accumulator, no steps.
+    bool profileCap=false; double profileDiscarded=0;
     if (!IsPaused()&&!uiOwned) {
         m_session.HandleFrameInput(window, torchToggleRequested, interactRequested, viewToggleRequested,
                                    throwRequested, sasToggleRequested, frameDeltaTime);
@@ -179,7 +184,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
             ++m_fixedStepsSinceReset;
         }
         // Hit the catch-up cap: drop the backlog instead of compounding it.
-        if (stepsThisFrame == SimulationTiming::kMaxPhysicsStepsPerFrame) m_physicsAccumulator = 0.0f;
+        if (stepsThisFrame == SimulationTiming::kMaxPhysicsStepsPerFrame) { profileCap=true; profileDiscarded=m_physicsAccumulator; m_physicsAccumulator = 0.0f; }
         m_lastStepsThisFrame = stepsThisFrame;
     } else {
         window.ClearPendingRequests();
@@ -188,6 +193,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
 
     // How far real time has progressed into an as-yet-unsimulated fixed
     // step — the presentation interpolation factor (M6).
+    PerformanceProfiler::Get().FixedState(m_physicsAccumulator,profileCap,profileDiscarded,IsPaused()||uiOwned);
     const float presentationAlpha = m_physicsAccumulator / SimulationTiming::kFixedTimestep;
     world.PresentationScripts(&window.Input(),frameDeltaTime,presentationAlpha);
     const auto surfaceStart = Clock::now();

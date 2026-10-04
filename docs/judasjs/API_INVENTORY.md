@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M55 review of the registered virtual module based on M54 checkpoint `d9ebc8c7a987047b1d4175ed5d5de7da8dea472d`.
+M56 review of the registered virtual module based on M55 checkpoint `7b1e5ea1eab46456bead72b0dcdc7b7fdc9b36fd`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -166,6 +166,9 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `physics.joint` | `joint` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.raycast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.sphereCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `profiler` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](profiling.md) |
+| `profiler.counter` | `profileCounter` | [declaration](../judas.d.ts) | [reference](profiling.md) |
+| `profiler.scope` | `profileScope` | [declaration](../judas.d.ts) | [reference](profiling.md) |
 | `scenes` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
 | `scenes.current` | `sceneCurrent` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
 | `scenes.load` | `sceneLoad` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |

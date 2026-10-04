@@ -8946,3 +8946,23 @@ Normal assets/resources/editor/scene/prefab/export and JudasJS integrate this pa
 M54 LiquidSystem remains the quantity owner. Optional CPU finite-volume surface cells partition each reservoir's same double-precision volume; shared face discharges are paired transfers, not additional ledger quantities. Physical tetrahedral storage and apertures, supported uniform/radial equilibrium descriptors, bounded semi-implicit pressure/continuity resolution and real collider union exclusion produce the occupied surface. Containers keep the vented M54 lip/cavity model; actual water transfers to conserved parcels and receiver cells. One normal PhysicsWorld hydrostatic/drag loading path remains.
 
 Authoritative liquid samples drive project-JS CharacterMotor swimming. Presented samples and Renderer caps/step bands use the same previous/current interpolation. Per-camera optical paths clip attenuation to actual water intervals, leaving sky/HUD independent. New opted-in basin data uses JudasBasin2; non-opted M54 assets/fingerprints remain valid. See [method, authoring and limitations](LIQUID_SURFACES.md) and [JudasJS liquid API](judasjs/liquid.md). Candidate acceptance and measurements are recorded in M55 evidence; no P1 prototype is promoted to production.
+
+## M56 — integrated diagnostic profiling (candidate)
+
+`PerformanceProfiler` is process-owned observability, independent of RuntimeWorld,
+Renderer and gameplay. Native RAII scopes write bounded per-thread lanes with
+interned parent-path identity; completed owned snapshots retain outer-frame,
+fixed-step, worker, counter and lifecycle observations. Enable/freeze/clear affect
+capture only. Timings never enter authored fingerprints, saves or simulation.
+
+Standalone/editor outer loops own frame boundaries, including waits; nested Play
+owns no duplicate frame. Worker jobs retain absolute monotonic intervals/source
+frame, not fabricated main-thread time. Renderer exclusively owns asynchronous
+coarse GPU timestamp pairs. Pending/unavailable results are not CPU substitutions.
+
+Editor **View → Profiler** consumes completed history/spikes; collection and UI
+visibility are independent. Exported runtime capture defaults off, opt-in through
+`JUDAS_PROFILE`; bounded JSON reports use caller-selected writable paths.
+`profiler.scope` / `profiler.counter` add exception-safe, bounded project annotations.
+The liquid scopes distinguish storage rebuilding, solve, loading and presentation
+without changing M54/M55 behaviour. See [profiler guide](PROFILER.md) and M56 evidence.

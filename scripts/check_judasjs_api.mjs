@@ -48,13 +48,13 @@ function declarations(nodes){for(const n of nodes){
  else if(ts.isVariableStatement(n))for(const d of n.declarationList.declarations){const parent=name(d.name);if(!ts.isTypeLiteralNode(d.type))throw Error('Namespace needs explicit type literal: '+parent);insert(types,parent,'namespace',[],d);for(const m of d.type.members)insert(types,parent+'.'+name(m.name),(ts.isMethodSignature(m)||ts.isTypeQueryNode(m.type))?'call':m.modifiers?.some(x=>x.kind===ts.SyntaxKind.ReadonlyKeyword)?'get':'field',[],m);}
 }}
 declarations(decl.statements);
-const pages={LiquidVolume:'liquid.md',liquid:'liquid.md',NavigationAgent:'navigation.md',navigation:'navigation.md',Entity:'entities.md',entity:'entities.md',world:'entities.md',Character:'character.md',Ragdoll:'animation-ragdolls.md',Animation:'animation-ragdolls.md',Joint:'physics.md',physics:'physics.md',scenes:'scenes-state.md',session:'scenes-state.md',input:'input.md',time:'input.md',console:'input.md',UIElement:'ui.md',UIDocument:'ui.md',ui:'ui.md'};
+const pages={profiler:"profiling.md",LiquidVolume:'liquid.md',liquid:'liquid.md',NavigationAgent:'navigation.md',navigation:'navigation.md',Entity:'entities.md',entity:'entities.md',world:'entities.md',Character:'character.md',Ragdoll:'animation-ragdolls.md',Animation:'animation-ragdolls.md',Joint:'physics.md',physics:'physics.md',scenes:'scenes-state.md',session:'scenes-state.md',input:'input.md',time:'input.md',console:'input.md',UIElement:'ui.md',UIDocument:'ui.md',ui:'ui.md'};
 const abilities=k=>k.includes('field')?['get','set']:k.slice().sort();
 const symbols=[...runtime.keys()].sort();
 const nativeOps=[...new Set([...library.matchAll(/call\(['"]([^'"]+)['"]/g)].map(m=>m[1]))].sort();
 for(const op of nativeOps)if(!source.slice(source.indexOf('JSValue ScriptSystem::Impl::Native')).match(new RegExp('op\\s*(?:==|!=)\\s*"'+op+'"')))throw Error('Unimplemented native operation '+op);
 const mapPath=path.join(root,'docs/judasjs/api-inventory.json');
-const schema={checkpoint:'d9ebc8c7a987047b1d4175ed5d5de7da8dea472d',authority:'src/ScriptSystem.cpp::library + Impl::Native',symbols:symbols.map(k=>{
+const schema={checkpoint:'7b1e5ea1eab46456bead72b0dcdc7b7fdc9b36fd',authority:'src/ScriptSystem.cpp::library + Impl::Native',symbols:symbols.map(k=>{
  const v=runtime.get(k);let native=v.native;
  if(k.startsWith('physics.')&&k!=='physics.joint')native=['cast'];
  const page=['world.setView','world.clearView','world.viewRay','world.fluidSample'].includes(k)?'effects-camera.md':pages[k.split('.')[0]];
@@ -64,7 +64,7 @@ const schema={checkpoint:'d9ebc8c7a987047b1d4175ed5d5de7da8dea472d',authority:'s
 if(args.includes('--write-inventory')){
  fs.writeFileSync(mapPath,JSON.stringify(schema,null,2)+'\n');
  const rows=schema.symbols.map(s=>`| \`${s.symbol}\` | ${s.native.map(n=>'`'+n+'`').join(', ')||'JS wrapper/data'} | [declaration](../judas.d.ts) | [reference](${path.basename(s.reference)}) |`);
- fs.writeFileSync(path.join(root,'docs/judasjs/API_INVENTORY.md'),'# Current public JudasJS inventory\n\nM55 review of the registered virtual module based on M54 checkpoint `'+schema.checkpoint+'`.\nEach row is a runtime export/member (constructors and plain handle fields included).\nNative dispatcher operations are implementation details, not additional JS APIs.\n\n| Runtime symbol | Native bridge operation | Type | Reference |\n|---|---|---|---|\n'+rows.join('\n')+'\n\n## Lifecycle and dynamic exceptions\n\n'+schema.callbacks.map(n=>'`'+n+'`').join(', ')+' are structural ScriptBehaviour callbacks, not module exports.\n\n'+Object.entries(schema.exceptions).map(([k,v])=>'- **'+k+'**: '+v).join('\n')+'\n\nThe machine check fails missing/phantom exports/members, getter/setter drift and inventory drift.\nStructured return/configuration types and behavioural semantics require source review; it is not full semantic certification.\n');
+ fs.writeFileSync(path.join(root,'docs/judasjs/API_INVENTORY.md'),'# Current public JudasJS inventory\n\nM56 review of the registered virtual module based on M55 checkpoint `'+schema.checkpoint+'`.\nEach row is a runtime export/member (constructors and plain handle fields included).\nNative dispatcher operations are implementation details, not additional JS APIs.\n\n| Runtime symbol | Native bridge operation | Type | Reference |\n|---|---|---|---|\n'+rows.join('\n')+'\n\n## Lifecycle and dynamic exceptions\n\n'+schema.callbacks.map(n=>'`'+n+'`').join(', ')+' are structural ScriptBehaviour callbacks, not module exports.\n\n'+Object.entries(schema.exceptions).map(([k,v])=>'- **'+k+'**: '+v).join('\n')+'\n\nThe machine check fails missing/phantom exports/members, getter/setter drift and inventory drift.\nStructured return/configuration types and behavioural semantics require source review; it is not full semantic certification.\n');
 }
 function checkSurface(declarations){
  const missing=symbols.filter(k=>!declarations.has(k)),phantom=[...declarations.keys()].filter(k=>!runtime.has(k));

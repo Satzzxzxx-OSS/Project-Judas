@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "EngineHost.h"
 
 #include <SDL2/SDL.h>
@@ -22,6 +23,7 @@ EngineHost::~EngineHost() {
 
 bool EngineHost::Init(const char* title, int width, int height, bool visible, std::string& outError,
                       ResourceTrace trace) {
+    JUDAS_PROFILE_SCOPE("Host startup");
     m_resourceTrace = std::move(trace);
     m_renderer.SetResourceTrace(m_resourceTrace);
     if (!m_window.Init(title, width, height, visible)) {
@@ -49,16 +51,20 @@ bool EngineHost::Init(const char* title, int width, int height, bool visible, st
 }
 
 void EngineHost::PumpResources() {
+    JUDAS_PROFILE_SCOPE("Resource pump");
     if (m_resources) m_resources->Pump();
 }
 
 void EngineHost::OpenProjectAssets(const std::string& projectRoot, const std::string& assetsDir) {
+    JUDAS_PROFILE_SCOPE("Project resources");
     m_audio.StopAll();
     if (m_resources) m_resources->ReleaseAll();
     m_assetDatabase.Scan(projectRoot, assetsDir);
 }
 
 void EngineHost::Shutdown() {
+    ProfileFrame profileShutdown("host shutdown");
+    JUDAS_PROFILE_SCOPE("Host shutdown");
     // Reverse of Init: resources (GPU objects, on this thread, while the
     // context exists) -> workers -> renderer -> window.
     m_audio.StopAll();

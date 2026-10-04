@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "RuntimeWorld.h"
 #include "ResourceManager.h"
 #include <cmath>
@@ -28,6 +29,7 @@ const std::vector<glm::mat4>* RuntimeWorld::AnimationSkin(EntityId id)const{
  auto it=m_animationInstances.find(id);return it!=m_animationInstances.end()?&it->second.skin:nullptr;
 }
 void RuntimeWorld::ResolveAnimationPose(AnimationInstance& instance,float dt){
+    JUDAS_PROFILE_SCOPE("Final pose resolution");
  if(!instance.asset)return;
  instance.sourcePose=instance.mixer.Sample(*instance.asset,instance.playback,dt);std::vector<PoseContribution> contributions;
  for(auto& layer:instance.layers){if(!layer.settings.enabled)continue;auto pose=layer.playback.Evaluate(*instance.asset,instance.mixer.paused?0:dt);PoseContribution c;c.pose=std::move(pose);c.reference=layer.reference;c.weight=layer.settings.weight;c.mask=layer.mask;c.additive=layer.settings.additive;contributions.push_back(std::move(c));}
@@ -36,6 +38,7 @@ void RuntimeWorld::ResolveAnimationPose(AnimationInstance& instance,float dt){
  instance.finalPose=ResolvePose(instance.asset->skeleton,instance.sourcePose,contributions);instance.skin=ResolveSkinMatrices(instance.asset->skeleton,instance.finalPose);
 }
 void RuntimeWorld::UpdateAnimations(float dt){
+    JUDAS_PROFILE_SCOPE("Animation instances");
  for(auto id:m_animationOwners){const auto* definition=RuntimeDefinition(id);if(!definition){m_animationInstances.erase(id);continue;}
   auto* instance=RuntimeAnimation(id);if(instance&&instance->asset&&definition->animation->enabled){ResolveAnimationPose(*instance,dt);
    if(dt>0){instance->previousWorld=instance->recentWorld;auto transform=PresentedTransform(id,definition->transform,1);auto model=glm::translate(glm::mat4(1),transform.position)*glm::mat4_cast(transform.rotation)*glm::scale(glm::mat4(1),transform.scale);instance->recentWorld=PoseGlobalMatrices(instance->asset->skeleton,instance->finalPose);for(auto& m:instance->recentWorld)m=model*m;instance->motionDt=dt;}

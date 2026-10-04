@@ -284,4 +284,12 @@ declare module "judas" {
     onTriggerStay?(event: ContactEvent): void;
     onTriggerExit?(event: ContactEvent): void;
   }
+  /** Diagnostics only: never use measured timings as game/simulation input. */
+  export const profiler: {
+    /** Calls synchronously exactly once; preserves the callback result/exception, even when capture is off. */
+    scope<T>(label: string, callback: () => T): T;
+    /** Finite value; sum resets per captured outer frame, latest is newest timestamp, max is largest observation. */
+    counter(label: string, value: number, mode?: "sum" | "latest" | "max"): void;
+  };
+
 }

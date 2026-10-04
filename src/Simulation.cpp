@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "Simulation.h"
 
 #include <chrono>
@@ -22,6 +23,8 @@ double MillisecondsSince(Clock::time_point start) {
 
 void StepPlayedWorld(GameSession& session, const Window& window, float fixedDeltaTime,
                      FixedStepMeasurements* measurements) {
+    JUDAS_PROFILE_SCOPE("Simulation systems");
+    ProfileFixedStep profileFixedStep(fixedDeltaTime);
     RuntimeWorld& world = session.World();
     const bool legacy = session.UsesLegacyGameplay();
     world.UpdateNavigation(fixedDeltaTime);

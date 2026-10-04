@@ -113,6 +113,7 @@ struct EditorPanelState {
     bool gizmoSnap = false;
     DebugViewOptions debug;
     bool showProfiler = false;
+    bool profilerInspect = false;
     bool showProjectSettings = false;
     bool showAssetBrowser = true;
     ProfilerData profiler;

@@ -43,6 +43,8 @@ public:
     bool IsActive() const { return m_session.IsActive(); }
 
     void SetFixedStepMeasurementFlags(bool atmosphere, bool fire, bool fluid);
+    // Diagnostic/editor cursor routing only; does not change project intent or pause simulation.
+    void SetPointerCaptureAllowed(bool allowed) { m_pointerCaptureAllowed = allowed; }
     void SetFixedStepObserver(FixedStepObserver observer) { m_observer = std::move(observer); }
     void SetWorldOverlay(WorldOverlay overlay) { m_overlay = std::move(overlay); }
     // Milestone 30 profiler inputs: how many fixed steps the last Frame ran,
@@ -89,6 +91,7 @@ private:
     bool m_resetOccurred = false;
     bool m_wasPauseMenuOpen = false;
     bool m_captureInitialized = false;
+    bool m_pointerCaptureAllowed = true;
     double m_lastSurfaceMilliseconds = 0.0;
     double m_lastSceneMilliseconds = 0.0;
     std::string m_worldStatePath;

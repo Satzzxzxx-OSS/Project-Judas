@@ -1,3 +1,4 @@
+#include <array>
 #pragma once
 #include "Classification.h"
 
@@ -68,6 +69,9 @@ struct RenderStats {
 class Renderer {
 public:
     bool Init();
+    unsigned BeginProfilePass(const char* name,std::uint64_t camera=0);
+    void EndProfilePass(unsigned token);
+    void PollProfileGPU();
     // Generated resources belong to runtime presentation, not disk assets.
     RenderTargetHandle CreateRenderTarget(int width, int height, std::string& error);
     bool ResizeRenderTarget(RenderTargetHandle& target, int width, int height, std::string& error);
@@ -316,6 +320,11 @@ public:
     void CaptureFrame(int width, int height, std::vector<unsigned char>& outRgbPixels) const;
 
 private:
+    struct ProfileQuery {unsigned begin=0,end=0;std::uint64_t frame=0,record=0;bool pending=false,ended=false;};
+    std::array<ProfileQuery,128> m_profileQueries{};
+    bool m_profileQueriesReady=false;
+    unsigned m_profileShadow=0,m_profileUI=0;
+
     // One GPU-resident mesh: a VAO/VBO pair, an optional EBO (0 if the mesh
     // is drawn non-indexed — see MeshData's own convention), and enough
     // count/type information to issue the right draw call.
@@ -460,4 +469,13 @@ private:
     float m_fontAscent = 0.0f;
     float m_fontLineHeight = 0.0f;
     bool m_fontLoaded = false;
+};
+
+// Coarse timestamp intervals may nest; Renderer owns every GL query.
+class RendererProfileScope {
+public:
+    RendererProfileScope(Renderer& r,const char* pass,std::uint64_t camera=0):renderer(r),token(r.BeginProfilePass(pass,camera)){}
+    ~RendererProfileScope(){End();}
+    void End(){if(token){renderer.EndProfilePass(token);token=0;}}
+private:Renderer& renderer;unsigned token;
 };

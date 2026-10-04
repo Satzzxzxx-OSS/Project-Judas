@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "LiquidSystem.h"
 #include "RuntimeWorld.h"
 #include "ResourceManager.h"
@@ -52,6 +53,7 @@ void LiquidSystem::Resolve(LiquidState& s){
  if(s.dynamicSurface){s.capacity=s.dynamicSurface->Capacity();s.stableCapacity=s.capacity;s.surface.vertices.clear();return;}
  s.surface.vertices.clear();if(s.volume>1e-14)for(auto& t:s.geometry.cells)LiquidClip(t,coordinates(t,s.equilibrium),s.q,&s.surface);}
 double LiquidSystem::Transfer(LiquidHandle a,LiquidHandle b,double request,std::optional<glm::vec3> sourcePoint,std::optional<glm::vec3> targetPoint){
+ JUDAS_PROFILE_SCOPE("Conserved liquid transfer");
  auto* source=Get(a);auto* target=Get(b);
  if(!source||!target||a==b||!source->enabled||!target->enabled||!source->equilibriumValid||!target->equilibriumValid||source->material.id!=target->material.id||!std::isfinite(request)||request<0)return 0;
  double delta=std::min({request,source->volume,std::max(0.,target->capacity-target->volume)});
@@ -65,6 +67,7 @@ double LiquidSystem::Transfer(LiquidHandle a,LiquidHandle b,double request,std::
  source->volume-=delta;target->volume+=delta;Resolve(*source);Resolve(*target);return delta;
 }
 double LiquidSystem::Emit(LiquidHandle h,double request,glm::vec3 p,glm::vec3 v){
+ JUDAS_PROFILE_SCOPE("Conserved parcel emission");
  auto* s=Get(h);if(!s||!s->enabled||!s->equilibriumValid||!std::isfinite(request)||request<0||!std::isfinite(glm::dot(p,p)+glm::dot(v,v)))return 0;
  double amount=std::min(request,s->volume);std::optional<V> point=local(s->pose,V(p));
  if(s->dynamicSurface)amount=std::min(amount,s->dynamicSurface->Plan(-amount,point).amount);
@@ -73,6 +76,7 @@ double LiquidSystem::Emit(LiquidHandle h,double request,glm::vec3 p,glm::vec3 v)
  auto id=m_nextParcel++;m_parcels[id]={id,s->material,amount,p,v,false,s->entity};s->volume-=amount;Resolve(*s);return amount;
 }
 double LiquidSystem::Receive(std::uint64_t id,LiquidHandle h,double maximum,std::optional<glm::vec3> point){
+ JUDAS_PROFILE_SCOPE("Conserved parcel reception");
  auto it=m_parcels.find(id);auto* s=Get(h);if(it==m_parcels.end()||!s||!s->enabled||!s->equilibriumValid||s->material.id!=it->second.material.id||!std::isfinite(maximum)||maximum<0)return 0;
  double amount=std::min({maximum,it->second.volume,std::max(0.,s->capacity-s->volume)});
  std::optional<V> location=point?std::optional<V>(local(s->pose,V(*point))):std::nullopt;
@@ -113,6 +117,7 @@ bool LiquidSystem::SetContainerPose(LiquidHandle h,const SceneTransform& pose,co
 void LiquidSystem::Synchronize(RuntimeWorld& world){auto objects=world.ScriptObjects();for(auto& o:objects)if(o.liquidBasin||o.liquidContainer){if(Handle(o.id).id)continue;auto* assets=world.Resources();if(!assets||!assets->Assets())continue;std::string error;auto resource=assets->GetLiquid(o.liquidBasin?o.liquidBasin->asset:o.liquidContainer->geometry,error);if(!resource){if(error!="loading")m_errors[o.id]=error;continue;}auto pose=world.PresentedTransform(o.id,o.transform,1);if(o.liquidBasin){if(!resource->basin){m_errors[o.id]="basin asset is a cavity, not a baked curve";continue;}AddBasin(o.id,*o.liquidBasin,pose,resource->basin,error);}else{GravityEquilibrium eq;if(!world.Gravity().Equilibrium(pose.position,eq)){m_errors[o.id]="unsupported container gravity equilibrium";continue;}AddContainer(o.id,*o.liquidContainer,pose,resource->geometry,eq,error);}if(!error.empty())m_errors[o.id]=error;else m_errors.erase(o.id);}
  std::vector<LiquidHandle> dead;for(const auto& [id,s]:m_states){auto* e=world.FindEntity(s.entity);if(!e||e->lifecycle==EntityLifecycle::Destroyed)dead.push_back(s.handle);}for(auto h:dead)Remove(h);}
 LiquidSubmersion LiquidSystem::Submerged(const LiquidGeometry& geometry)const{
+ JUDAS_PROFILE_SCOPE("Liquid submersion integration");
  LiquidSubmersion out;V first(0),force(0);
  for(auto& [id,s]:m_states)if(s.enabled&&!s.container&&s.volume>0)for(auto worldTet:geometry.cells){
   LiquidTet body;for(int i=0;i<4;++i)body[i]=local(s.pose,worldTet[i]);if(!aabb(body,s.minimum,s.maximum))continue;
@@ -147,7 +152,13 @@ LiquidSubmersion LiquidSystem::Submerged(const LiquidGeometry& geometry)const{
  out.buoyancy=glm::vec3(force);return out;
 }
 void LiquidSystem::BeginStep(){for(auto& [id,s]:m_states)if(s.dynamicSurface)s.dynamicSurface->BeginStep();}
-void LiquidSystem::Update(RuntimeWorld& world,double dt){if(dt<=0||!std::isfinite(dt))return;m_connections.clear();auto begin=std::chrono::steady_clock::now(),phase=begin;m_stepTimes={};auto elapsed=[&](){auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-phase).count();phase=now;return seconds;};Synchronize(world);std::set<std::uint64_t> failedGeometry;
+void LiquidSystem::Update(RuntimeWorld& world,double dt){
+    JUDAS_PROFILE_SCOPE("Liquid owners update");if(dt<=0||!std::isfinite(dt))return;m_connections.clear();auto begin=std::chrono::steady_clock::now(),phase=begin;m_stepTimes={};auto elapsed=[&](){auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-phase).count();phase=now;return seconds;};Synchronize(world);std::set<std::uint64_t> failedGeometry;
+ static ProfileLabel containerLabel("Liquid containers"), connectionLabel("Liquid paired connections"), parcelLabel("Liquid parcels"), solidLabel("Liquid solid geometry batch"), surfaceLabel("Liquid surface solve batch"), loadLabel("Liquid body loading");
+ ProfileScope containerScope(containerLabel);
+ JUDAS_PROFILE_COUNTER("Liquid container batches",1,ProfileCounterMode::Sum);
+ JUDAS_PROFILE_COUNTER("Liquid owners",double(m_states.size()),ProfileCounterMode::Latest);
+ JUDAS_PROFILE_COUNTER("Liquid parcels",double(m_parcels.size()),ProfileCounterMode::Latest);
 
 
  for(auto& [id,s]:m_states)if(s.enabled&&s.container){auto* o=world.RuntimeDefinition(s.entity);if(!o)continue;auto pose=world.PresentedTransform(s.entity,o->transform,1);GravityEquilibrium eq;std::string error;if(!world.Gravity().Equilibrium(pose.position,eq)||!SetContainerPose(s.handle,pose,eq,error)){s.equilibriumValid=false;s.pose=pose;s.surface.vertices.clear();m_errors[s.entity]="unsupported container gravity; retained volume";continue;}m_errors.erase(s.entity);
@@ -160,6 +171,7 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){if(dt<=0||!std::isfinit
   std::optional<LiquidSample> external;for(V aperture:probes){auto q=Sample(glm::vec3(global(s.pose,aperture)),s.handle);if(q&&q->handle.id!=s.handle.id){external=q;break;}}
   if(external){auto* source=Get(external->handle);if(source&&source->material.id==s.material.id){V point=local(s.pose,V(external->surfacePoint));double target=LiquidCapacity(s.geometry,s.equilibrium,s.equilibrium.Coordinate(point));double head=std::max(0.,target-s.volume);double flow=s.containerSettings.discharge*s.containerSettings.openingArea*std::sqrt(2*eq.magnitude*std::max(.001,external->depth))*dt;Transfer(source->handle,s.handle,std::min(head,flow),external->surfacePoint);}}
   double excess=std::max(0.,s.volume-s.stableCapacity);if(excess>1e-12){V lip=s.containerSettings.opening.front();for(V v:s.containerSettings.opening)if(s.equilibrium.Coordinate(v)<s.equilibrium.Coordinate(lip))lip=v;double head=std::max(0.,s.q-s.equilibrium.Coordinate(lip));double amount=std::min(excess,s.containerSettings.discharge*s.containerSettings.openingArea*std::sqrt(2*eq.magnitude*head)*dt);auto body=world.RuntimeBody(s.entity);glm::vec3 velocity(0);if(world.Physics().IsDynamicBody(body))velocity=world.Physics().GetLinearVelocity(body)+glm::cross(world.Physics().GetAngularVelocity(body),glm::vec3(global(s.pose,lip))-pose.position);const V outward=glm::dquat(s.pose.rotation)*openingNormal(s);velocity+=glm::vec3(outward)*float(std::sqrt(2*eq.magnitude*head));Emit(s.handle,amount,glm::vec3(global(s.pose,lip)+outward*.002),velocity);}}
+ containerScope.End(); ProfileScope connectionScope(connectionLabel);
  for(auto& o:world.ScriptObjects())if(o.liquidConnection){auto c=*o.liquidConnection;m_connections[o.id]=false;if(!c.enabled)continue;auto* a=Get(Handle(c.source));auto* b=Get(Handle(c.destination));if(!a||!b||!a->basin||!b->basin||!a->enabled||!b->enabled||a->material.id!=b->material.id)continue;GravityEquilibrium eq;if(!world.Gravity().Equilibrium(o.transform.position,eq))continue;if(!localized(eq,a->pose).Equivalent(a->equilibrium)||!localized(eq,b->pose).Equivalent(b->equilibrium)){m_errors[o.id]="spill basins must share one supported equilibrium field";continue;}double threshold=eq.Coordinate(V(o.transform.position));auto endpoint=[&](const LiquidState& owner){if(!owner.dynamicSurface)return o.transform.position;
    V position=local(owner.pose,V(o.transform.position));int cell=owner.dynamicSurface->Cell(position);
    if(cell<0){auto chart=owner.dynamicSurface->data->Chart(position);double nearest=1e30;for(unsigned i=0;i<owner.dynamicSurface->cells.size();++i){auto delta=owner.dynamicSurface->data->cells[i].chart-chart;double distance=glm::dot(delta,delta);if(distance<nearest){nearest=distance;cell=int(i);}}}
@@ -172,6 +184,7 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){if(dt<=0||!std::isfinit
   Transfer(a->handle,b->handle,(a->dynamicSurface||b->dynamicSurface)?high:low,pa,pb);}
  // Test the existing authoritative solid query FIRST. Receiving volume cannot
  // pass through a wall merely because another cavity lies behind it.
+ connectionScope.End(); ProfileScope parcelScope(parcelLabel);
  std::vector<std::uint64_t> parcelIds;for(const auto& [id,p]:m_parcels)parcelIds.push_back(id);
  for(auto id:parcelIds){auto it=m_parcels.find(id);if(it==m_parcels.end()||it->second.parked)continue;auto& p=it->second;const auto start=p.position;p.velocity+=world.Gravity().Sample(start)*float(dt);const auto end=start+p.velocity*float(dt);const double distance=glm::length(end-start);PhysicsQueryFilter filter;auto sourceBody=world.RuntimeBody(p.source);if(sourceBody.id!=BodyHandle::kInvalidId)filter.ignoredBodies.push_back(sourceBody);auto hit=distance>1e-8?world.Physics().Raycast(start,(end-start)/float(distance),float(distance),filter):PhysicsCastHit{};const auto limit=hit.hit?hit.point:end;double travel=glm::length(limit-start);bool received=false;int samples=std::min(256,std::max(1,int(std::ceil(travel/.03))));
   for(int i=1;i<=samples&&!received;++i){auto point=glm::mix(start,limit,float(i)/samples);for(auto& [sid,s]:m_states){if(!s.enabled||!s.equilibriumValid||s.material.id!=p.material.id||s.material.density!=p.material.density||(s.entity==p.source&&s.container)||s.capacity<=s.volume)continue;V v=local(s.pose,V(point));if(v.x<s.minimum.x||v.y<s.minimum.y||v.z<s.minimum.z||v.x>s.maximum.x||v.y>s.maximum.y||v.z>s.maximum.z)continue;if(s.container&&!throughOpening(s,V(start),V(point)))continue;int cell=s.dynamicSurface?s.dynamicSurface->Cell(v):-1;
@@ -185,6 +198,7 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){if(dt<=0||!std::isfinit
   it=m_parcels.find(id);if(it==m_parcels.end())continue;auto& remainder=it->second;if(hit.hit){remainder.position=hit.point;remainder.velocity={0,0,0};remainder.parked=true;}else remainder.position=end;
  }
 
+ parcelScope.End(); ProfileScope solidScope(solidLabel);
  m_stepTimes.containers=elapsed();
  for(auto& [id,s]:m_states)if(s.enabled&&s.dynamicSurface){
   std::vector<std::vector<glm::dvec4>> solids,dynamicSolids;
@@ -232,6 +246,7 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){if(dt<=0||!std::isfinit
  }
 
 
+ solidScope.End(); ProfileScope surfaceScope(surfaceLabel);
  m_stepTimes.geometry=elapsed();
  for(auto& [id,s]:m_states)if(s.enabled&&s.dynamicSurface&&s.dynamicSurface->enabled){std::string error;
   if(failedGeometry.count(id))continue;
@@ -255,6 +270,7 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){if(dt<=0||!std::isfinit
   Resolve(s);
  }
 
+ surfaceScope.End(); ProfileScope loadScope(loadLabel);
  m_stepTimes.surface=elapsed();
  for(auto& o:world.ScriptObjects())if(o.liquidInteraction&&o.liquidInteraction->enabled){auto h=world.RuntimeBody(o.id);if(!world.Physics().IsDynamicBody(h)||!world.Physics().IsBodyEnabled(h)||world.Physics().IsBodySensor(h)||world.Physics().GetMass(h)<=0)continue;auto pose=world.Physics().GetTransform(h);LiquidGeometry body;if(o.body->shape==SceneShape::Box)body=LiquidBox(-V(o.body->halfExtents),V(o.body->halfExtents));else if(o.body->shape==SceneShape::Compound)for(auto b:o.body->compoundBoxes){auto g=LiquidBox(V(b.localCenter-b.halfExtents),V(b.localCenter+b.halfExtents));body.cells.insert(body.cells.end(),g.cells.begin(),g.cells.end());}else continue;for(auto& t:body.cells)for(V& p:t)p=V(pose.position)+glm::dquat(pose.rotation)*p;auto submerged=Submerged(body);if(submerged.volume>0){world.Physics().ApplyForce(h,submerged.buoyancy);world.Physics().ApplyTorque(h,glm::cross(submerged.center-pose.position,submerged.buoyancy));auto v=world.Physics().GetLinearVelocity(h)-submerged.velocity;double coefficient=std::min(o.liquidInteraction->drag*submerged.displacedMass,world.Physics().GetMass(h)/dt*.5);world.Physics().ApplyForce(h,-v*float(coefficient));}}
 
@@ -262,6 +278,7 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){if(dt<=0||!std::isfinit
 }
 
 std::vector<glm::vec2> LiquidSystem::OpticalPaths(const glm::mat4& view,const glm::mat4& projection,unsigned columns,unsigned rows,float alpha)const{
+    JUDAS_PROFILE_SCOPE("Water optical paths");
  struct Region {const OpticalCell* geometry;double level;};std::vector<Region> regions;
  for(auto& [id,s]:m_states)if(s.enabled&&s.equilibriumValid&&s.volume>0){
   auto add=[&](const LiquidGeometry& geometry,double level,unsigned index,std::uint64_t revision){

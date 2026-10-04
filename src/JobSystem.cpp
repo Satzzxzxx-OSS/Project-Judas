@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "JobSystem.h"
 
 #include <algorithm>
@@ -184,11 +185,14 @@ JobSystem::JobPtr JobSystem::TakeNextJobLocked() {
 }
 
 void JobSystem::WorkerLoop(unsigned int workerIndex) {
-    (void)workerIndex;
+    auto& profiler=PerformanceProfiler::Get();
+    profiler.RegisterThread("Resource worker " + std::to_string(workerIndex));
+    struct ReleaseLane { ~ReleaseLane(){PerformanceProfiler::Get().ReleaseThread();} } releaseLane;
     for (;;) {
         JobPtr job;
         {
             std::unique_lock<std::mutex> lock(m_mutex);
+            JUDAS_PROFILE_WAIT("Worker queue wait");
             m_workAvailable.wait(lock, [this] {
                 return m_stopWorkers || !m_queues[0].empty() || !m_queues[1].empty() || !m_queues[2].empty();
             });
@@ -198,6 +202,7 @@ void JobSystem::WorkerLoop(unsigned int workerIndex) {
             job->state = JobState::Running;
             ++m_running;
         }
+        JUDAS_PROFILE_SCOPE("Resource worker job");
         const auto start = std::chrono::steady_clock::now();
         JobContext context(&job->cancel);
         JobState finalState = JobState::Completed;

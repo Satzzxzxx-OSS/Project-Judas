@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "ComponentEditors.h"
 #include "EditorApplication.h"
 #include "Prefab.h"
@@ -771,6 +772,7 @@ void EditorApplication::DrawEditOverlay(Renderer& renderer, const Scene& scene) 
 }
 
 void EditorApplication::FrameEditMode(float deltaSeconds) {
+    JUDAS_PROFILE_SCOPE("Editor viewport");
     Window& window = m_host->GetWindow();
     Renderer& renderer = m_host->GetRenderer();
     const ImGuiIO& io = ImGui::GetIO();
@@ -834,6 +836,7 @@ void EditorApplication::FrameEditMode(float deltaSeconds) {
     const float aspect = static_cast<float>(window.Width()) / static_cast<float>(height);
     renderer.SetLighting(glm::normalize(scene.Settings().sunDirection), scene.Settings().sunColor,
                          scene.Settings().ambientColor);
+    RendererProfileScope editorCameraGPU(renderer, "Editor camera");
     renderer.BeginFrame(window.Width(), window.Height());
     renderer.SetCamera(m_camera.ViewMatrix(), m_camera.ProjectionMatrix(aspect));
     renderer.SetDynamicLights(BuildAuthoredLights(scene));
@@ -906,6 +909,8 @@ void EditorApplication::CollectProfilerData(float frameDeltaSeconds) {
 }
 
 int EditorApplication::Run(int argc, char** argv) {
+    ProfileRun profileRun("editor");
+    ProfileFrame startupProfile("editor startup",true);
     if (argc > 2) {
         std::fprintf(stderr, "usage: judas_editor [project.judasproj | scene.judas]\n");
         return 1;
@@ -975,6 +980,8 @@ int EditorApplication::Run(int argc, char** argv) {
     // saves it, prints profiler and resource lines, and quits.
     const char* autotest = std::getenv("JUDAS_EDITOR_AUTOTEST");
     int autotestFrame = 0;
+    std::uint64_t profilerFrozenFrame = 0;
+    std::size_t profilerFrozenSteps = 0;
     std::string autotestBaseline;
     if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_LIQUID_BAKE")){std::vector<SceneObjectId> ids;for(const auto& o:m_document.GetScene().Objects())if(o.liquidBasin)ids.push_back(o.id);for(auto id:ids){bool ok=BakeEditorLiquid(m_document,id,m_panels);std::fprintf(stderr,"[editor autotest] liquid bake %llu: %s: %s\n",static_cast<unsigned long long>(id),ok?"PASS":"FAIL",m_panels.status.c_str());}}
     if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_NAV_BAKE")){std::vector<SceneObjectId> surfaces;for(const auto& o:m_document.GetScene().Objects())if(o.navigationSurface)surfaces.push_back(o.id);for(auto id:surfaces){bool ok=BakeEditorNavigation(m_document,id,m_panels);std::fprintf(stderr,"[editor autotest] navigation bake %llu: %s: %s\n",static_cast<unsigned long long>(id),ok?"PASS":"FAIL",m_panels.status.c_str());}}
@@ -994,12 +1001,14 @@ int EditorApplication::Run(int argc, char** argv) {
     EditorRequests deferredRequests;
     const Uint64 frequency = SDL_GetPerformanceFrequency();
     Uint64 previousCounter = SDL_GetPerformanceCounter();
+    startupProfile.End();
     while (!window.ShouldClose() && !m_quit) {
+        ProfileFrame outerProfile(m_panels.mode == EditorMode::Play ? "editor Play" : "editor edit");
         // Last frame's UI focus decides whether the engine's own key/mouse
         // reading is suppressed this frame (a text field must not walk the
         // player or fly the camera).
         window.SetInputClaimed(io.WantCaptureKeyboard, io.WantCaptureMouse && !window.IsMouseCaptured());
-        window.PollEvents();
+        { JUDAS_PROFILE_SCOPE("Input events"); window.PollEvents(); }
         host.PumpResources();  // M31: GPU upload of finished loads, budget eviction
         const Uint64 currentCounter = SDL_GetPerformanceCounter();
         const float deltaSeconds = static_cast<float>(currentCounter - previousCounter) / static_cast<float>(frequency);
@@ -1039,6 +1048,11 @@ int EditorApplication::Run(int argc, char** argv) {
         }
 
         if (m_panels.mode == EditorMode::Play) {
+            if (ImGui::IsKeyPressed(ImGuiKey_F8)) {
+                m_panels.profilerInspect = !m_panels.profilerInspect;
+                if (m_panels.profilerInspect) m_panels.showProfiler = true;
+            }
+            m_play->SetPointerCaptureAllowed(!(m_panels.showProfiler && m_panels.profilerInspect));
             // The identical frame the runtime runs. Escape opens the M13
             // pause menu, which releases the mouse for the editor panels.
             m_play->Frame(window, renderer, deltaSeconds, /*drawHud=*/true);
@@ -1062,6 +1076,8 @@ int EditorApplication::Run(int argc, char** argv) {
         }
         CollectProfilerData(deltaSeconds);
 
+        static ProfileLabel editorBuildLabel("Editor UI build");
+        ProfileScope editorBuildScope(editorBuildLabel);
         DrawEditorMainMenu(m_document, m_panels, requests);
         // While playing, the engine's own HUD occupies the top-left corner
         // and the authored panels are read-only anyway; only the menu bar
@@ -1077,7 +1093,7 @@ int EditorApplication::Run(int argc, char** argv) {
             DrawProjectSettingsPanel(m_document, m_panels, requests);
         }
         DrawInspectorPanel(m_document, m_panels);
-        DrawProfilerPanel(m_panels);
+        { JUDAS_PROFILE_SCOPE("Profiler UI"); DrawProfilerPanel(m_panels); }
         DrawStatusBar(m_document, m_panels);
 
         // Requests raised by the automation hook on the previous frame,
@@ -1098,14 +1114,40 @@ int EditorApplication::Run(int argc, char** argv) {
             std::fprintf(stderr, "[editor autotest] export project: %s\n", m_panels.runProjectInfo.c_str());
         AdvanceStabilizationAutomation();
 
+        editorBuildScope.End();
         ImGui::Render();
         // The 3D frame already sits in the default framebuffer; the UI
         // composites over it through ImGui's own GL backend.
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        { JUDAS_PROFILE_SCOPE("Editor UI submission"); RendererProfileScope uiGPU(renderer,"Editor UI"); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); }
 
         if (autotest) {
             ++autotestFrame;
             const std::string prefix = autotest;
+            // Opt-in M56 diagnostic interaction; ordinary Play timing/state is unchanged.
+            if (std::getenv("JUDAS_EDITOR_AUTOTEST_PROFILER")) {
+                if (autotestFrame == 23) io.AddKeyEvent(ImGuiKey_F8, true);
+                if (autotestFrame == 24) io.AddKeyEvent(ImGuiKey_F8, false);
+                if (autotestFrame == 28) {
+                    auto frames = PerformanceProfiler::Get().Timeline();
+                    profilerFrozenFrame = frames.empty() ? 0 : frames.back().id;
+                    profilerFrozenSteps = m_play->FixedStepsSinceReset();
+                    PerformanceProfiler::Get().Freeze(true);
+                }
+                if (autotestFrame == 40) {
+                    auto frames = PerformanceProfiler::Get().Timeline();
+                    bool ok = profilerFrozenFrame && !frames.empty() && frames.back().id == profilerFrozenFrame &&
+                        m_play->FixedStepsSinceReset() > profilerFrozenSteps && !m_play->IsPaused() &&
+                        !window.IsMouseCaptured() && m_world->pointerCapture;
+                    std::fprintf(stderr, "[editor autotest] live cursor + frozen capture while simulation continues: %s\n", ok ? "PASS" : "FAIL");
+                    PerformanceProfiler::Get().Freeze(false);
+                    m_panels.showProfiler = false;
+                }
+                if (autotestFrame == 43) {
+                    std::fprintf(stderr, "[editor autotest] closing profiler restores capture: %s\n", window.IsMouseCaptured() ? "PASS" : "FAIL");
+                    m_panels.profilerInspect = false;
+                    m_panels.showProfiler = true;
+                }
+            }
             if (autotestFrame == 5) {
                 if (!m_document.GetScene().Objects().empty()) m_document.Select(m_document.GetScene().Objects().front().id);
                 DebugViewOptions all;
@@ -1164,7 +1206,7 @@ int EditorApplication::Run(int argc, char** argv) {
                 m_quit = true;
             }
         }
-        window.SwapBuffers();
+        { JUDAS_PROFILE_WAIT("Swap present wait"); window.SwapBuffers(); }
     }
 
     if (m_panels.mode == EditorMode::Play) StopPlay();

@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "RuntimeWorld.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
@@ -97,6 +98,7 @@ bool RuntimeWorld::SetRagdollEnabled(EntityId id,bool enabled,std::string& error
     m_scriptDefinitions.at(id).ragdoll->enabled=enabled;return true;
 }
 void RuntimeWorld::UpdateRagdolls(float dt){
+    JUDAS_PROFILE_SCOPE("Ragdoll physics to pose");
     std::vector<EntityId> invalid;
     for(auto& [id,instance]:m_ragdolls){
         const auto* definition=RuntimeDefinition(id);auto* animation=RuntimeAnimation(id);

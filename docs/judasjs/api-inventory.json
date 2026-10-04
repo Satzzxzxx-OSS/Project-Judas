@@ -1,5 +1,5 @@
 {
-  "checkpoint": "d9ebc8c7a987047b1d4175ed5d5de7da8dea472d",
+  "checkpoint": "7b1e5ea1eab46456bead72b0dcdc7b7fdc9b36fd",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -1693,6 +1693,37 @@
       "reference": "docs/judasjs/physics.md"
     },
     {
+      "symbol": "profiler",
+      "kinds": [
+        "namespace"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:profiler",
+      "reference": "docs/judasjs/profiling.md"
+    },
+    {
+      "symbol": "profiler.counter",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "profileCounter"
+      ],
+      "type": "docs/judas.d.ts:profiler.counter",
+      "reference": "docs/judasjs/profiling.md"
+    },
+    {
+      "symbol": "profiler.scope",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "profileScope"
+      ],
+      "type": "docs/judas.d.ts:profiler.scope",
+      "reference": "docs/judasjs/profiling.md"
+    },
+    {
       "symbol": "scenes",
       "kinds": [
         "namespace"
@@ -2075,6 +2106,8 @@
     "pointerCapture",
     "presentedTransform",
     "pressed",
+    "profileCounter",
+    "profileScope",
     "queryTags",
     "ragdollActive",
     "ragdollBody",

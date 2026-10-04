@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "CharacterMotor.h"
 #include "StepClimb.h"
 #include <algorithm>
@@ -41,6 +42,7 @@ void ResolveCharacterSlide(PhysicsWorld& physics,glm::vec3& center,const glm::qu
 }
 void CharacterMotor::Reset(glm::vec3 p,glm::quat q){position=p;orientation=glm::normalize(q);velocity=acceleration=glm::vec3(0);result={};followingSupport=false;}
 void CharacterMotor::Step(PhysicsWorld& physics,const GravityField& gravity,float dt){
+    JUDAS_PROFILE_SCOPE("Character motor");
     if(!settings.enabled){followingSupport=false;result={};acceleration={0,0,0};return;}
     auto oldPosition=position;auto previous=result;result={};result.gravity=gravity.Sample(position);
     const auto intentUp=orientation*glm::vec3(0,1,0);

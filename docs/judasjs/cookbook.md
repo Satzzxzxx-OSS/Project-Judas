@@ -54,3 +54,5 @@ authoritative motion untouched. Attach to a moving body or CharacterMotor.
 - [Conserved reservoir transfer and submersion](examples/liquid.js) ([reference](liquid.md)): attach to lab entity 10 with source 20 and storage 21 from the current liquid project. Waits for CPU resources and fixed-step registration, then transfers 800 L once and checks the material ledger.
 
 - [Dynamic surface control](examples/liquid-surface.js) ([reference](liquid.md)): attach to entity 10 in `projects/liquid_surface_demo`; conserved drain/refill, momentum impulse, retained-state suspension and presentation sampling.
+
+- [Exception-safe custom profiling](examples/profiling.js) — `profiler.scope` and finite counters, capture on or off.

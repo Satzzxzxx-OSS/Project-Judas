@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "Application.h"
 
 #include <SDL2/SDL.h>
@@ -27,6 +28,8 @@ constexpr int kWindowHeight = 768;
 }  // namespace
 
 int Application::Run(int argc, char** argv, ApplicationControl* control) {
+    ProfileRun profileRun("standalone");
+    ProfileFrame startupProfile("standalone startup",true);
     RuntimeOptions options;
     std::string error;
     if (!ParseRuntimeOptions(argc, argv, options, error)) {
@@ -141,10 +144,12 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     bool screenshotWritten = false;
     const Uint64 frequency = SDL_GetPerformanceFrequency();
     Uint64 previousCounter = SDL_GetPerformanceCounter();
+    startupProfile.End();
     while (!window.ShouldClose() && !play.QuitRequested()) {
+        ProfileFrame outerProfile("standalone");
         RuntimeWorld& world=*worldOwner;
         if (control && control->beforeFrame) control->beforeFrame(host, world, play);
-        window.PollEvents();
+        { JUDAS_PROFILE_SCOPE("Input events"); window.PollEvents(); }
         // Milestone 31: finished background loads are installed here, on
         // the GL thread, before the frame that will draw them.
         host.PumpResources();
@@ -170,7 +175,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
             screenshotWritten = true;
         }
         if (control && control->afterFrame) control->afterFrame(host, world, play);
-        window.SwapBuffers();
+        { JUDAS_PROFILE_WAIT("Swap present wait"); window.SwapBuffers(); }
         if(!sceneControl->Apply(worldOwner,play,host.Resources(),error))
             std::fprintf(stderr,"Scene transition failed: %s\n",error.c_str());
     }

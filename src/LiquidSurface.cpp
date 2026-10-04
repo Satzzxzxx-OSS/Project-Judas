@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "LiquidSurface.h"
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
@@ -151,6 +152,7 @@ void LiquidSurface::Apply(const LiquidSurfaceAllocation& p,bool add){
 void LiquidSurface::Impulse(V p,V impulse,double density){int i=Cell(p);if(i<0||cells[i].volume<=0)return;V up=data->equilibrium.Up(p);impulse-=up*glm::dot(impulse,up);V delta=impulse/(density*cells[i].volume);for(size_t k=0;k<discharge.size();++k){auto& f=data->faces[k];if(f.a!=unsigned(i)&&f.b!=unsigned(i))continue;V direction=glm::normalize(data->cells[f.b].centre-data->cells[f.a].centre);double area=FaceArea(k,std::max(cells[f.a].q,cells[f.b].q));discharge[k]+=area*glm::dot(delta,direction);}Resolve();}
 
 bool LiquidSurface::Once(double dt,std::string& error){
+    JUDAS_PROFILE_SCOPE("Surface pressure continuity attempt");
  const size_t n=cells.size(),nf=discharge.size();
  std::vector<double> q(n),old(n),pred(nf),weight(nf),area(nf),diagonal(n),r(n);
  double total=Volume(),target=data->settings.tolerance*std::max(1.,total);
@@ -252,9 +254,14 @@ bool LiquidSurface::Advance(double dt,unsigned depth,std::string& error){
 }
 
 bool LiquidSurface::Step(double dt,std::string& error){
+    JUDAS_PROFILE_SCOPE("Dynamic surface solve");
  stats={};if(!enabled)return true;
  if(!std::isfinite(dt)||dt<=0){error="surface timestep must be finite and positive";return false;}
  auto start=std::chrono::steady_clock::now();bool result=Advance(dt,0,error);
+ JUDAS_PROFILE_COUNTER("Surface cells",double(cells.size()),ProfileCounterMode::Sum);
+ JUDAS_PROFILE_COUNTER("Surface faces",double(discharge.size()),ProfileCounterMode::Sum);
+ JUDAS_PROFILE_COUNTER("Surface solve iterations",double(stats.iterations),ProfileCounterMode::Sum);
+ JUDAS_PROFILE_COUNTER("Surface solve residual max",stats.residual,ProfileCounterMode::Maximum);
  stats.seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
  if(result)error.clear();
  return result;
@@ -265,6 +272,7 @@ glm::dvec3 LiquidSurface::Normal(unsigned i,float)const{
  return data->equilibrium.Up(data->cells[i].centre);
 }
 MeshData LiquidSurface::Mesh(float alpha)const{
+    JUDAS_PROFILE_SCOPE("Water surface mesh");
  MeshData mesh;for(unsigned i=0;i<cells.size();++i){
   double q=Coordinate(i,alpha);
   auto& cache=m_caps[i];auto& geometry=cells[i].storage.geometry;
@@ -323,6 +331,8 @@ double LiquidSurface::Energy()const{
  return result;
 }
 double LiquidSurface::SetSolids(const std::vector<std::vector<glm::dvec4>>& solids,std::string& error,unsigned staticCount){
+    JUDAS_PROFILE_SCOPE("Solid excluded storage rebuild");
+ JUDAS_PROFILE_COUNTER("Surface solid storage calls",1,ProfileCounterMode::Sum);
  if(m_geometryCacheValid&&solids==m_solids)return 0;
  std::vector<std::pair<size_t,LiquidBasinData>> changed;std::vector<bool> touched(cells.size(),false);
  for(size_t i=0;i<cells.size();++i){
@@ -352,6 +362,8 @@ double LiquidSurface::SetSolids(const std::vector<std::vector<glm::dvec4>>& soli
   for(auto& body:solidsOnFace){polygons=subtractFace(polygons,body);if(polygons.size()>65536){error="moving-solid aperture exceeded bounded budget";m_geometryCacheValid=false;return -1;}}
   changedApertures.push_back({k,std::move(polygons)});
  }
+ JUDAS_PROFILE_COUNTER("Surface storage cells rebaked",double(changed.size()),ProfileCounterMode::Sum);
+ JUDAS_PROFILE_COUNTER("Surface apertures rebuilt",double(changedApertures.size()),ProfileCounterMode::Sum);
  for(auto& [i,storage]:changed){cells[i].storage=std::move(storage);++cells[i].geometryRevision;}
  for(auto& [k,polygons]:changedApertures){m_apertures[k]=std::move(polygons);m_faceAreas[k].first=std::numeric_limits<double>::quiet_NaN();}
  auto& next=cells;

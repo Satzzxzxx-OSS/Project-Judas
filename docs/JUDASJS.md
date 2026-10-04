@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M55)
+# JudasJS — current API reference (M56)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M55, based on
-M54 checkpoint `d9ebc8c7a987047b1d4175ed5d5de7da8dea472d`. It is not an
+This reference describes the public virtual `judas` module through M56, based on
+M55 checkpoint `7b1e5ea1eab46456bead72b0dcdc7b7fdc9b36fd`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
@@ -18,6 +18,7 @@ through `Entity.presentedTransform` / `presentationUpdate(dt, alpha)`; the
 |---|---|
 | Imports, properties, start/update/fixedUpdate/presentationUpdate/uiUpdate/destroy | [Lifecycle](judasjs/lifecycle.md) |
 | Entity, transform, tags, spawnPrefab | [Entities/prefabs](judasjs/entities.md) |
+| profiler.scope / profiler.counter | [Custom diagnostics](judasjs/profiling.md) |
 | input, time, console | [Input/time](judasjs/input.md) |
 | physics.raycast/sphereCast/capsuleCast/boxCast, Joint, contacts/triggers | [Physics](judasjs/physics.md) |
 | Audio, particles, camera, world.fluidSample | [Effects/view](judasjs/effects-camera.md) |
@@ -72,3 +73,7 @@ remains authoritative.
 10. Confirm engine primitives and game behaviour remain separate.
 
 - [Navigation: queries, agents, obstacles and explicit links](judasjs/navigation.md)
+
+## Diagnostic instrumentation (M56)
+
+[profiler.scope / profiler.counter](judasjs/profiling.md) and [integrated profiler controls](PROFILER.md).

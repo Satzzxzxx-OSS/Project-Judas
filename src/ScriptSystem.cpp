@@ -1,3 +1,5 @@
+#include "PerformanceProfiler.h"
+#include <array>
 #include "ScriptSystem.h"
 #include "AssetDatabase.h"
 #include "InputSystem.h"
@@ -177,6 +179,7 @@ export const physics={
 export const scenes={get current(){return call('sceneCurrent')},get registered(){return call('sceneList')},load:name=>call('sceneLoad',name),reload:()=>call('sceneReload')};
 export const session={get:key=>call('sessionGet',key),set:(key,value)=>call('sessionSet',key,value),delete:key=>call('sessionDelete',key)};
 export const input={get pointerCapture(){return call('pointerCapture')},set pointerCapture(value){call('setPointerCapture',value)},held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
+export const profiler={scope:(label,callback)=>call("profileScope",label,callback),counter:(label,value,mode="sum")=>call("profileCounter",label,value,mode)};
 export const time={get elapsed(){return call('elapsed')},get delta(){return call('delta')},get fixed(){return call('fixed')}};
 export const console={log:(...args)=>call('log',args.map(String).join(' '))};
 
@@ -216,7 +219,7 @@ struct ScriptSystem::Impl {
     std::thread::id thread=std::this_thread::get_id();
     void CheckThread() const {if(thread!=std::this_thread::get_id())throw std::logic_error("ScriptSystem is main/runtime-thread only");}
     RuntimeWorld* world;const AssetDatabase* assets;JSRuntime* rt=nullptr;JSContext* ctx=nullptr;
-    struct Instance {SceneObjectId entity;SceneScriptSlot slot;JSValue value=JS_UNDEFINED;bool started=false,fault=false;size_t order=0;};
+    struct Instance {SceneObjectId entity;SceneScriptSlot slot;JSValue value=JS_UNDEFINED;bool started=false,fault=false;size_t order=0;std::uint32_t profileLabel=0;bool profileRegistered=false;};
     std::map<std::pair<SceneObjectId,std::uint64_t>,Instance> instances;
     std::map<std::string,JSModuleDef*> modules;
     std::vector<ScriptDiagnostic> diagnostics;
@@ -233,7 +236,22 @@ struct ScriptSystem::Impl {
         auto global=JS_GetGlobalObject(ctx);JS_SetPropertyStr(ctx,global,"__judas",JS_NewCFunction(ctx,Native,"__judas",1));JS_FreeValue(ctx,global);
         auto lib=NamespaceLibrary();JS_FreeValue(ctx,lib);
     }
-    ~Impl(){Stop();JS_FreeContext(ctx);JS_FreeRuntime(rt);}
+    struct CachedLabel {JSAtom atom=JS_ATOM_NULL;std::uint32_t id=0;};
+    std::array<CachedLabel,128> profileLabels{};unsigned profileLabelCount=0;
+    std::uint32_t CustomLabel(JSValueConst value){
+        auto& p=PerformanceProfiler::Get();if(!p.Active())return 0;
+        JSAtom atom=JS_ValueToAtom(ctx,value);if(atom==JS_ATOM_NULL)return 0;
+        for(unsigned i=0;i<profileLabelCount;++i)if(profileLabels[i].atom==atom){JS_FreeAtom(ctx,atom);return profileLabels[i].id;}
+        if(profileLabelCount==profileLabels.size()){JS_FreeAtom(ctx,atom);return p.Intern("");}
+        auto id=p.Intern(String(ctx,value));profileLabels[profileLabelCount++]={atom,id};return id;
+    }
+    std::uint32_t AssetLabel(Instance& i){
+        auto& p=PerformanceProfiler::Get();if(!p.Active()||!p.ScriptAttribution())return 0;
+        if(!i.profileRegistered){i.profileRegistered=true;auto* record=assets?assets->Find(i.slot.asset):nullptr;
+            if(record)i.profileLabel=p.Intern("Script asset: "+record->relativePath);
+        }return i.profileLabel;
+    }
+    ~Impl(){Stop();for(unsigned i=0;i<profileLabelCount;++i)JS_FreeAtom(ctx,profileLabels[i].atom);JS_FreeContext(ctx);JS_FreeRuntime(rt);}
     static char* Normalize(JSContext* c,const char* base,const char* name,void* p){
         auto* s=static_cast<Impl*>(p);std::string result;
         if(std::string(name)=="judas")result="judas";
@@ -300,8 +318,11 @@ struct ScriptSystem::Impl {
         auto json=JS_JSONStringify(ctx,value,JS_UNDEFINED,JS_UNDEFINED);if(JS_IsException(json)){error=Exception(ctx);return false;}text=String(ctx,json);JS_FreeValue(ctx,json);
         if(text.size()>65536){error="state exceeds 64KiB";return false;}return true;
     }
-    void Callback(Instance& i,const char* name,bool presentation=false){if(i.fault)return;currentOwner=i.entity;currentSlot=i.slot.id;polls=0;auto fn=JS_GetPropertyStr(ctx,i.value,name);
-        if(JS_IsException(fn)){Error(i,name);return;}if(JS_IsFunction(ctx,fn)){JSValue args[]={JS_NewFloat64(ctx,delta),JS_NewFloat64(ctx,presentationAlpha)};auto result=JS_Call(ctx,fn,i.value,presentation?2:1,args);if(JS_IsException(result))Error(i,name);else if(JS_PromiseState(ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(ctx,"async gameplay callbacks are unsupported");Error(i,name);}JS_FreeValue(ctx,result);}JS_FreeValue(ctx,fn);
+    void Callback(Instance& i,const char* name,bool presentation=false){if(i.fault)return;
+        JUDAS_PROFILE_SCOPE("Script lifecycle callback");
+        ProfileScope assetScope(AssetLabel(i));
+currentOwner=i.entity;currentSlot=i.slot.id;polls=0;auto fn=JS_GetPropertyStr(ctx,i.value,name);
+        if(JS_IsException(fn)){Error(i,name);return;}if(JS_IsFunction(ctx,fn)){JUDAS_PROFILE_COUNTER("Script callback calls",1,ProfileCounterMode::Sum);JSValue args[]={JS_NewFloat64(ctx,delta),JS_NewFloat64(ctx,presentationAlpha)};auto result=JS_Call(ctx,fn,i.value,presentation?2:1,args);if(JS_IsException(result))Error(i,name);else if(JS_PromiseState(ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(ctx,"async gameplay callbacks are unsupported");Error(i,name);}JS_FreeValue(ctx,result);}JS_FreeValue(ctx,fn);
     }
     void Stop(){if(stopping)return;stopping=true;std::vector<Instance*> order;
         for(auto& entry:instances)order.push_back(&entry.second);
@@ -315,6 +336,17 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     auto op=String(c,argv[0]);
     auto arg=[&](int i){return i<argc?argv[i]:JS_UNDEFINED;};
     if(op=="log"){std::fprintf(stdout,"JS: %s\n",String(c,arg(1)).c_str());return JS_UNDEFINED;}
+    if(op=="profileScope"){
+        if(!JS_IsString(arg(1))||!JS_IsFunction(c,arg(2)))return JS_ThrowTypeError(c,"profiler.scope requires a string and callback");
+        ProfileScope scope(s->CustomLabel(arg(1)));
+        return JS_Call(c,arg(2),JS_UNDEFINED,0,nullptr); // exactly once; exception and interrupt pass through
+    }
+    if(op=="profileCounter"){
+        double value;if(!JS_IsString(arg(1))||JS_ToFloat64(c,&value,arg(2))!=0||!std::isfinite(value))return JS_ThrowTypeError(c,"profiler.counter requires a string and finite value");
+        auto mode=String(c,arg(3));if(mode!="sum"&&mode!="latest"&&mode!="max")return JS_ThrowTypeError(c,"counter mode must be sum, latest or max");
+        PerformanceProfiler::Get().Counter(s->CustomLabel(arg(1)),value,mode=="sum"?ProfileCounterMode::Sum:mode=="max"?ProfileCounterMode::Maximum:ProfileCounterMode::Latest);
+        return JS_UNDEFINED;
+    }
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
 
@@ -660,8 +692,11 @@ ScriptSystem::ScriptSystem(RuntimeWorld* world,const AssetDatabase* assets):m(st
 ScriptSystem::~ScriptSystem()=default;
 void ScriptSystem::SetBudget(unsigned n){m->budget=std::max(1u,n);}
 const std::vector<ScriptDiagnostic>& ScriptSystem::Diagnostics()const{return m->diagnostics;}
-void ScriptSystem::Stop(){m->Stop();}
-void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){m->CheckThread();
+void ScriptSystem::Stop(){
+ JUDAS_PROFILE_SCOPE("JavaScript destroy");m->Stop();}
+void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){
+ JUDAS_PROFILE_SCOPE("Script synchronization");
+ JUDAS_PROFILE_COUNTER("Script instances",double(m->instances.size()),ProfileCounterMode::Latest);m->CheckThread();
     std::set<std::pair<SceneObjectId,uint64_t>> alive;
     for(const auto& object:objects)for(const auto& slot:object.scripts)if(slot.enabled){auto key=std::make_pair(object.id,slot.id);alive.insert(key);
         if(m->instances.count(key))continue;
@@ -688,12 +723,14 @@ void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){m->Check
     }
     for(auto it=m->instances.begin();it!=m->instances.end();)if(!alive.count(it->first)){m->Callback(it->second,"destroy");if(m->world&&m->world->UIIfLoaded())m->world->UI().RemoveSlotOwner(it->first.first,it->first.second);JS_FreeValue(m->ctx,it->second.value);it=m->instances.erase(it);}else ++it;
 }
-void ScriptSystem::Frame(const InputSystem* input,float dt){m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
+void ScriptSystem::Frame(const InputSystem* input,float dt){
+ JUDAS_PROFILE_SCOPE("JavaScript update");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     std::vector<std::pair<SceneObjectId,uint64_t>> order;for(const auto& entry:m->instances)order.push_back(entry.first);
     // Slot order follows authored vector order, not numeric slot identity.
     if(m->world){order.clear();for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts)if(m->instances.count({o.id,slot.id}))order.push_back({o.id,slot.id});}
     for(auto key:order){auto it=m->instances.find(key);if(it==m->instances.end()||(m->world&&!m->world->RuntimeDefinition(key.first)))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}m->Callback(i,"update");}}
-void ScriptSystem::Fixed(const InputSystem* input,float dt){m->CheckThread();m->input=input;m->delta=dt;m->fixed=true;
+void ScriptSystem::Fixed(const InputSystem* input,float dt){
+ JUDAS_PROFILE_SCOPE("JavaScript fixedUpdate");m->CheckThread();m->input=input;m->delta=dt;m->fixed=true;
     auto objects=m->world?m->world->ScriptObjects():std::vector<SceneObject>{};
     for(const auto& o:objects)for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||!m->world->RuntimeDefinition(o.id))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}m->Callback(i,"fixedUpdate");}}
 std::vector<ScriptStateRecord> ScriptSystem::Capture()const{m->CheckThread();std::vector<ScriptStateRecord> result;
@@ -748,14 +785,16 @@ bool ScriptSystem::SourceFingerprint(const AssetDatabase& assets,const Scene& sc
     std::string bytes="Judas.ScriptSources.1";for(const auto& entry:sources){bytes+=entry.first;bytes+=SceneFingerprintSha256(entry.second);}digest=SceneFingerprintSha256(bytes);error.clear();return true;
 }
 
-void ScriptSystem::UIFrame(const InputSystem* input,float dt){m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
+void ScriptSystem::UIFrame(const InputSystem* input,float dt){
+ JUDAS_PROFILE_SCOPE("JavaScript UI update");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end())continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}m->Callback(i,"uiUpdate");}
 }
-void ScriptSystem::UIEvents(const InputSystem* input,float dt){m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
+void ScriptSystem::UIEvents(const InputSystem* input,float dt){
+ JUDAS_PROFILE_SCOPE("JavaScript UI events");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     if(!m->world->UIIfLoaded())return;
     auto events=m->world->UI().TakeEvents();
     for(const auto& event:events)for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||it->second.fault||!m->world->RuntimeDefinition(o.id))continue;
-        auto& i=it->second;m->polls=0;m->currentOwner=i.entity;m->currentSlot=i.slot.id;auto fn=JS_GetPropertyStr(m->ctx,i.value,"onUI");if(JS_IsException(fn)){m->Error(i,"onUI");JS_FreeValue(m->ctx,fn);continue;}if(JS_IsFunction(m->ctx,fn)){
+        auto& i=it->second;ProfileScope assetScope(m->AssetLabel(i));m->polls=0;m->currentOwner=i.entity;m->currentSlot=i.slot.id;auto fn=JS_GetPropertyStr(m->ctx,i.value,"onUI");if(JS_IsException(fn)){m->Error(i,"onUI");JS_FreeValue(m->ctx,fn);continue;}if(JS_IsFunction(m->ctx,fn)){
             auto e=JS_NewObject(m->ctx);JS_SetPropertyStr(m->ctx,e,"document",JS_NewString(m->ctx,event.document.c_str()));JS_SetPropertyStr(m->ctx,e,"element",JS_NewString(m->ctx,event.element.c_str()));JS_SetPropertyStr(m->ctx,e,"type",JS_NewString(m->ctx,event.type.c_str()));JS_SetPropertyStr(m->ctx,e,"value",JS_NewFloat64(m->ctx,event.value));
             auto result=JS_Call(m->ctx,fn,i.value,1,&e);if(JS_IsException(result))m->Error(i,"onUI");else if(JS_PromiseState(m->ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(m->ctx,"async UI callback unsupported");m->Error(i,"onUI");}JS_FreeValue(m->ctx,result);JS_FreeValue(m->ctx,e);
         }JS_FreeValue(m->ctx,fn);
@@ -763,6 +802,7 @@ void ScriptSystem::UIEvents(const InputSystem* input,float dt){m->CheckThread();
 }
 
 void ScriptSystem::PhysicsEvent(SceneObjectId self,SceneObjectId other,const PhysicsWorld::TouchEvent& event,bool reverse){
+ JUDAS_PROFILE_SCOPE("JavaScript contact events");
     m->CheckThread();m->fixed=true;
     auto* definition=m->world->RuntimeDefinition(self);if(!definition)return;
     const auto slots=definition->scripts;
@@ -775,6 +815,7 @@ void ScriptSystem::PhysicsEvent(SceneObjectId self,SceneObjectId other,const Phy
         auto it=m->instances.find({self,slot.id});if(it==m->instances.end()||it->second.fault)continue;
         auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}
         if(!m->world->RuntimeDefinition(self)||i.fault)continue;
+        ProfileScope assetScope(m->AssetLabel(i));
         m->polls=0;m->currentOwner=self;m->currentSlot=slot.id;
         auto fn=JS_GetPropertyStr(m->ctx,i.value,name);if(JS_IsException(fn)){m->Error(i,name);JS_FreeValue(m->ctx,fn);continue;}
         if(JS_IsFunction(m->ctx,fn)){
@@ -800,6 +841,7 @@ void ScriptSystem::SetView(const glm::mat4& view) {
 }
 
 void ScriptSystem::Presentation(const InputSystem* input,float dt,float alpha){
+ JUDAS_PROFILE_SCOPE("JavaScript presentation");
     m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     m->presentationAlpha=std::clamp(alpha,0.f,1.f);m->inPresentation=true;
     for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){

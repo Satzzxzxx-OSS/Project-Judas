@@ -1,3 +1,4 @@
+#include "PerformanceProfiler.h"
 #include "WorldPresentation.h"
 
 #include <glm/gtc/quaternion.hpp>
@@ -83,6 +84,7 @@ void DrawRenderable(Renderer& r, ResourceManager* resources, const SceneRenderCo
 
 void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession* session,
                        float alpha, const WorldDrawOptions& options) {
+    JUDAS_PROFILE_SCOPE("World culling and opaque submission");
     for (const RuntimeWorld::StaticRenderable& s : world.StaticRenderables()) {
         r.SetRenderLayer(world.RenderLayerOf(s.id));
         const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,s.rotation,s.scale},alpha);
@@ -153,6 +155,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
 }
 
 void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSession* session, float alpha) {
+    JUDAS_PROFILE_SCOPE("Particles and water presentation");
     const std::vector<DynamicBody>& bodies = world.DynamicBodies();
     const std::vector<RuntimeWorld::DynamicVisual>& visuals = world.DynamicVisuals();
     if(!world.Liquids().States().empty()){
@@ -324,6 +327,7 @@ std::vector<DynamicLight> BuildWorldLights(const RuntimeWorld& world, const Game
 }
 
 void UpdateFluidSurface(Renderer& renderer, const RuntimeWorld& world, float /*alpha*/) {
+    JUDAS_PROFILE_SCOPE("Legacy fluid surface update");
     // 30 Hz particle state is held; rigid interpolation alpha would replay the
     // same fluid interval twice. Presentation never feeds the field sampler.
     if (!world.HasFluid() || !world.FluidMesh().IsValid() || !world.FluidSurfaceDirty()) return;
@@ -348,6 +352,10 @@ void UpdateFluidSurface(Renderer& renderer, const RuntimeWorld& world, float /*a
 void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWorld& world,
                       const GameSession* session, const glm::mat4& view, const glm::mat4& projection,
                       const glm::vec3& shadowFocus, float alpha) {
+    JUDAS_PROFILE_SCOPE("World render submission");
+    // Existing runtime statistics may accumulate across frames. Observe this
+    // submission's delta without resetting the engine's diagnostic state.
+    const auto beforeStats = renderer.Stats();
     const SceneSettings& settings = world.Settings();
     renderer.SetLighting(glm::normalize(settings.sunDirection), settings.sunColor, settings.ambientColor);
     const std::vector<DynamicLight> lights = BuildWorldLights(world, session, alpha);
@@ -356,11 +364,14 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
     // shadow-casting spot light in the frame's list.
     const glm::mat4 dirShadow = ComputeDirectionalShadowMatrix(
         world.view ? world.view->pose.position : shadowFocus, glm::normalize(settings.sunDirection), kDirShadowHalfExtent, kDirShadowDistance);
+    static ProfileLabel shadowLabel("Shadow pass submission");
+    ProfileScope shadowScope(shadowLabel);
     renderer.BeginShadowPass(kDirectionalShadowSlot, dirShadow);
     DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});
-    renderer.EndShadowPass();
+    renderer.EndShadowPass(); shadowScope.End();
     for (const DynamicLight& light : lights) {
         if (light.shadowMapIndex != kTorchShadowSlot && light.shadowMapIndex != kShipHeadlightShadowSlot) continue;
+        ProfileScope spotlightScope(shadowLabel);
         const glm::mat4 spotShadow = ComputeSpotShadowMatrix(light.position, light.direction,
                                                              light.outerConeDegrees, light.range);
         renderer.BeginShadowPass(light.shadowMapIndex, spotShadow);
@@ -411,6 +422,8 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
                 if (!camera.error.empty()) std::fprintf(stderr, "camera %llu: %s\n", static_cast<unsigned long long>(camera.id), camera.error.c_str());
             }
             if (!camera.error.empty() || !renderer.BeginRenderTarget(camera.target)) continue;
+            JUDAS_PROFILE_SCOPE("Secondary camera");
+            RendererProfileScope cameraGPU(renderer,"Secondary camera",camera.id);
             renderer.SetCamera(glm::lookAt(position, position + rotation * glm::vec3(0,0,-1), rotation * glm::vec3(0,1,0)),
                 glm::perspective(glm::radians(c.verticalFovDegrees), static_cast<float>(c.width)/c.height, c.nearPlane, c.farPlane));
             renderer.SetRenderMask(c.renderMask);
@@ -422,6 +435,8 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
         }
     }
     renderer.BeginFrame(width, height);
+    JUDAS_PROFILE_SCOPE("Main camera");
+    RendererProfileScope mainGPU(renderer,"Main camera");
     if(world.view){const auto& v=*world.view;auto q=v.pose.rotation;
         renderer.SetCamera(glm::lookAt(v.pose.position,v.pose.position+q*glm::vec3(0,0,-1),q*glm::vec3(0,1,0)),glm::perspective(glm::radians(v.fov),float(width)/height,.1f,500.f));
     }else renderer.SetCamera(view, projection);
@@ -431,9 +446,18 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
     DrawWorldGeometry(renderer, world, session, alpha, WorldDrawOptions{});
     DrawWorldTransparents(renderer, world, session, alpha);
     renderer.EndFrame();
+    const auto& stats=renderer.Stats();
+    JUDAS_PROFILE_COUNTER("Submitted draws all passes",stats.drawCalls-beforeStats.drawCalls,ProfileCounterMode::Sum);
+    JUDAS_PROFILE_COUNTER("Submitted triangles all passes",stats.triangles-beforeStats.triangles,ProfileCounterMode::Sum);
+    JUDAS_PROFILE_COUNTER("Visible renderables all passes",stats.renderablesVisible-beforeStats.renderablesVisible,ProfileCounterMode::Sum);
+    JUDAS_PROFILE_COUNTER("Frustum rejected all passes",stats.renderablesCulled-beforeStats.renderablesCulled,ProfileCounterMode::Sum);
+    JUDAS_PROFILE_COUNTER("Layer rejected all passes",stats.layerRejectedDraws-beforeStats.layerRejectedDraws,ProfileCounterMode::Sum);
+    JUDAS_PROFILE_COUNTER("Particles submitted",stats.particlesSubmitted-beforeStats.particlesSubmitted,ProfileCounterMode::Sum);
+    JUDAS_PROFILE_COUNTER("Secondary passes",stats.offscreenPasses-beforeStats.offscreenPasses,ProfileCounterMode::Sum);
 }
 
 void DrawAuthoredScene(Renderer& r, const Scene& scene, ResourceManager& assets) {
+    JUDAS_PROFILE_SCOPE("Editor authored submission");
     r.SetRenderMask(scene.Settings().mainCameraRenderMask);
     for (const SceneObject& o : scene.Objects()) {
         r.SetRenderLayer(o.renderLayer);

@@ -1,3 +1,4 @@
+#include "ProfilerView.h"
 #include "EditorPanels.h"
 #include "Prefab.h"
 #include "RuntimeUI.h"
@@ -684,9 +685,13 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
 
 void DrawProfilerPanel(EditorPanelState& state) {
     if (!state.showProfiler) return;
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 400.0f - 330.0f, 24.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(330.0f, 420.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(std::max(0.0f, ImGui::GetIO().DisplaySize.x - 850.0f - 12.0f), 24.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(850.0f, 700.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(1.0f);
     if (!ImGui::Begin("Profiler", &state.showProfiler)) { ImGui::End(); return; }
+    ImGui::Checkbox("Inspect live Play (F8: release cursor)", &state.profilerInspect);
+    DrawIntegratedProfilerView();
+    if(ImGui::CollapsingHeader("Specialized diagnostics (last observation, legacy timers)")){
     const ProfilerData& p = state.profiler;
     ImGui::Text("Frame: %.2f ms  (%.0f FPS, rolling)", p.frameMilliseconds, p.framesPerSecond);
     if (!p.playing) ImGui::TextDisabled("Edit mode: no simulation stepping.");
@@ -735,7 +740,8 @@ void DrawProfilerPanel(EditorPanelState& state) {
     ImGui::Text("  %llu completed / %llu failed / %llu cancelled of %llu submitted", p.jobs.completed, p.jobs.failed,
                 p.jobs.cancelled, p.jobs.submitted);
     ImGui::Text("  worker utilization since start: %.1f%%", utilization);
-    ImGui::TextDisabled("All times are wall-clock on the editor thread.");
+    ImGui::TextDisabled("Specialized measurements above retain their original observation cadence; resource bytes are estimates, not driver VRAM.");
+    }
     ImGui::End();
 }
 
