@@ -19,6 +19,7 @@
 #include "TextureData.h"
 #include "TextureLoader.h"
 #include "RuntimeUI.h"
+#include "Localization.h"
 
 namespace fs = std::filesystem;
 
@@ -88,6 +89,7 @@ bool CanCreateMetadata(const std::string& metaPath, std::string& outError) {
 const char* AssetTypeName(AssetType type) {
     switch (type) {
         case AssetType::Material:return "material";
+        case AssetType::Catalog: return "catalog";
         case AssetType::Environment:return "environment";
         case AssetType::Mesh: return "mesh";
         case AssetType::Texture: return "texture";
@@ -105,6 +107,7 @@ const char* AssetTypeName(AssetType type) {
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
     if(e==".judasmat"){outType=AssetType::Material;return true;}
+    if(e==".judasloc"){outType=AssetType::Catalog;return true;}
     if(e==".judasenv"){outType=AssetType::Environment;return true;}
     if(e==".judasbasin"||e==".judascavity"){outType=AssetType::Liquid;return true;}
     if(e==".judasnav"){outType=AssetType::Navigation;return true;}
@@ -114,7 +117,7 @@ bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     if (e == ".obj" || e == ".gltf" || e == ".glb") { outType = AssetType::Mesh; return true; }
     if (e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".bmp" || e == ".tga") { outType = AssetType::Texture; return true; }
     if (e == ".wav" || e == ".mp3" || e == ".flac") { outType = AssetType::Audio; return true; }
-    if (e == ".ttf") { outType = AssetType::Font; return true; }
+    if (e == ".ttf" || e == ".otf") { outType = AssetType::Font; return true; }
     return false;
 }
 
@@ -144,6 +147,7 @@ AssetId MintAssetId() {
 bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, std::string& outError) {
     switch (type) {
         case AssetType::Material:{MaterialDefinition m;return LoadMaterial(path,m,outError);}
+        case AssetType::Catalog:{Catalog d;return LoadCatalog(path,d,outError);}
         case AssetType::Environment:{EnvironmentData d;return LoadEnvironment(path,d,outError);}
         case AssetType::Mesh: {
             MeshData data;
@@ -159,17 +163,7 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
         case AssetType::Script: { std::ifstream input(path);if(!input){outError="Cannot read script";return false;}return true;}
         case AssetType::Prefab: { Scene scene; return LoadSceneFromFile(path,scene,outError) && ValidatePrefab(scene,outError); }
         case AssetType::Audio: { AudioData data;return LoadAudioFromFile(path,data,outError); }
-        case AssetType::Font: {
-            std::ifstream file(path, std::ios::binary);
-            if (!file) { outError = "could not open font file: " + path; return false; }
-            char header[4] = {};
-            file.read(header, 4);
-            // TrueType 'true'/0x00010000, OpenType 'OTTO'.
-            const bool ok = (header[0] == 0 && header[1] == 1 && header[2] == 0 && header[3] == 0) ||
-                            std::string(header, 4) == "true" || std::string(header, 4) == "OTTO";
-            if (!ok) outError = "not a TrueType/OpenType font: " + path;
-            return ok;
-        }
+        case AssetType::Font: { std::shared_ptr<const TextFont> f;return LoadTextFont(path,f,outError); }
     }
     return false;
 }
@@ -215,6 +209,7 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
         } else if (key == "type") {
             if (typeSeen) return fail("duplicate type");
             if(tokens[1].first=="material")outType=AssetType::Material;
+            else if(tokens[1].first=="catalog")outType=AssetType::Catalog;
             else if(tokens[1].first=="environment")outType=AssetType::Environment;
             else if (tokens[1].first == "mesh") outType = AssetType::Mesh;
             else if (tokens[1].first == "texture") outType = AssetType::Texture;

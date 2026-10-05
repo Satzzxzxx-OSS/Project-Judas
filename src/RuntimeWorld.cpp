@@ -1,3 +1,4 @@
+#include "SceneSession.h"
 #include "PerformanceProfiler.h"
 #include "RuntimeWorld.h"
 #include <fstream>
@@ -265,6 +266,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         fingerprint=SceneFingerprintSha256(fingerprint+SceneFingerprintSha256(bytes));
     }
     if(resources&&resources->Assets()){std::string navBytes="Judas.NavSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.navigationSurface){has=true;auto* asset=resources->Assets()->Find(o.navigationSurface->asset);if(asset){std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();navBytes+=asset->id+SceneFingerprintSha256(contents.str());}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+navBytes);}
+    if(resources&&resources->Assets()){bool localized=std::any_of(resources->Assets()->Records().begin(),resources->Assets()->Records().end(),[](const auto& p){return p.second.type==AssetType::Catalog;});if(auto control=SceneControl())localized|=!control->Localization(resources).Configuration().fonts.empty();if(localized){std::string bytes="Judas.LocalizationSources.1";for(auto& p:resources->Assets()->Records())if(p.second.type==AssetType::Catalog||p.second.type==AssetType::Font){std::ifstream f(p.second.path,std::ios::binary);if(!f){outError="cannot fingerprint localization dependency "+p.first;return false;}std::string content(std::istreambuf_iterator<char>(f),{});bytes+=p.first+SceneFingerprintSha256(content);}if(auto control=SceneControl())bytes+=control->Localization(resources).Configuration().Encode();fingerprint=SceneFingerprintSha256(fingerprint+bytes);}}
     if(resources&&resources->Assets()){std::string liquidBytes="Judas.LiquidSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.liquidBasin||o.liquidContainer){has=true;std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){auto* asset=resources->Assets()->Find(id);if(!asset||asset->missing||asset->type!=AssetType::Liquid){outError="missing/wrong-type liquid asset";return false;}std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();liquidBytes+=id+SceneFingerprintSha256(contents.str());}if(o.liquidBasin){LiquidBasinData data;auto* asset=resources->Assets()->Find(o.liquidBasin->asset);if(!LoadLiquidBasin(asset->path,data,outError)||LiquidSourceFingerprint(scene,o,*resources->Assets(),outError)!=data.fingerprint){outError="stale/invalid liquid bake: "+outError;return false;}}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+liquidBytes);}
     for(const auto& o:scene.Objects())if(!ValidateLiquidComponents(o,outError))return false;
     Destroy();
@@ -715,7 +717,7 @@ void RuntimeWorld::RestoreAuthoredState() {
     std::vector<EntityId> articulations;for(const auto& entry:m_ragdolls)articulations.push_back(entry.first);
     for(auto id:articulations){std::string error;LeaveRagdoll(id,0,error);}
     m_ragdollReturns.clear();m_ragdollAutostarted.clear();ClearCharacters();m_animationInstances.clear();
-    m_scripts.reset();m_ui.reset();pointerCapture=false;m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
+    m_scripts.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
     if (!m_built) return;
     for(const auto& o:ScriptObjects())if(o.ui&&o.ui->enabled){std::string error;UI().Load(o.ui->asset,o.ui->name,o.id,error);}
     for(auto& [id,info]:m_entityCategories){(void)id;info.tags=info.authoredTags;m_physics.SetBodyTags(info.body,info.tags);}
@@ -1218,7 +1220,7 @@ void RuntimeWorld::Destroy() {
     ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
-    m_scripts.reset();m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
+    m_scripts.reset();m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;

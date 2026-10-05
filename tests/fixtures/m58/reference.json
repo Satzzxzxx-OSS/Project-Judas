@@ -1,0 +1,386 @@
+[
+  {
+    "name": "arabic",
+    "source": "مرحبا بالعالم",
+    "font": "projects/text_lab/Assets/fonts/NotoSansArabic-Regular.ttf",
+    "font_sha256": "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b",
+    "command": [
+      "/tmp/m58-hb-shape",
+      "projects/text_lab/Assets/fonts/NotoSansArabic-Regular.ttf",
+      "مرحبا بالعالم",
+      "--font-funcs=ot",
+      "--font-size=1536",
+      "--font-ppem=24",
+      "--direction=rtl",
+      "--script=Arab",
+      "--language=ar",
+      "--bot",
+      "--eot",
+      "--cluster-level=0",
+      "--no-glyph-names",
+      "--output-format=json"
+    ],
+    "glyphs": [
+      {
+        "g": 771,
+        "cl": 12,
+        "dx": 0,
+        "dy": 0,
+        "ax": 863,
+        "ay": 0
+      },
+      {
+        "g": 668,
+        "cl": 11,
+        "dx": 0,
+        "dy": 0,
+        "ax": 399,
+        "ay": 0
+      },
+      {
+        "g": 47,
+        "cl": 10,
+        "dx": 0,
+        "dy": 0,
+        "ax": 447,
+        "ay": 0
+      },
+      {
+        "g": 12,
+        "cl": 9,
+        "dx": 0,
+        "dy": 0,
+        "ax": 800,
+        "ay": 0
+      },
+      {
+        "g": 668,
+        "cl": 8,
+        "dx": 0,
+        "dy": 0,
+        "ax": 399,
+        "ay": 0
+      },
+      {
+        "g": 47,
+        "cl": 7,
+        "dx": 0,
+        "dy": 0,
+        "ax": 447,
+        "ay": 0
+      },
+      {
+        "g": 102,
+        "cl": 6,
+        "dx": 0,
+        "dy": 0,
+        "ax": 413,
+        "ay": 0
+      },
+      {
+        "g": 3,
+        "cl": 5,
+        "dx": 0,
+        "dy": 0,
+        "ax": 399,
+        "ay": 0
+      },
+      {
+        "g": 47,
+        "cl": 4,
+        "dx": 0,
+        "dy": 0,
+        "ax": 447,
+        "ay": 0
+      },
+      {
+        "g": 104,
+        "cl": 3,
+        "dx": 0,
+        "dy": 0,
+        "ax": 527,
+        "ay": 0
+      },
+      {
+        "g": 418,
+        "cl": 2,
+        "dx": 0,
+        "dy": 0,
+        "ax": 844,
+        "ay": 0
+      },
+      {
+        "g": 985,
+        "cl": 1,
+        "dx": 0,
+        "dy": 0,
+        "ax": 608,
+        "ay": 0
+      },
+      {
+        "g": 772,
+        "cl": 0,
+        "dx": 0,
+        "dy": 0,
+        "ax": 806,
+        "ay": 0
+      }
+    ]
+  },
+  {
+    "name": "indic",
+    "source": "नमस्ते दुनिया क्षि",
+    "font": "projects/text_lab/Assets/fonts/NotoSansDevanagari-Regular.ttf",
+    "font_sha256": "385e78e6359a9d88a0f243d53b1209d7548361ba2194e2b9ec779bcaa7e8949d",
+    "command": [
+      "/tmp/m58-hb-shape",
+      "projects/text_lab/Assets/fonts/NotoSansDevanagari-Regular.ttf",
+      "नमस्ते दुनिया क्षि",
+      "--font-funcs=ot",
+      "--font-size=1536",
+      "--font-ppem=24",
+      "--direction=ltr",
+      "--script=Deva",
+      "--language=hi",
+      "--bot",
+      "--eot",
+      "--cluster-level=0",
+      "--no-glyph-names",
+      "--output-format=json"
+    ],
+    "glyphs": [
+      {
+        "g": 44,
+        "cl": 0,
+        "dx": 0,
+        "dy": 0,
+        "ax": 852,
+        "ay": 0
+      },
+      {
+        "g": 50,
+        "cl": 1,
+        "dx": 0,
+        "dy": 0,
+        "ax": 919,
+        "ay": 0
+      },
+      {
+        "g": 215,
+        "cl": 2,
+        "dx": 0,
+        "dy": 0,
+        "ax": 598,
+        "ay": 0
+      },
+      {
+        "g": 40,
+        "cl": 4,
+        "dx": 0,
+        "dy": 0,
+        "ax": 876,
+        "ay": 0
+      },
+      {
+        "g": 75,
+        "cl": 4,
+        "dx": 0,
+        "dy": 0,
+        "ax": 0,
+        "ay": 0
+      },
+      {
+        "g": 3,
+        "cl": 6,
+        "dx": 0,
+        "dy": 0,
+        "ax": 399,
+        "ay": 0
+      },
+      {
+        "g": 419,
+        "cl": 7,
+        "dx": 0,
+        "dy": 0,
+        "ax": 799,
+        "ay": 0
+      },
+      {
+        "g": 607,
+        "cl": 9,
+        "dx": 0,
+        "dy": 0,
+        "ax": 398,
+        "ay": 0
+      },
+      {
+        "g": 44,
+        "cl": 9,
+        "dx": 0,
+        "dy": 0,
+        "ax": 852,
+        "ay": 0
+      },
+      {
+        "g": 51,
+        "cl": 11,
+        "dx": 0,
+        "dy": 0,
+        "ax": 891,
+        "ay": 0
+      },
+      {
+        "g": 66,
+        "cl": 11,
+        "dx": 0,
+        "dy": 0,
+        "ax": 398,
+        "ay": 0
+      },
+      {
+        "g": 3,
+        "cl": 13,
+        "dx": 0,
+        "dy": 0,
+        "ax": 399,
+        "ay": 0
+      },
+      {
+        "g": 610,
+        "cl": 14,
+        "dx": 0,
+        "dy": 0,
+        "ax": 398,
+        "ay": 0
+      },
+      {
+        "g": 179,
+        "cl": 14,
+        "dx": 0,
+        "dy": 0,
+        "ax": 1094,
+        "ay": 0
+      }
+    ]
+  },
+  {
+    "name": "marks",
+    "source": "Café AV office",
+    "font": "projects/text_lab/Assets/fonts/DejaVuSans.ttf",
+    "font_sha256": "b4c632e3cdf9acc7f28758fb5a323c8524d7fc6660d46904d9b6cbe2809c419c",
+    "command": [
+      "/tmp/m58-hb-shape",
+      "projects/text_lab/Assets/fonts/DejaVuSans.ttf",
+      "Café AV office",
+      "--font-funcs=ot",
+      "--font-size=1536",
+      "--font-ppem=24",
+      "--direction=ltr",
+      "--script=Latn",
+      "--language=en",
+      "--bot",
+      "--eot",
+      "--cluster-level=0",
+      "--no-glyph-names",
+      "--output-format=json"
+    ],
+    "glyphs": [
+      {
+        "g": 38,
+        "cl": 0,
+        "dx": 0,
+        "dy": 0,
+        "ax": 1073,
+        "ay": 0
+      },
+      {
+        "g": 68,
+        "cl": 1,
+        "dx": 0,
+        "dy": 0,
+        "ax": 941,
+        "ay": 0
+      },
+      {
+        "g": 73,
+        "cl": 2,
+        "dx": 0,
+        "dy": 0,
+        "ax": 541,
+        "ay": 0
+      },
+      {
+        "g": 171,
+        "cl": 3,
+        "dx": 0,
+        "dy": 0,
+        "ax": 945,
+        "ay": 0
+      },
+      {
+        "g": 3,
+        "cl": 5,
+        "dx": 0,
+        "dy": 0,
+        "ax": 488,
+        "ay": 0
+      },
+      {
+        "g": 36,
+        "cl": 6,
+        "dx": 0,
+        "dy": 0,
+        "ax": 953,
+        "ay": 0
+      },
+      {
+        "g": 57,
+        "cl": 7,
+        "dx": 0,
+        "dy": 0,
+        "ax": 1051,
+        "ay": 0
+      },
+      {
+        "g": 3,
+        "cl": 8,
+        "dx": 0,
+        "dy": 0,
+        "ax": 488,
+        "ay": 0
+      },
+      {
+        "g": 82,
+        "cl": 9,
+        "dx": 0,
+        "dy": 0,
+        "ax": 940,
+        "ay": 0
+      },
+      {
+        "g": 5044,
+        "cl": 10,
+        "dx": 0,
+        "dy": 0,
+        "ax": 1485,
+        "ay": 0
+      },
+      {
+        "g": 70,
+        "cl": 13,
+        "dx": 0,
+        "dy": 0,
+        "ax": 845,
+        "ay": 0
+      },
+      {
+        "g": 72,
+        "cl": 14,
+        "dx": 0,
+        "dy": 0,
+        "ax": 945,
+        "ay": 0
+      }
+    ]
+  }
+]

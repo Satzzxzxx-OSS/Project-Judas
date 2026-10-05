@@ -61,7 +61,6 @@ bool ResourceManager::Resolve(const AssetId& id, AssetType expected, Entry& entr
                         AssetTypeName(expected));
         return false;
     }
-    if (expected == AssetType::Font) { Fail(entry, "fonts are engine-level resources, not scene resources"); return false; }
     outPath = record->path;
     return true;
 }
@@ -104,7 +103,9 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
     task.decodeThread = std::this_thread::get_id();
     ProfileScope decodeScope(decodeLabel);
     TraceTask(task, ResourceTracePoint::DecodeBegin, bytes.size());
-    if (task.type == AssetType::Mesh) {
+    if(task.type==AssetType::Font){task.succeeded=DecodeTextFont(std::move(bytes),task.path,task.font,task.error);
+    } else if(task.type==AssetType::Catalog){task.catalog=std::make_shared<Catalog>();task.succeeded=ParseCatalog(std::string(bytes.begin(),bytes.end()),*task.catalog,task.error);
+    } else if (task.type == AssetType::Mesh) {
         task.succeeded = ParseModelMesh(reinterpret_cast<const char*>(bytes.data()), bytes.size(), task.path, task.mesh, task.error);
         if(task.succeeded&&task.mesh.materials.empty()&&!GenerateMeshTangents(task.mesh)){task.succeeded=false;task.error="could not generate mesh tangents";}
     } else if(task.type==AssetType::Material){
@@ -142,7 +143,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     ++m_stats.misses;
     entry.error.clear();
     if (m_shutDown) { Fail(entry, "resource manager is shut down"); return entry; }
-    if (expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
+    if (expected != AssetType::Font && expected != AssetType::Catalog && expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
     std::string path;
     if (!Resolve(id, expected, entry, path)) return entry;
 
@@ -201,8 +202,10 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         Fail(entry, task->error.empty() ? std::string("load failed") : task->error);
         return;
     }
-    if (task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
-    if (task->type == AssetType::Mesh) {
+    if (task->type != AssetType::Font && task->type != AssetType::Catalog && task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
+    if(task->type==AssetType::Font){entry.font=task->font;entry.bytes=entry.font->bytes.size();
+    } else if(task->type==AssetType::Catalog){entry.catalog=task->catalog;entry.bytes=0;for(auto& p:entry.catalog->messages)entry.bytes+=p.first.size()+p.second.size();
+    } else if (task->type == AssetType::Mesh) {
         if (m_renderer) entry.mesh = m_renderer->CreateMesh(task->mesh);
         entry.bytes = EstimateMeshBytes(task->mesh);
         for(auto& warning:task->mesh.importWarnings)std::fprintf(stderr,"asset %s: %s\n",task->id.c_str(),warning.c_str());
@@ -225,7 +228,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
     entry.state = ResourceState::Ready;
     entry.loadMilliseconds =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - task->requested).count();
-    if(task->type!=AssetType::Navigation&&task->type!=AssetType::Liquid)++m_stats.uploads;
+    if(task->type!=AssetType::Font&&task->type!=AssetType::Catalog&&task->type!=AssetType::Navigation&&task->type!=AssetType::Liquid)++m_stats.uploads;
     m_stats.bytesResident += entry.bytes;
     m_stats.peakBytesResident = std::max(m_stats.peakBytesResident, m_stats.bytesResident);
 }
@@ -442,7 +445,7 @@ void ResourceManager::DestroyGpu(Entry& entry) {
     }
     entry.material={};entry.environment={};entry.materialDefinition.reset();
     entry.mesh = MeshHandle{};
-    entry.skeletal.reset();entry.navigation.reset();entry.liquid.reset();
+    entry.skeletal.reset();entry.navigation.reset();entry.liquid.reset();entry.font.reset();entry.catalog.reset();
     entry.texture = TextureHandle{};
     entry.audio = AudioClipHandle{};
     entry.bytes = 0;
@@ -592,3 +595,8 @@ std::shared_ptr<const LiquidResource> ResourceManager::GetLiquid(const AssetId& 
 std::optional<MaterialDefinition> ResourceManager::TryGetMeshMaterial(const AssetId& id,unsigned slot)const{auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready||slot>=it->second.meshPrimitives.size())return {};int index=it->second.meshPrimitives[slot].material;if(index<0||size_t(index)>=it->second.meshMaterials.size())return {};return it->second.meshMaterials[index];}
 
 void ResourceManager::Invalidate(const AssetId& id){std::vector<AssetId> dependent;for(auto& [key,e]:m_entries)if(e.materialDefinition)for(auto& map:e.materialDefinition->maps)if(map.asset==id){dependent.push_back(key);break;}Release(id);for(auto& key:dependent)Release(key);}
+
+ResourceState ResourceManager::RequestFont(const AssetId& id,JobPriority p){if(id.empty())return ResourceState::Unloaded;auto& e=Begin(id,AssetType::Font,p);return TypeMismatch(e.state,e.type,AssetType::Font)?ResourceState::Failed:e.state;}
+ResourceState ResourceManager::RequestCatalog(const AssetId& id,JobPriority p){if(id.empty())return ResourceState::Unloaded;auto& e=Begin(id,AssetType::Catalog,p);return TypeMismatch(e.state,e.type,AssetType::Catalog)?ResourceState::Failed:e.state;}
+std::shared_ptr<const TextFont> ResourceManager::TryGetFont(const AssetId& id){auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready)return {};it->second.lastUse=++m_useClock;return it->second.font;}
+std::shared_ptr<const Catalog> ResourceManager::TryGetCatalog(const AssetId& id){auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready)return {};it->second.lastUse=++m_useClock;return it->second.catalog;}

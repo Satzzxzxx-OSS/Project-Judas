@@ -11,8 +11,8 @@ GLADapiproc LoadOpenGLProcAddress(const char* name) {
     return reinterpret_cast<GLADapiproc>(SDL_GL_GetProcAddress(name));
 }
 
-// Milestone 13: DejaVu Sans baked once at 48px serves both HUD and menu
-// text from a single atlas (see docs/ARCHITECTURE.md, "Milestone 13").
+// Default packaged DejaVu font serves compatibility HUD/menu calls. M58
+// shapes/rasterizes on demand through the same path as authored runtime UI.
 const char* const kUIFontPath = "assets/fonts/DejaVuSans.ttf";
 constexpr float kUIFontPixelHeight = 48.0f;
 }  // namespace
@@ -58,6 +58,7 @@ void EngineHost::PumpResources() {
 void EngineHost::OpenProjectAssets(const std::string& projectRoot, const std::string& assetsDir) {
     JUDAS_PROFILE_SCOPE("Project resources");
     m_audio.StopAll();
+    m_renderer.ResetProjectText();
     if (m_resources) m_resources->ReleaseAll();
     m_assetDatabase.Scan(projectRoot, assetsDir);
 }

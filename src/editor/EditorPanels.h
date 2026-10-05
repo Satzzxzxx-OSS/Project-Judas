@@ -11,6 +11,7 @@
 #include "JobSystem.h"
 #include "PhysicsWorld.h"
 #include "ResourceManager.h"
+#include "RuntimeUI.h"
 #include "WorldDebugView.h"
 
 // Milestone 28/30: the editor's Dear ImGui panels. Every panel operates on
@@ -97,6 +98,10 @@ struct EditorPanelState {
     bool playPaused = false;
     DebugLineList navigationPreview;
     DebugLineList liquidPreview;
+    bool textPreview=false,textReload=false;
+    UIElement textElement;
+    std::string previewLocale;
+    glm::vec2 textPreviewPosition{0},textPreviewSize{0};
     std::string status;
     std::string pathInput;  // Open / Save As text field
     std::vector<std::string> terrainSurfaces;

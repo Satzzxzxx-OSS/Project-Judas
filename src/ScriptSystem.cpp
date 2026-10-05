@@ -22,7 +22,7 @@
 #include <thread>
 
 namespace {
-std::string String(JSContext* c,JSValueConst v){const char* p=JS_ToCString(c,v);if(!p)return {};std::string s(p);JS_FreeCString(c,p);return s;}
+std::string String(JSContext* c,JSValueConst v){size_t length=0;const char* p=JS_ToCStringLen(c,&length,v);if(!p)return {};std::string s(p,length);JS_FreeCString(c,p);return s;}
 std::string Exception(JSContext* c){auto e=JS_GetException(c);auto stack=JS_GetPropertyStr(c,e,"stack");auto s=String(c,e)+"\n"+String(c,stack);JS_FreeValue(c,stack);JS_FreeValue(c,e);return s;}
 JSValue Vec(JSContext* c,glm::vec3 v){auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"x",JS_NewFloat64(c,v.x));JS_SetPropertyStr(c,o,"y",JS_NewFloat64(c,v.y));JS_SetPropertyStr(c,o,"z",JS_NewFloat64(c,v.z));return o;}
 bool Number(JSContext* c,JSValueConst o,const char* key,float& value){auto v=JS_GetPropertyStr(c,o,key);double n=0;bool ok=JS_ToFloat64(c,&n,v)==0&&std::isfinite(n)&&std::abs(n)<=1e20;JS_FreeValue(c,v);value=static_cast<float>(n);return ok;}
@@ -185,6 +185,7 @@ export const physics={
  capsuleCast:(pose,radius,halfHeight,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'capsule',rotation:pose.rotation,radius,halfHeight}),
  boxCast:(pose,halfExtents,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'box',rotation:pose.rotation,halfExtents})};
 export const scenes={get current(){return call('sceneCurrent')},get registered(){return call('sceneList')},load:name=>call('sceneLoad',name),reload:()=>call('sceneReload')};
+export const localization={get locale(){return call('localeInfo').locale},get available(){return call('localeInfo').available},get revision(){return call('localeInfo').revision},get direction(){return call('localeInfo').direction},setLocale:locale=>call('localeChoose',locale),format:(key,args={})=>call('localeFormat',key,args),number:(value,options={})=>call('localeNumber',value,options),reload:()=>call('localeReload')};
 export const session={get:key=>call('sessionGet',key),set:(key,value)=>call('sessionSet',key,value),delete:key=>call('sessionDelete',key)};
 export const input={get pointerCapture(){return call('pointerCapture')},set pointerCapture(value){call('setPointerCapture',value)},held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
 export const profiler={scope:(label,callback)=>call("profileScope",label,callback),counter:(label,value,mode="sum")=>call("profileCounter",label,value,mode)};
@@ -201,6 +202,14 @@ export class UIElement {
  set enabled(v){call('uiSet',this.handle,this.id,'enabled',v)}
  get value(){return call('uiGet',this.handle,this.id,'value')}
  set value(v){call('uiSet',this.handle,this.id,'value',v)}
+ get font(){return call('uiGet',this.handle,this.id,'font')}
+ set font(v){call('uiSet',this.handle,this.id,'font',v)}
+ get textKey(){return call('uiGet',this.handle,this.id,'textKey')}
+ set textKey(v){call('uiSet',this.handle,this.id,'textKey',v)}
+ get direction(){return call('uiGet',this.handle,this.id,'direction')}
+ set direction(v){call('uiSet',this.handle,this.id,'direction',v)}
+ get textAlignment(){return call('uiGet',this.handle,this.id,'textAlignment')}
+ set textAlignment(v){call('uiSet',this.handle,this.id,'textAlignment',v)}
  get texture(){return call('uiGet',this.handle,this.id,'texture')}
  set texture(v){call('uiSet',this.handle,this.id,'texture',v)}
 }
@@ -455,6 +464,16 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         std::string json;if(!s->Json(arg(2),json,error)||!scenes->Set(key,json,error))return JS_ThrowTypeError(c,"%s",error.c_str());
         return JS_UNDEFINED;
     }
+    if(op=="localeInfo"||op=="localeChoose"||op=="localeFormat"||op=="localeNumber"||op=="localeReload"){
+        auto& locale=world.Localization();locale.Refresh();std::string error;
+        if(op=="localeInfo"){auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"locale",JS_NewString(c,locale.Locale().c_str()));JS_SetPropertyStr(c,o,"revision",JS_NewFloat64(c,double(locale.Revision())));JS_SetPropertyStr(c,o,"direction",JS_NewString(c,locale.RTL()?"rtl":"ltr"));auto available=JS_NewArray(c);uint32_t n=0;for(auto& p:locale.Configuration().locales)JS_SetPropertyUint32(c,available,n++,JS_NewString(c,p.first.c_str()));JS_SetPropertyStr(c,o,"available",available);return o;}
+        if(op=="localeChoose"){if(!JS_IsString(arg(1))||!locale.SetLocale(String(c,arg(1)),error))return JS_ThrowTypeError(c,"Localization: %s",error.c_str());return JS_TRUE;}
+        if(op=="localeReload"){locale.Reload();return JS_UNDEFINED;}
+        if(op=="localeNumber"){double value=0;if(JS_ToFloat64(c,&value,arg(1))||!std::isfinite(value))return JS_ThrowTypeError(c,"finite number required");NumberOptions options;auto read=[&](const char* key,int& n){auto v=JS_GetPropertyStr(c,arg(2),key);bool ok=true;if(!JS_IsUndefined(v)){double d=0;ok=JS_ToFloat64(c,&d,v)==0&&std::isfinite(d)&&d==std::floor(d)&&d>=0&&d<=12;if(ok)n=int(d);}JS_FreeValue(c,v);return ok;};if(!JS_IsObject(arg(2))||!read("minimumFraction",options.minimumFraction)||!read("maximumFraction",options.maximumFraction))return JS_ThrowTypeError(c,"invalid number options");auto grouping=JS_GetPropertyStr(c,arg(2),"grouping");if(!JS_IsUndefined(grouping)){if(!JS_IsBool(grouping)){JS_FreeValue(c,grouping);return JS_ThrowTypeError(c,"grouping requires boolean");}options.grouping=JS_ToBool(c,grouping);}JS_FreeValue(c,grouping);auto result=locale.Number(value,options,error);if(!error.empty())return JS_ThrowTypeError(c,"Localization: %s",error.c_str());return JS_NewStringLen(c,result.data(),result.size());}
+        if(!JS_IsString(arg(1))||!JS_IsObject(arg(2)))return JS_ThrowTypeError(c,"message key and named argument object required");
+        MessageArguments arguments;JSPropertyEnum* props=nullptr;uint32_t count=0;if(JS_GetOwnPropertyNames(c,&props,&count,arg(2),JS_GPN_STRING_MASK|JS_GPN_ENUM_ONLY))return JS_EXCEPTION;
+        bool valid=count<=32;for(uint32_t i=0;i<count;++i){auto key=JS_AtomToString(c,props[i].atom);auto name=String(c,key);JS_FreeValue(c,key);auto value=JS_GetProperty(c,arg(2),props[i].atom);if(name.size()>128)valid=false;if(JS_IsString(value))arguments[name]=String(c,value);else if(JS_IsNumber(value)){double n=0;if(JS_ToFloat64(c,&n,value)||!std::isfinite(n))valid=false;else arguments[name]=n;}else valid=false;JS_FreeValue(c,value);JS_FreeAtom(c,props[i].atom);}js_free(c,props);if(!valid)return JS_ThrowTypeError(c,"bounded string/finite-number message arguments required");auto result=locale.Format(String(c,arg(1)),arguments,error);if(!error.empty()&&error.rfind("missing localization key",0)!=0)return JS_ThrowTypeError(c,"Localization: %s",error.c_str());return JS_NewStringLen(c,result.data(),result.size());
+    }
     if(op=="uiDiagnostics"){if(argc>1){if(!JS_IsBool(arg(1)))return JS_ThrowTypeError(c,"debug visibility requires boolean");world.UI().debugOverlayVisible=JS_ToBool(c,arg(1));}return JS_NewBool(c,world.UI().debugOverlayVisible);}
     if(op=="uiFind")return JS_NewUint32(c,world.UI().Find(String(c,arg(1))));
     if(op=="uiQuit"){world.UI().RequestQuit();return JS_UNDEFINED;}
@@ -466,7 +485,8 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         if(!id.empty()&&!e)return JS_ThrowReferenceError(c,"unknown UI element %s",id.c_str());
         bool* flag=key=="visible"?(e?&e->visible:&d->visible):key=="enabled"?(e?&e->enabled:&d->enabled):key=="modal"&&!e?&d->modal:nullptr;
         if(flag){if(op=="uiSet"){if(!JS_IsBool(arg(4)))return JS_ThrowTypeError(c,"UI flag requires boolean");*flag=JS_ToBool(c,arg(4));}return JS_NewBool(c,*flag);}
-        if(e&&(key=="text"||key=="texture")){auto& value=key=="text"?e->text:e->texture;if(op=="uiSet"){if(!JS_IsString(arg(4)))return JS_ThrowTypeError(c,"UI string required");auto v=String(c,arg(4));if(v.size()>16384)return JS_ThrowTypeError(c,"UI text too long");if(key=="texture"&&!v.empty()){auto* a=s->assets?s->assets->Find(v):nullptr;if(!a||a->missing||a->type!=AssetType::Texture)return JS_ThrowTypeError(c,"invalid UI texture asset");}value=v;}return JS_NewString(c,value.c_str());}
+        if(e&&(key=="text"||key=="texture"||key=="font"||key=="textKey")){auto& value=key=="text"?e->text:key=="texture"?e->texture:key=="font"?e->font:e->textKey;if(op=="uiSet"){if(!JS_IsString(arg(4)))return JS_ThrowTypeError(c,"UI string required");auto v=String(c,arg(4));if(v.size()>16384)return JS_ThrowTypeError(c,"UI text too long");if(key=="textKey"){std::string error;if(v.size()>128||v.find_first_of("\r\n\0",0,3)!=std::string::npos||!ValidTextUTF8(v,error))return JS_ThrowTypeError(c,"invalid localization key");}if((key=="texture"||key=="font")&&!v.empty()){auto* a=s->assets?s->assets->Find(v):nullptr;if(!a||a->missing||a->type!=(key=="font"?AssetType::Font:AssetType::Texture))return JS_ThrowTypeError(c,"invalid UI asset");}value=v;if(key=="text")e->textKey.clear();}return JS_NewStringLen(c,value.data(),value.size());}
+        if(e&&(key=="direction"||key=="textAlignment")){std::vector<std::string> choices=key=="direction"?std::vector<std::string>{"auto","ltr","rtl"}:std::vector<std::string>{"left","right","center","start","end"};int index=key=="direction"?int(e->direction):e->textLogicalAlign;if(op=="uiSet"){if(!JS_IsString(arg(4)))return JS_ThrowTypeError(c,"UI direction/alignment string required");auto v=String(c,arg(4));auto it=std::find(choices.begin(),choices.end(),v);if(it==choices.end())return JS_ThrowTypeError(c,"unsupported UI text direction/alignment");index=int(it-choices.begin());if(key=="direction")e->direction=TextDirection(index);else e->textLogicalAlign=index;}return JS_NewString(c,index<0?"":choices[index].c_str());}
         if(e&&key=="value"){if(op=="uiSet"){double v;if(JS_ToFloat64(c,&v,arg(4))||!std::isfinite(v)||v<e->minimum||v>e->maximum)return JS_ThrowTypeError(c,"UI value outside authored range");e->value=float(v);}return JS_NewFloat64(c,e->value);}
         return JS_ThrowTypeError(c,"unknown UI property");
     }

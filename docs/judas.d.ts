@@ -1,5 +1,5 @@
-/** Current JudasJS through M54; reviewed against ScriptSystem.cpp based on M53
- * 16f7d59fa3289e7e7c43aaeb7e88471be6fe348f. Tooling only, no TS runtime.
+/** Current JudasJS through M58; reviewed against ScriptSystem.cpp based on M57
+ * ba16c2c52c60194a95ff161d55b93ff874863b77. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
@@ -243,6 +243,18 @@ declare module "judas" {
     load(name: string): boolean;
     reload(): boolean;
   };
+  export interface NumberOptions { minimumFraction?: number; maximumFraction?: number; grouping?: boolean }
+  export const localization: {
+    readonly locale: string;
+    readonly available: string[];
+    readonly revision: number;
+    readonly direction: "ltr" | "rtl";
+    /** True means request queued. Current locale/revision change only after all resources validate. */
+    setLocale(locale: string): boolean;
+    format(key: string, args?: Record<string, string | number>): string;
+    number(value: number, options?: NumberOptions): string;
+    reload(): void;
+  };
   export const session: { get(key: string): JSONValue; set(key: string, value: JSONValue): void; delete(key: string): void };
   export const input: { pointerCapture: boolean; held(name: string): boolean; pressed(name: string): boolean; released(name: string): boolean; axis(name: string): number };
   export const time: { readonly elapsed: number; readonly delta: number; readonly fixed: boolean };
@@ -252,6 +264,13 @@ declare module "judas" {
     handle: number;
     id: string;
     text: string;
+    /** Assigning text clears an authored textKey. Assigning textKey restores localization binding. */
+    textKey: string;
+    font: AssetId;
+    direction: "auto" | "ltr" | "rtl";
+    /** Empty on legacy numeric alignment; writes must use a named value. */
+    get textAlignment(): "" | "left" | "right" | "center" | "start" | "end";
+    set textAlignment(value: "left" | "right" | "center" | "start" | "end");
     visible: boolean;
     enabled: boolean;
     value: number;

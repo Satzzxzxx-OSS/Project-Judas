@@ -18,6 +18,7 @@
 #include "Renderer.h"
 #include "ResourceTrace.h"
 #include "TextureData.h"
+#include "Localization.h"
 
 class RadialTerrain;
 
@@ -112,6 +113,10 @@ public:
 
     // Non-blocking demand: starts (or joins) the load and returns the
     // state now. Ready is answered from cache (a hit).
+    ResourceState RequestFont(const AssetId&,JobPriority priority=JobPriority::Normal);
+    std::shared_ptr<const TextFont> TryGetFont(const AssetId&);
+    ResourceState RequestCatalog(const AssetId&,JobPriority priority=JobPriority::Normal);
+    std::shared_ptr<const Catalog> TryGetCatalog(const AssetId&);
     ResourceState RequestLiquid(const AssetId&,JobPriority priority=JobPriority::Normal);
     std::shared_ptr<const LiquidResource> GetLiquid(const AssetId&,std::string& error);
     ResourceState RequestNavigation(const AssetId&,JobPriority priority=JobPriority::Normal);
@@ -210,6 +215,7 @@ private:
         MeshData mesh;
         TextureData texture;
         AudioData audio;
+        std::shared_ptr<TextFont const> font;std::shared_ptr<Catalog> catalog;
         std::shared_ptr<NavigationData> navigation;
         std::shared_ptr<LiquidResource> liquid;
         std::shared_ptr<MaterialDefinition> material;EnvironmentData environment;
@@ -226,6 +232,7 @@ private:
         std::shared_ptr<const SkeletalAsset> skeletal;
         TextureHandle texture;
         AudioClipHandle audio;
+        std::shared_ptr<const TextFont> font;std::shared_ptr<const Catalog> catalog;
         std::shared_ptr<const NavigationData> navigation;
         std::shared_ptr<const LiquidResource> liquid;
         std::vector<MaterialDefinition> meshMaterials;std::vector<MeshPrimitive> meshPrimitives;

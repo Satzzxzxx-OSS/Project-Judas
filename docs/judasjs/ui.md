@@ -32,7 +32,7 @@ source order, reference-resolution scaling and rectangle clipping. [Authoring/la
 Properties `text`, `visible`, `enabled`, `value`, `texture` read/write through
 validation. Text/texture setters require strings <=16384 bytes. Texture accepts
 empty string to clear, otherwise registered nonmissing Texture asset ID. Text is
-rendered with the existing **ASCII** atlas; no Unicode shaping, rich text or localization.
+rendered through M58 Unicode shaping, fallback and localization. See [text contracts](localization.md); rich text remains unsupported.
 `value` is finite and within authored min/max; use numeric 0/1 for toggle state,
 not boolean. The setter does not restrict a toggle to those two values.
 Programmatic changes do not synthesize click/change events. Hidden/disabled controls
@@ -56,3 +56,7 @@ Unload/owner destruction/Stop/scene changes invalidate handles. UI runtime value
 are not automatically saved; store game data in bounded `this.state` and rebuild
 presentation in `start`. Script-loaded documents unload with their slot. No VM/UI
 heap is carried through scene replacement. Copyable [UI example](examples/ui.js).
+
+## M58 text / direction / fonts
+
+`textKey`, `font`, `direction`, `textAlignment` and project locale revisions are documented in [localization](localization.md). Runtime labels use the shared Unicode layout path; the former ASCII-only limitation is superseded. Text entry/IME remains outside the current UI API.

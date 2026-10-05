@@ -471,11 +471,11 @@ bool EditorApplication::RunProject(std::string& outMessage) {
 bool EditorApplication::StartPlay(std::string& outError) {
     m_world = std::make_unique<RuntimeWorld>();
     m_world->legacyGameplay = m_project.Settings().legacyGameplay;
+    m_world->SetSceneControl(std::make_shared<SceneSession>(m_project,m_document.Path()));
     if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError, &m_project.Settings().classification, &m_project.Settings().navigation)) {
         m_world.reset();
         return false;
     }
-    m_world->SetSceneControl(std::make_shared<SceneSession>(m_project,m_document.Path()));
     // Milestone 29: a saved world-state delta for this scene file layers
     // over the freshly instantiated baseline, exactly as the runtime does.
     m_panels.worldStatePath = WorldStatePathFor(m_document.Path());
@@ -1124,6 +1124,16 @@ int EditorApplication::Run(int argc, char** argv) {
         // composites over it through ImGui's own GL backend.
         { JUDAS_PROFILE_SCOPE("Editor UI submission"); RendererProfileScope uiGPU(renderer,"Editor UI"); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); }
 
+        if(m_panels.mode==EditorMode::Edit&&m_panels.textPreview&&m_panels.showAssetBrowser){
+            auto key=m_project.ProjectFile()+m_project.Settings().localization.Encode();if(key!=m_previewLocalizationKey){m_previewLocalization.reset();m_previewLocalization=std::make_unique<LocalizationSession>(m_project.Settings().localization);m_previewLocalization->Bind(&host.Resources());m_previewLocalizationKey=key;}
+            std::string previewError;if(!m_panels.previewLocale.empty()&&m_previewLocalization->Locale()!=m_panels.previewLocale)m_previewLocalization->SetLocale(m_panels.previewLocale,previewError);
+            if(m_panels.textReload){m_previewLocalization->Reload();m_panels.textReload=false;}m_previewLocalization->Refresh();
+            auto& e=m_panels.textElement;auto text=e.text;if(!e.textKey.empty())text=m_previewLocalization->Format(e.textKey,{},previewError);
+            std::vector<std::shared_ptr<const TextFont>> fonts;if(!e.font.empty()){host.Resources().RequestFont(e.font);if(auto f=host.Resources().TryGetFont(e.font))fonts.push_back(f);}if(fonts.empty())if(auto f=renderer.DefaultTextFont())fonts.push_back(f);auto fallback=m_previewLocalization->Fonts();fonts.insert(fonts.end(),fallback.begin(),fallback.end());renderer.SelectTextFonts(std::move(fonts));
+            TextOptions o;o.pixels=e.fontSize;o.width=m_panels.textPreviewSize.x;o.wrap=e.wrap;o.locale=m_previewLocalization->Locale();o.direction=e.direction;o.alignment=e.textLogicalAlign<0?TextAlignment::Left:TextAlignment(e.textLogicalAlign);
+            renderer.BeginUIFrame(window.Width(),window.Height());renderer.SetUIClip(m_panels.textPreviewPosition,m_panels.textPreviewSize);renderer.DrawUIRect(m_panels.textPreviewPosition,m_panels.textPreviewSize,{.04,.05,.08,1});renderer.DrawTextLayout(*renderer.LayoutText(text,o),m_panels.textPreviewPosition,e.color);renderer.ClearUIClip();renderer.EndUIFrame();
+        }
+
         if (autotest) {
             ++autotestFrame;
             const std::string prefix = autotest;
@@ -1220,6 +1230,7 @@ int EditorApplication::Run(int argc, char** argv) {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
+    m_previewLocalization.reset();
     m_host = nullptr;
     return m_stabilization && m_stabilization->failures ? 1 : 0;
 }

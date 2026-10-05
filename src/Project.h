@@ -4,6 +4,7 @@
 #include "InputSystem.h"
 #include "Classification.h"
 #include "NavigationTypes.h"
+#include "Localization.h"
 
 // Milestone 30: a Judas PROJECT — the unit a game is made in. It sits above
 // individual scenes: a root directory, where its assets and scenes live,
@@ -33,6 +34,7 @@ struct ProjectSettings {
     InputMap input = InputMap::Defaults();
     ProjectClassification classification;
     ProjectNavigation navigation;
+    ProjectLocalization localization;
     std::string name;
     std::string startupScene;  // project-relative scene file
     std::string assetsDir = "Assets";

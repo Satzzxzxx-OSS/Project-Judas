@@ -56,3 +56,9 @@ authoritative motion untouched. Attach to a moving body or CharacterMotor.
 - [Dynamic surface control](examples/liquid-surface.js) ([reference](liquid.md)): attach to entity 10 in `projects/liquid_surface_demo`; conserved drain/refill, momentum impulse, retained-state suspension and presentation sampling.
 
 - [Exception-safe custom profiling](examples/profiling.js) — `profiler.scope` and finite counters, capture on or off.
+
+## Localization / Unicode UI (M58)
+
+[Executed localization example](examples/localization.js) uses the text-lab catalogs
+and document. It preserves supplementary/combining UTF-8, named whole messages,
+Russian plural rules and invalid-locale handling. [API and asset syntax](localization.md).

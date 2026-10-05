@@ -7,6 +7,9 @@
 #include "SceneSerialization.h"
 #include <filesystem>
 #include <set>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
 #include <cstdio>
 
 #include <algorithm>
@@ -441,7 +444,10 @@ void DrawUILayoutEditor(const AssetRecord& record,EditorPanelState& state){
     ImGui::Checkbox("Visible",&e.visible);ImGui::SameLine();ImGui::Checkbox("Enabled",&e.enabled);ImGui::Checkbox("Clip children",&e.clip);
     ImGui::InputFloat2("Anchor min",&e.anchorMin.x);ImGui::InputFloat2("Anchor max",&e.anchorMax.x);ImGui::InputFloat2("Offset",&e.offset.x);ImGui::InputFloat2("Fixed size",&e.size.x);ImGui::InputFloat2("Relative size",&e.relativeSize.x);ImGui::InputFloat2("Pivot alignment",&e.align.x);
     ImGui::InputFloat4("Margins L T R B",&e.margin.x);ImGui::InputFloat4("Padding L T R B",&e.padding.x);ImGui::InputFloat("Spacing",&e.spacing);
-    ImGui::ColorEdit4("Background",&e.background.x);ImGui::ColorEdit4("Tint",&e.color.x);str("Text",e.text);str("Font asset ID",e.font);str("Texture asset ID",e.texture);ImGui::InputFloat("Font size",&e.fontSize);ImGui::InputFloat2("Text alignment",&e.textAlign.x);ImGui::Checkbox("Wrap text",&e.wrap);ImGui::Checkbox("Fit image",&e.fit);
+    ImGui::ColorEdit4("Background",&e.background.x);ImGui::ColorEdit4("Tint",&e.color.x);str("Text",e.text);str("Localization key",e.textKey);int direction=int(e.direction);if(ImGui::Combo("Text direction (auto inherits)",&direction,"Auto\0LTR\0RTL\0"))e.direction=TextDirection(direction);int alignment=e.textLogicalAlign+1;if(ImGui::Combo("Horizontal text alignment",&alignment,"Legacy numeric\0Left\0Right\0Center\0Start\0End\0"))e.textLogicalAlign=alignment-1;ImGui::Checkbox("Mirror horizontal children for RTL locale",&e.mirrorRow);str("Font asset ID",e.font);str("Texture asset ID",e.texture);ImGui::InputFloat("Font size",&e.fontSize);ImGui::InputFloat2("Text alignment",&e.textAlign.x);ImGui::Checkbox("Wrap text",&e.wrap);ImGui::Checkbox("Fit image",&e.fit);
+    ImGui::Checkbox("Rendered text preview",&state.textPreview);
+    if(state.textPreview){state.textElement=e;if(state.project){auto& c=state.project->Settings().localization;if(state.previewLocale.empty())state.previewLocale=c.defaultLocale;if(ImGui::BeginCombo("Preview locale",state.previewLocale.c_str())){for(auto& [tag,entry]:c.locales){(void)entry;if(ImGui::Selectable(tag.c_str(),tag==state.previewLocale))state.previewLocale=tag;}ImGui::EndCombo();}}
+        ImGui::TextDisabled("Actual Judas glyph rendering; editor chrome is not translated.");state.textPreviewPosition={ImGui::GetCursorScreenPos().x,ImGui::GetCursorScreenPos().y};state.textPreviewSize={std::max(80.f,ImGui::GetContentRegionAvail().x),150};ImGui::InvisibleButton("Text preview area",{state.textPreviewSize.x,state.textPreviewSize.y});}
     ImGui::InputFloat("Value",&e.value);ImGui::InputFloat("Minimum",&e.minimum);ImGui::InputFloat("Maximum",&e.maximum);
     if(selected&&ImGui::Button("Delete element subtree")){std::set<std::string> remove{e.id};for(const auto& x:source.elements)if(remove.count(x.parent))remove.insert(x.id);source.elements.erase(std::remove_if(source.elements.begin(),source.elements.end(),[&](const auto& x){return remove.count(x.id);}),source.elements.end());selected=0;}
     if(!source.Validate(error))ImGui::TextWrapped("Cannot save: %s",error.c_str());
@@ -561,6 +567,12 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
                     ImGui::TextWrapped("In-scene preview: assign this asset to a render slot. Saving intentionally updates all non-overridden users.");if(ImGui::Button("Save shared material")){if(SaveMaterial(record->path,draft,error)){if(state.resources)state.resources->Invalidate(record->id);state.status="Saved shared material; instances reload normally";}else state.status=error;}ImGui::SameLine();if(ImGui::Button("Reload source"))LoadMaterial(record->path,draft,error);if(!error.empty())ImGui::TextWrapped("%s",error.c_str());
                 }
             }
+            if(record->type==AssetType::Catalog&&state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Catalog UTF-8 source")){
+                static std::string catalogPath;static std::vector<char> buffer(2*1024*1024+1);if(catalogPath!=record->path){catalogPath=record->path;std::ifstream f(catalogPath);std::string text(std::istreambuf_iterator<char>(f),{});std::snprintf(buffer.data(),buffer.size(),"%s",text.c_str());}
+                ImGui::InputTextMultiline("ICU messages",buffer.data(),buffer.size(),{0,220});
+                if(ImGui::Button("Validate and save catalog")){Catalog parsed;std::string error;if(ParseCatalog(buffer.data(),parsed,error)){std::ofstream f(record->path,std::ios::binary);f<<buffer.data();state.status=f?"Saved UTF-8 catalog":"Catalog write failed";state.textReload=true;if(state.resources)state.resources->Invalidate(record->id);}else state.status=error;}
+                ImGui::SameLine();if(ImGui::Button("Reload preview catalog"))state.textReload=true;
+            }
             if(record->type==AssetType::UI&&state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Edit UI document",ImGuiTreeNodeFlags_DefaultOpen))DrawUILayoutEditor(*record,state);
             if(record->type==AssetType::Prefab&&state.mode==EditorMode::Edit&&ImGui::Button("Place prefab instance")){
                 Scene source;std::string error;SceneObjectId root=0;
@@ -639,6 +651,22 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
     ImGui::TextWrapped("Export uses saved scenes and all registered assets. Save scene edits first. Choose a directory outside the project.");
     if (ImGui::Button("Export project (Release)")) requests.exportProject = true;
     ImGui::Separator();
+    if(ImGui::CollapsingHeader("Localization and fallback fonts")){
+        auto asset=[&](const char* label,std::string& id,AssetType type){if(ImGui::BeginCombo(label,id.empty()?"(none)":id.c_str())){if(ImGui::Selectable("(none)",id.empty()))id.clear();if(state.assets)for(auto& [key,record]:state.assets->Records())if(record.type==type&&!record.missing){if(ImGui::Selectable(record.relativePath.c_str(),id==key))id=key;}ImGui::EndCombo();}};
+        auto fonts=[&](const char* label,std::vector<std::string>& list){ImGui::PushID(label);if(ImGui::TreeNode(label)){for(size_t i=0;i<list.size();++i){ImGui::PushID(int(i));asset("Font",list[i],AssetType::Font);if(i&&ImGui::SmallButton("Move up"))std::swap(list[i],list[i-1]);ImGui::SameLine();if(ImGui::SmallButton("Remove")){list.erase(list.begin()+i);ImGui::PopID();break;}ImGui::PopID();}if(list.size()<16&&ImGui::Button("Add fallback font"))list.push_back("");ImGui::TreePop();}ImGui::PopID();};
+        if(ImGui::BeginCombo("Default locale",s.localization.defaultLocale.c_str())){for(auto& [tag,entry]:s.localization.locales){(void)entry;if(ImGui::Selectable(tag.c_str(),tag==s.localization.defaultLocale))s.localization.defaultLocale=tag;}ImGui::EndCombo();}
+        fonts("Global ordered fallback fonts",s.localization.fonts);
+        for(auto it=s.localization.locales.begin();it!=s.localization.locales.end();++it){ImGui::PushID(it->first.c_str());if(ImGui::TreeNode(it->first.c_str())){asset("Catalog",it->second.catalog,AssetType::Catalog);if(ImGui::BeginCombo("Fallback locale",it->second.fallback.empty()?"(default/parent)":it->second.fallback.c_str())){if(ImGui::Selectable("(default/parent)",it->second.fallback.empty()))it->second.fallback.clear();for(auto& [tag,entry]:s.localization.locales)if(tag!=it->first){(void)entry;if(ImGui::Selectable(tag.c_str(),tag==it->second.fallback))it->second.fallback=tag;}ImGui::EndCombo();}fonts("Locale ordered fallback fonts",it->second.fonts);if(ImGui::Button("Remove locale")){auto tag=it->first;s.localization.locales.erase(it);for(auto& [name,entry]:s.localization.locales){(void)name;if(entry.fallback==tag)entry.fallback.clear();}if(s.localization.defaultLocale==tag)s.localization.defaultLocale=s.localization.locales.empty()?"en":s.localization.locales.begin()->first;ImGui::TreePop();ImGui::PopID();break;}ImGui::TreePop();}ImGui::PopID();}
+        static char newTag[65]="";static std::string newCatalog;ImGui::InputText("New canonical BCP 47 locale",newTag,sizeof(newTag));asset("New locale catalog",newCatalog,AssetType::Catalog);if(ImGui::Button("Add locale")){auto candidate=s.localization;candidate.locales[newTag]={newCatalog,"",{}};if(s.localization.locales.empty())candidate.defaultLocale=newTag;std::string error;if(!s.localization.locales.count(newTag)&&state.assets&&ValidateLocalizationAssets(candidate,*state.assets,error)){s.localization=std::move(candidate);newTag[0]=0;newCatalog.clear();}else state.status=error.empty()?"Duplicate locale":error;}
+        std::string localizationError;if(!s.localization.Validate(localizationError))ImGui::TextWrapped("Cannot save: %s",localizationError.c_str());
+        ImGui::TextDisabled("Save project to persist choices; start fresh Play for configuration edits.");
+        static std::string projectPath;static char config[16384];if(projectPath!=project.ProjectFile()){projectPath=project.ProjectFile();CopyToBuffer(s.localization.Encode(),config,sizeof(config));}
+        ImGui::TextWrapped("Version, default locale, ordered fallback font count/IDs, locale count, then locale/catalog/fallback/font count/IDs. Catalogs and fonts use registered asset IDs.");
+        ImGui::InputTextMultiline("Localization configuration",config,sizeof(config),{0,95});
+        if(ImGui::Button("Apply localization settings")){ProjectLocalization c;std::string error;if(ProjectLocalization::Parse(config,c,error)&&state.assets&&ValidateLocalizationAssets(c,*state.assets,error)){s.localization=std::move(c);state.previewLocale=s.localization.defaultLocale;state.status="Applied localization; Save project";state.textReload=true;}else state.status=error;}
+        for(auto& [locale,entry]:s.localization.locales)ImGui::BulletText("%s : %s",locale.c_str(),entry.catalog.c_str());
+        ImGui::TextDisabled("Import .judasloc / .ttf / .otf in Asset Browser. UI source editor offers keys and real text preview.");
+    }
     if(ImGui::CollapsingHeader("Tags and layers")){
         auto registry=[&](const char* label,CategoryRegistry& r,bool preserveDefault){
             ImGui::PushID(label);

@@ -123,6 +123,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
         Require(fs::is_regular_file(engineRoot / "assets/fonts/DejaVuSans.ttf"), "Missing engine UI font");
         Require(fs::is_regular_file(engineRoot / "third_party/RUNTIME_NOTICES.txt"), "Missing runtime dependency license notices");
         AssetDatabase assets; assets.Scan(project.RootDir(), project.AssetsDir());
+        Require(ValidateLocalizationAssets(project.Settings().localization,assets,error),"Localization: "+error);
         Require(assets.Problems().empty(), assets.Problems().empty() ? "" :
                 "Asset database: " + assets.Problems().front().path + ": " + assets.Problems().front().message);
         std::set<fs::path> scenes;
@@ -217,7 +218,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
         Copy(engineRoot / "assets/fonts/DejaVuSans-LICENSE.txt", staging / "engine/licenses/DejaVuSans.txt");
         Copy(engineRoot / "third_party/RUNTIME_NOTICES.txt", staging / "engine/third_party/RUNTIME_NOTICES.txt");
         Copy(engineRoot / "LICENSE", staging / "engine/licenses/Judas.txt");
-        write("RUNTIME_REQUIREMENTS.txt", "Judas Linux desktop Release package. Run ./judas (no arguments).\nRequires compatible glibc/libstdc++, SDL2 and its system dependencies, OpenGL 3.3 drivers.\nNo editor or development tree is required. Libraries are system provided; not bundled.\nAll registered project assets and project scenes are included for dynamic ID loading.\nSaves: $XDG_DATA_HOME/judas/games/<save-id>/Saves, otherwise $HOME/.local/share/...\nThird-party notices: engine/third_party/RUNTIME_NOTICES.txt and engine/licenses.\n");
+        write("RUNTIME_REQUIREMENTS.txt", "Judas Linux desktop Release package. Run ./judas (no arguments).\nRequires compatible glibc/libstdc++, SDL2 and its system dependencies, OpenGL 3.3 drivers.\nNo editor or development tree is required. Platform libraries are system provided; not bundled.\nUnicode text libraries and ICU locale/boundary data are statically linked.\nProject fonts/catalogs are packaged assets; no desktop font or ICU_DATA lookup.\nAll registered project assets and project scenes are included for dynamic ID loading.\nSaves: $XDG_DATA_HOME/judas/games/<save-id>/Saves, otherwise $HOME/.local/share/...\nThird-party notices: engine/third_party/RUNTIME_NOTICES.txt and engine/licenses.\n");
         ProjectExportResult completed; completed.packageDirectory = destination.string();
         completed.assetCount = assets.Records().size(); completed.sceneCount = scenes.size();
         for (const auto& entry : fs::recursive_directory_iterator(staging))

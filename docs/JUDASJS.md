@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M56)
+# JudasJS — current API reference (M58)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M56, based on
-M55 checkpoint `7b1e5ea1eab46456bead72b0dcdc7b7fdc9b36fd`. It is not an
+This reference describes the public virtual `judas` module through M58, based on
+M57 checkpoint `ba16c2c52c60194a95ff161d55b93ff874863b77`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
@@ -23,6 +23,7 @@ through `Entity.presentedTransform` / `presentationUpdate(dt, alpha)`; the
 | physics.raycast/sphereCast/capsuleCast/boxCast, Joint, contacts/triggers | [Physics](judasjs/physics.md) |
 | Audio, particles, camera, world.fluidSample | [Effects/view](judasjs/effects-camera.md) |
 | ui, UIDocument, UIElement, onUI | [Runtime UI](judasjs/ui.md) |
+| localization, Unicode layout, catalogs/fonts | [Localization/text](judasjs/localization.md) |
 | scenes, session, script state, safe handles | [Lifetime/state](judasjs/scenes-state.md) |
 | Animation.crossFade/layers, Ragdoll | [Animation/ragdolls](judasjs/animation-ragdolls.md) |
 | entity.character / CharacterMotor | [Character](judasjs/character.md) |
@@ -79,3 +80,7 @@ remains authoritative.
 [profiler.scope / profiler.counter](judasjs/profiling.md) and [integrated profiler controls](PROFILER.md).
 
 - [M57 materials, overrides and scene appearance](judasjs/materials.md)
+
+## M58 Unicode text and localization
+
+[Localization reference](judasjs/localization.md), [text/font integration](M58.md) and [executed localization example](judasjs/examples/localization.js). Current public surface includes M58.

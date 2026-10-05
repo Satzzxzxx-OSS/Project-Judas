@@ -277,7 +277,8 @@ public:
     void FixedScripts(const InputSystem* input,float dt);
     bool RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error);
     void EndScripts(){m_scripts.reset();m_ui.reset();pointerCapture=false;}
-    RuntimeUI& UI(){if(!m_ui)m_ui=std::make_unique<RuntimeUI>(m_assets);return *m_ui;}
+    LocalizationSession& Localization();
+    RuntimeUI& UI(){if(!m_ui)m_ui=std::make_unique<RuntimeUI>(m_assets);m_ui->SetLocalization(&Localization());return *m_ui;}
     const RuntimeUI* UIIfLoaded()const{return m_ui.get();}
     void UpdateUIScripts(InputSystem* input,float dt);
     void DispatchUIEvents(const InputSystem* input,float dt);
@@ -461,6 +462,7 @@ private:
     std::map<EntityId,JointHandle> m_runtimeJoints;
     std::unique_ptr<ScriptSystem> m_scripts;
     std::unique_ptr<RuntimeUI> m_ui;
+    std::unique_ptr<LocalizationSession> m_localization;
     std::map<EntityId,SceneObject> m_scriptDefinitions;
     std::vector<EntityRecord> m_extraEntities; // normal non-dynamic runtime components
     SceneSettings m_settings;

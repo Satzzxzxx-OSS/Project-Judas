@@ -12,6 +12,7 @@ endif()
 
 find_package(SDL2 REQUIRED)
 find_package(glm REQUIRED)
+include(cmake/JudasTextDependencies.cmake)
 
 # GLM is header-only, but the imported target it exports depends on the
 # packaged version: GLM 1.0+ provides `${JUDAS_GLM}` (and
@@ -86,6 +87,8 @@ target_include_directories(judas_materials PUBLIC src)
 target_link_libraries(judas_materials PUBLIC ${JUDAS_GLM} judas_profiler)
 
 add_library(judas_engine STATIC
+    src/TextLayout.cpp
+    src/Localization.cpp
     src/Material.cpp
     src/Environment.cpp
     src/Tangents.cpp
@@ -1121,3 +1124,15 @@ target_link_libraries(judas_material_application_tests PRIVATE judas_engine)
 foreach(target judas_ui_tests judas_lighting_tests judas_interactable_tests)
     target_link_libraries(${target} PRIVATE judas_engine)
 endforeach()
+
+target_link_libraries(judas_engine PUBLIC judas_unicode)
+
+add_executable(judas_text_localization_tests tests/TextLocalizationTests.cpp)
+target_link_libraries(judas_text_localization_tests PRIVATE judas_engine)
+target_compile_options(judas_text_localization_tests PRIVATE -Wall -Wextra)
+add_executable(judas_text_render_tests tests/TextRenderTests.cpp)
+target_link_libraries(judas_text_render_tests PRIVATE judas_engine)
+target_compile_options(judas_text_render_tests PRIVATE -Wall -Wextra)
+add_executable(judas_localization_application_tests tests/LocalizationApplicationTests.cpp src/Application.cpp src/TestHarness.cpp src/RuntimeDiagnostics.cpp src/RuntimeOptions.cpp)
+target_link_libraries(judas_localization_application_tests PRIVATE judas_engine)
+target_compile_options(judas_localization_application_tests PRIVATE -Wall -Wextra)

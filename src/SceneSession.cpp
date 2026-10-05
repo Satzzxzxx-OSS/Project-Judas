@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <filesystem>
 
-SceneSession::SceneSession(const Project& project,const std::string& current):m_project(project) {
+SceneSession::SceneSession(const Project& project,const std::string& current):m_project(project),m_localization(project.Settings().localization) {
     namespace fs=std::filesystem;
     m_current=project.MakeRelative(current);
     if(!project.IsLoaded())return;
@@ -50,6 +50,7 @@ bool SceneSession::Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& p
     if(!LoadSceneFromFile(m_project.Resolve(requested),scene,error))return false;
     auto next=std::make_unique<RuntimeWorld>();
     next->legacyGameplay=m_project.Settings().legacyGameplay;
+    next->SetSceneControl(world->SceneControl());
     if(!next->Build(scene,&resources,error,&m_project.Settings().classification, &m_project.Settings().navigation))return false;
     // Validate ordinary player/session construction before ending the old scene.
     GameSession validation;

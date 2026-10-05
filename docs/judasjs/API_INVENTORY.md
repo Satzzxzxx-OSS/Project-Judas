@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M57 review of the registered virtual module based on M56 checkpoint `a428d98f3e57a7bc087f165f0d135368f3b4ffab`.
+M58 review of the registered virtual module based on M57 checkpoint `ba16c2c52c60194a95ff161d55b93ff874863b77`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -139,10 +139,14 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `UIDocument.visible` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.direction` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.enabled` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.font` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.handle` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.text` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.textAlignment` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `UIElement.textKey` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.texture` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.value` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.visible` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
@@ -162,6 +166,15 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `liquid.sample` | `liquidSample` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `liquid.samplePresented` | `liquidPresentedSample` | [declaration](../judas.d.ts) | [reference](liquid.md) |
 | `liquid.submerged` | `liquidSubmerged` | [declaration](../judas.d.ts) | [reference](liquid.md) |
+| `localization` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.available` | `localeInfo` | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.direction` | `localeInfo` | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.format` | `localeFormat` | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.locale` | `localeInfo` | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.number` | `localeNumber` | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.reload` | `localeReload` | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.revision` | `localeInfo` | [declaration](../judas.d.ts) | [reference](localization.md) |
+| `localization.setLocale` | `localeChoose` | [declaration](../judas.d.ts) | [reference](localization.md) |
 | `navigation` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `navigation.areas` | `navAreas` | [declaration](../judas.d.ts) | [reference](navigation.md) |
 | `navigation.errors` | `navErrors` | [declaration](../judas.d.ts) | [reference](navigation.md) |

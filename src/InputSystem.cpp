@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <locale>
 #include <set>
 
 namespace {
@@ -28,11 +29,11 @@ bool InputMap::Validate(std::string& error)const{
     error.clear();return true;
 }
 std::string InputMap::Serialize()const{
-    std::ostringstream out;out<<std::setprecision(9)<<"1 "<<entries.size()<<' ';
+    std::ostringstream out;out.imbue(std::locale::classic());out<<std::setprecision(9)<<"1 "<<entries.size()<<' ';
     for(const auto& e:entries){out<<std::quoted(e.name)<<' '<<e.axis<<' '<<e.bindings.size()<<' ';for(const auto& b:e.bindings)out<<std::quoted(b.control)<<' '<<b.scale<<' '<<b.deadzone<<' ';}return out.str();
 }
 bool InputMap::Parse(const std::string& text,InputMap& out,std::string& error){
-    std::istringstream in(text);int version=0;std::size_t count=0;InputMap result;
+    std::istringstream in(text);in.imbue(std::locale::classic());int version=0;std::size_t count=0;InputMap result;
     if(!(in>>version>>count)||version!=1||count>10000){error="unsupported/invalid input map";return false;}
     for(std::size_t i=0;i<count;++i){InputEntry e;int axis;std::size_t bindings;if(!(in>>std::quoted(e.name)>>axis>>bindings)||axis<0||axis>1||bindings>10000){error="malformed input entry";return false;}e.axis=axis;
         for(std::size_t b=0;b<bindings;++b){InputBinding value;if(!(in>>std::quoted(value.control)>>value.scale>>value.deadzone)){error="malformed input binding";return false;}e.bindings.push_back(value);}result.entries.push_back(e);}

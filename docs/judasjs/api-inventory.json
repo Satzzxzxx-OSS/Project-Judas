@@ -1,5 +1,5 @@
 {
-  "checkpoint": "a428d98f3e57a7bc087f165f0d135368f3b4ffab",
+  "checkpoint": "ba16c2c52c60194a95ff161d55b93ff874863b77",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -1390,6 +1390,19 @@
       "reference": "docs/judasjs/ui.md"
     },
     {
+      "symbol": "UIElement.direction",
+      "kinds": [
+        "get",
+        "set"
+      ],
+      "native": [
+        "uiGet",
+        "uiSet"
+      ],
+      "type": "docs/judas.d.ts:UIElement.direction",
+      "reference": "docs/judasjs/ui.md"
+    },
+    {
       "symbol": "UIElement.enabled",
       "kinds": [
         "get",
@@ -1400,6 +1413,19 @@
         "uiSet"
       ],
       "type": "docs/judas.d.ts:UIElement.enabled",
+      "reference": "docs/judasjs/ui.md"
+    },
+    {
+      "symbol": "UIElement.font",
+      "kinds": [
+        "get",
+        "set"
+      ],
+      "native": [
+        "uiGet",
+        "uiSet"
+      ],
+      "type": "docs/judas.d.ts:UIElement.font",
       "reference": "docs/judasjs/ui.md"
     },
     {
@@ -1431,6 +1457,32 @@
         "uiSet"
       ],
       "type": "docs/judas.d.ts:UIElement.text",
+      "reference": "docs/judasjs/ui.md"
+    },
+    {
+      "symbol": "UIElement.textAlignment",
+      "kinds": [
+        "get",
+        "set"
+      ],
+      "native": [
+        "uiGet",
+        "uiSet"
+      ],
+      "type": "docs/judas.d.ts:UIElement.textAlignment",
+      "reference": "docs/judasjs/ui.md"
+    },
+    {
+      "symbol": "UIElement.textKey",
+      "kinds": [
+        "get",
+        "set"
+      ],
+      "native": [
+        "uiGet",
+        "uiSet"
+      ],
+      "type": "docs/judas.d.ts:UIElement.textKey",
       "reference": "docs/judasjs/ui.md"
     },
     {
@@ -1641,6 +1693,103 @@
       ],
       "type": "docs/judas.d.ts:liquid.submerged",
       "reference": "docs/judasjs/liquid.md"
+    },
+    {
+      "symbol": "localization",
+      "kinds": [
+        "namespace"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:localization",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.available",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "localeInfo"
+      ],
+      "type": "docs/judas.d.ts:localization.available",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.direction",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "localeInfo"
+      ],
+      "type": "docs/judas.d.ts:localization.direction",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.format",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "localeFormat"
+      ],
+      "type": "docs/judas.d.ts:localization.format",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.locale",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "localeInfo"
+      ],
+      "type": "docs/judas.d.ts:localization.locale",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.number",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "localeNumber"
+      ],
+      "type": "docs/judas.d.ts:localization.number",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.reload",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "localeReload"
+      ],
+      "type": "docs/judas.d.ts:localization.reload",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.revision",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "localeInfo"
+      ],
+      "type": "docs/judas.d.ts:localization.revision",
+      "reference": "docs/judasjs/localization.md"
+    },
+    {
+      "symbol": "localization.setLocale",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "localeChoose"
+      ],
+      "type": "docs/judas.d.ts:localization.setLocale",
+      "reference": "docs/judasjs/localization.md"
     },
     {
       "symbol": "navigation",
@@ -2193,6 +2342,11 @@
     "liquidSurfaceEnabled",
     "liquidTransfer",
     "liquidValid",
+    "localeChoose",
+    "localeFormat",
+    "localeInfo",
+    "localeNumber",
+    "localeReload",
     "log",
     "mass",
     "materialAssign",

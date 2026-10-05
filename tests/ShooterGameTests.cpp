@@ -23,7 +23,9 @@ int main(){std::string error;Project project;Check(project.Load("projects/shoote
  auto load=[&](){game.End();world.Destroy();Scene scene;if(!LoadSceneFromFile(project.StartupScenePath(),scene,error))return false;
   world.legacyGameplay=false;session=std::make_shared<SceneSession>(project,project.StartupScenePath());world.SetSceneControl(session);
   if(!world.Build(scene,&host.Resources(),error,&project.Settings().classification,&project.Settings().navigation)||!game.Begin(world,error))return false;
-  world.UpdateScripts(&window.Input(),1.f/60);host.Resources().WaitForAll();world.UpdateScripts(&window.Input(),1.f/60);return true;};
+  // This headless fixed-step harness never draws/pumps the normal UI frame.
+  // Demand and publish the authored catalogs before inspecting localized HUD strings.
+  world.Localization().Refresh();world.UpdateScripts(&window.Input(),1.f/60);host.Resources().WaitForAll();world.Localization().Refresh();world.UpdateScripts(&window.Input(),1.f/60);return true;};
  auto state=[&](EntityId id=10){for(const auto& x:world.Scripts()->Capture())if(x.entity==id)return x.json;return std::string{};};
  auto step=[&](int count){for(int i=0;i<count;++i){window.Input().BeginFixedStep();if(!world.UI().Paused())StepPlayedWorld(game,window,1.f/60);world.UpdateUIScripts(&window.Input(),1.f/60);world.UpdateScripts(&window.Input(),1.f/60);world.PresentationScripts(&window.Input(),1.f/60,1);window.Input().BeginFrame();}};
  auto press=[&](const char* physical){window.Input().SetPhysical(physical,1);step(1);window.Input().SetPhysical(physical,0);step(1);};
@@ -71,6 +73,6 @@ int main(){std::string error;Project project;Check(project.Load("projects/shoote
  Check(Number(state(),"unique")==12&&Number(state(),"score")==1800,"complete real query/impulse round hits all independently authored targets");
  Check(world.UI().Element(world.UI().Find("range_ui"),"message")->text.find("RANGE CLEARED")!=std::string::npos,"round completion is visible in authored HUD");
  const auto begin=std::chrono::steady_clock::now();step(600);std::printf("M52_FIXED_AVERAGE_MS %.6f bodies=%zu targets=12\n",std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count()/600,world.Physics().AliveBodies().size());
- Check(world.Scripts()->Diagnostics().empty(),"game remains fault-free during repeated authoritative steps");game.End();world.EndScripts();world.Destroy();Check(!world.Scripts(),"Stop clears VM, bodies and target state");host.Shutdown();
+ Check(world.Scripts()->Diagnostics().empty(),"game remains fault-free during repeated authoritative steps");game.End();world.EndScripts();world.Destroy();Check(!world.Scripts(),"Stop clears VM, bodies and target state");world.SetSceneControl(nullptr);session.reset();host.Shutdown();
  std::printf("SUMMARY %d checks %d failures\n",checks,failures);return failures?1:0;
 }

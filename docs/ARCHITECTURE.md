@@ -6,9 +6,16 @@ someone with no prior context on this project. It is updated in place as
 milestones land, rather than kept as a per-milestone snapshot — see
 "Milestone history" below for how to recover an earlier milestone exactly.
 
-## What exists right now (completed through M43)
+## Current reference and historical capability overview
 
-Current checkpoint: `6f199eff9378270d7291a9dd8605fcfde5760569` (M43).
+Accepted baseline: M57 (`ba16c2c52c60194a95ff161d55b93ff874863b77`).
+The [M58 Unicode/localization candidate](M58.md) extends the shared runtime text
+path; operator acceptance is pending. Later milestone documents and source take
+precedence over the historical exclusions below.
+
+### Historical overview — completed through M43
+
+Checkpoint at this historical overview: `6f199eff9378270d7291a9dd8605fcfde5760569` (M43).
 FTFT stabilization is complete within its documented approximations. The M33–M43
 sections below describe completed capabilities. Earlier milestone accounts retain
 their original evidence and exclusions; those exclusions are not current limits
@@ -5656,14 +5663,14 @@ deferred, not oversights:
   mandate). A pilot flying at high speed near solid geometry should expect
   a hard collision to cost more speed than gentle Coulomb friction alone
   would suggest.
-- **Milestone 13: the UI font atlas is a fixed 512x512 bake at one pixel
+- **HISTORICAL / superseded by M58 candidate: Milestone 13 UI font atlas is a fixed 512x512 bake at one pixel
   height (48px), covering only printable ASCII (32-126).** Sufficient for
   this milestone's HUD telemetry and menu labels; a future UI needing
   Unicode, multiple font weights/styles, or much larger on-screen text
   would need either a bigger/multiple atlas or `stb_truetype`'s more
   configurable packing API (`stbtt_PackBegin`/`PackFontRange`) instead of
   the simple `stbtt_BakeFontBitmap` call used here.
-- **Milestone 13: `DrawUIText` draws exactly one line; there is no
+- **HISTORICAL / superseded by M41/M58 candidate: Milestone 13 `DrawUIText` draws exactly one line; there is no
   wrapping, multi-line layout, or text alignment beyond what callers
   compute themselves** (`HUD`/`UIMenuScreen` each call it once per line at
   a manually computed Y offset). A future UI screen with paragraph-length

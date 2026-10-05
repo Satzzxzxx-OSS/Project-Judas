@@ -5,6 +5,10 @@ Current public JavaScript signatures, examples and lifetime rules: [JudasJS refe
 Judas owns layout/rendering/input. Project `.judasui` assets own the hierarchy;
 JavaScript owns menus, HUD meaning and reactions. No browser or gameplay UI classes.
 
+**M58 candidate update:** [Unicode text / localization](M58.md) and the
+[current JS contract](judasjs/localization.md) supersede the original ASCII text
+limitations below. Runtime-label source editing now includes a shaped-text preview.
+
 ## Authoring
 
 In Edit mode, Asset Browser **Create UI document** makes a tracked asset. Select it
@@ -12,7 +16,8 @@ and expand **Edit UI document**: add panels/children, set stable IDs and parents
 choose canvas/panel/text/image/button/slider/toggle, layout, colours, text, font/image
 asset IDs and values. **Save UI source** commits the source edit explicitly;
 **Reload UI source** discards in-panel edits. Parents must precede children. Delete
-removes a subtree. Source editing is a basic property panel, without undo/preview.
+removes a subtree. Historical M41 source editing was a basic property panel without undo/preview;
+the M58 candidate adds a rendered text preview (not a general WYSIWYG editor).
 
 Add **Runtime UI** to a scene entity, select its asset, assign a unique runtime
 name and enabled state. Source is copied into the world's runtime instance.
@@ -39,11 +44,14 @@ separate from layout pivot alignment.
 Renderer owns all GL. UI is a final screen-space alpha-blended pass, in document
 load order then authored hierarchy order. Rectangular scissor intersections clip
 children of clipped containers; rendering and pointer hits use the same clip.
-Images use normal ResourceManager textures with fit/stretch. Text uses existing
+Images use normal ResourceManager textures with fit/stretch.
+
+**HISTORICAL M41 text path, superseded by M58 candidate:** Text used the existing
 TrueType loader/ASCII atlas, wrapping at word boundaries and alignment. No Unicode,
 rich text, scrollbars or advanced shaping. Font atlases are cached by Renderer
 (maximum 64 paths, destroyed at renderer shutdown); image references are released
 on document unload/owner destruction and after texture replacement.
+Current font/layout resource and cache lifetimes are specified in [M58](M58.md).
 
 ## Script API
 

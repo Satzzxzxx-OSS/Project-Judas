@@ -40,6 +40,9 @@ public:
     int Run(int argc, char** argv);
 
 private:
+    std::unique_ptr<LocalizationSession> m_previewLocalization;
+    std::string m_previewLocalizationKey;
+
     bool StartPlay(std::string& outError);
     void StopPlay();
     void HandleRequests(EditorRequests& requests);

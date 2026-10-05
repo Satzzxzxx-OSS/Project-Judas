@@ -483,7 +483,9 @@ constexpr int kShadowMapResolution = 1024;
 // solid-color panel via the white fallback texture, a font atlas glyph's
 // own rect for text) — see Renderer::DrawUIRect/DrawUIText.
 const char* kUIVertexShaderSource = R"(#version 330 core
-layout(location = 0) in vec2 aUnit;  // 0..1 unit quad, top-left origin
+layout(location = 0) in vec2 aUnit;  // unit quad, or streamed pixel position
+layout(location = 1) in vec2 aUV;
+uniform int uTextVertices;
 
 uniform vec2 uScreenSize;
 uniform vec2 uPosition;  // pixels, top-left of this rect
@@ -492,8 +494,8 @@ uniform vec2 uSize;      // pixels
 out vec2 vUnit;
 
 void main() {
-    vUnit = aUnit;
-    vec2 pixelPos = uPosition + aUnit * uSize;
+    vUnit = uTextVertices != 0 ? aUV : aUnit;
+    vec2 pixelPos = uTextVertices != 0 ? aUnit : uPosition + aUnit * uSize;
     // Pixel space is top-down (y grows downward, matching uPosition's own
     // "top-left corner" convention); NDC y grows upward, so it's flipped
     // here rather than by pre-flipping any texture data — see
@@ -728,6 +730,7 @@ bool Renderer::Init() {
         return false;
     }
 
+    m_uiUTextVertices=glGetUniformLocation(m_uiShaderProgram,"uTextVertices");
     m_uiUScreenSize = glGetUniformLocation(m_uiShaderProgram, "uScreenSize");
     m_uiUPosition = glGetUniformLocation(m_uiShaderProgram, "uPosition");
     m_uiUSize = glGetUniformLocation(m_uiShaderProgram, "uSize");
@@ -757,6 +760,12 @@ bool Renderer::Init() {
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glGenVertexArrays(1,&m_textVao);glBindVertexArray(m_textVao);
+    glGenBuffers(1,&m_textVbo);glBindBuffer(GL_ARRAY_BUFFER,m_textVbo);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,4*sizeof(float),reinterpret_cast<void*>(2*sizeof(float)));glEnableVertexAttribArray(1);
+    glBindVertexArray(0);glBindBuffer(GL_ARRAY_BUFFER,0);
 
     // --- Milestone 30: debug-line shader + streamed VBO ---
     GLuint debugVertexShader = 0;
@@ -818,6 +827,7 @@ void Renderer::TraceResourceOperation(ResourceTracePoint point, unsigned int han
 }
 
 void Renderer::Shutdown() {
+    ResetProjectText();
     for(auto& q:m_profileQueries){if(q.begin)glDeleteQueries(1,&q.begin);if(q.end)glDeleteQueries(1,&q.end);q={};}
     m_profileQueriesReady=false;
     PerformanceProfiler::Get().GPUAvailability(false,"Renderer/context shut down");
@@ -862,6 +872,8 @@ void Renderer::Shutdown() {
         m_shadowShaderProgram = 0;
     }
 
+    if(m_textVbo){glDeleteBuffers(1,&m_textVbo);m_textVbo=0;}
+    if(m_textVao){glDeleteVertexArrays(1,&m_textVao);m_textVao=0;}
     if (m_uiQuadVbo) {
         glDeleteBuffers(1, &m_uiQuadVbo);
         m_uiQuadVbo = 0;
@@ -878,7 +890,7 @@ void Renderer::Shutdown() {
     if (m_debugVao) { glDeleteVertexArrays(1, &m_debugVao); m_debugVao = 0; }
     if (m_debugShaderProgram) { glDeleteProgram(m_debugShaderProgram); m_debugShaderProgram = 0; }
     m_transientSurface={};
-    m_fontLoaded = false; m_uiFonts.clear();m_defaultUIFont.clear();
+    m_fontLoaded=false;m_uiFonts.clear();m_defaultUIFont.clear();m_defaultTextFont.reset();m_textFonts.clear();
     TraceResourceOperation(ResourceTracePoint::RendererShutdownEnd);
 }
 
@@ -1349,27 +1361,10 @@ void Renderer::EndFrame() {
     // behavior this milestone needs.
 }
 
-bool Renderer::LoadFont(const char* path, float pixelHeight, std::string& outError) {
-    FontAtlasData atlasData;
-    auto it=m_uiFonts.find(path);
-    if(it==m_uiFonts.end()){
-        if(m_uiFonts.size()>=64){outError="UI font cache capacity (64) reached";return false;}
-        if (!LoadFontAtlas(path, pixelHeight, atlasData, outError)) return false;
-        auto texture=CreateTexture(atlasData.atlasTexture);
-        atlasData.atlasTexture.pixels.clear();atlasData.atlasTexture.pixels.shrink_to_fit();
-        it=m_uiFonts.emplace(path,UIFont{atlasData,texture}).first;
-        if(m_defaultUIFont.empty())m_defaultUIFont=path;
-    }
-    atlasData=it->second.data;
-    m_fontAtlasTexture = it->second.texture;
-    for (int i = 0; i < kFontGlyphCount; ++i) {
-        m_fontGlyphs[i] = atlasData.glyphs[i];
-    }
-    m_fontPixelHeight = atlasData.pixelHeight;
-    m_fontAscent = atlasData.ascent;
-    m_fontLineHeight = atlasData.lineHeight;
-    m_fontLoaded = true;
-    return true;
+bool Renderer::LoadFont(const char* path,float pixels,std::string& error){
+    auto it=m_uiFonts.find(path);if(it==m_uiFonts.end()){std::shared_ptr<const TextFont> data;if(!LoadTextFont(path,data,error))return false;if(m_uiFonts.size()>=64){error="font compatibility cache full";return false;}it=m_uiFonts.emplace(path,data).first;}
+    if(!m_defaultTextFont){m_defaultTextFont=it->second;m_defaultUIFont=path;}
+    m_textFonts={it->second};m_fontPixelHeight=pixels;m_fontLoaded=true;return true;
 }
 
 void Renderer::BeginUIFrame(int windowWidth, int windowHeight) {
@@ -1383,6 +1378,7 @@ void Renderer::BeginUIFrame(int windowWidth, int windowHeight) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_uiShaderProgram);
     glUniform2f(m_uiUScreenSize, m_uiScreenSize.x, m_uiScreenSize.y);
+    glUniform1i(m_uiUTextVertices,0);
     glBindVertexArray(m_uiQuadVao);
 }
 
@@ -1397,56 +1393,9 @@ void Renderer::DrawUIRect(const glm::vec2& position, const glm::vec2& size,
     glDrawArrays(GL_TRIANGLES, 0, 6);++m_uiDrawCalls;
 }
 
-void Renderer::DrawUIText(const std::string& text, const glm::vec2& position, float scale,
-                           const glm::vec4& colorRgba) {
-    if (!m_fontLoaded) return;
-
-    glUniform4f(m_uiUColor, colorRgba.r, colorRgba.g, colorRgba.b, colorRgba.a);
-    glBindTexture(GL_TEXTURE_2D, ResolveTexture(m_fontAtlasTexture));
-
-    const float baselineY = position.y + m_fontAscent * scale;
-    float penX = position.x;
-    for (const char c : text) {
-        const int index = static_cast<int>(c) - kFontFirstChar;
-        if (index < 0 || index >= kFontGlyphCount) {
-            // Unsupported/control character: advance by a rough space width
-            // (this font's own space-glyph advance) rather than drawing
-            // nothing at zero width, so e.g. a stray tab doesn't overlap
-            // the next character. Sufficient for M13's plain ASCII HUD/menu
-            // text — no Unicode/fallback-glyph support is being built here.
-            penX += m_fontGlyphs[0].advanceX * scale;
-            continue;
-        }
-        const FontGlyph& glyph = m_fontGlyphs[index];
-        if (glyph.width > 0.0f && glyph.height > 0.0f) {
-            const glm::vec2 glyphPosition(penX + glyph.offsetX * scale,
-                                            baselineY + glyph.offsetY * scale);
-            const glm::vec2 glyphSize(glyph.width * scale, glyph.height * scale);
-            glUniform2f(m_uiUPosition, glyphPosition.x, glyphPosition.y);
-            glUniform2f(m_uiUSize, glyphSize.x, glyphSize.y);
-            glUniform2f(m_uiUUVOffset, glyph.u0, glyph.v0);
-            glUniform2f(m_uiUUVScale, glyph.u1 - glyph.u0, glyph.v1 - glyph.v0);
-            glDrawArrays(GL_TRIANGLES, 0, 6);++m_uiDrawCalls;
-        }
-        penX += glyph.advanceX * scale;
-    }
-}
-
-glm::vec2 Renderer::MeasureUIText(const std::string& text, float scale) const {
-    if (!m_fontLoaded) return glm::vec2(0.0f);
-    float width = 0.0f;
-    for (const char c : text) {
-        const int index = static_cast<int>(c) - kFontFirstChar;
-        width += (index >= 0 && index < kFontGlyphCount ? m_fontGlyphs[index].advanceX
-                                                          : m_fontGlyphs[0].advanceX) *
-                 scale;
-    }
-    return glm::vec2(width, m_fontLineHeight * scale);
-}
-
-float Renderer::GetUITextLineHeight(float scale) const {
-    return m_fontLoaded ? m_fontLineHeight * scale : 0.0f;
-}
+void Renderer::DrawUIText(const std::string& text,const glm::vec2& position,float scale,const glm::vec4& tint){TextOptions o;o.pixels=m_fontPixelHeight*scale;DrawTextLayout(*LayoutText(text,o),position,tint);}
+glm::vec2 Renderer::MeasureUIText(const std::string& text,float scale) const{TextOptions o;o.pixels=m_fontPixelHeight*scale;auto l=LayoutText(text,o);return {l->width,l->height};}
+float Renderer::GetUITextLineHeight(float scale)const{return MeasureUIText("Mg",scale).y;}
 
 void Renderer::EndUIFrame() {
     EndProfilePass(m_profileUI);m_profileUI=0;
@@ -1661,3 +1610,5 @@ void Renderer::PollProfileGPU(){
 }
 
 #include "RendererMaterials.inl"
+
+#include "RendererText.inl"

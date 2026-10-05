@@ -29,6 +29,7 @@ bool UIDocument::Validate(std::string& error)const{
         if(i==0){if(!e.parent.empty()||e.kind!=UIKind::Canvas)return fail("UI needs one root canvas");}
         else if(!ids.count(e.parent)||e.kind==UIKind::Canvas)return fail("UI parents must precede children, with exactly one canvas");
         ids.insert(e.id);
+        if(!ValidTextUTF8(e.id,error)||!ValidTextUTF8(e.parent,error)||!ValidTextUTF8(e.text,error)||!ValidTextUTF8(e.textKey,error)||e.textKey.find_first_of("\r\n\0",0,3)!=std::string::npos||e.textKey.size()>128||int(e.direction)<0||int(e.direction)>2||e.textLogicalAlign<-1||e.textLogicalAlign>4)return fail("invalid UTF-8/text direction/alignment");
         if(int(e.kind)<0||int(e.kind)>6||int(e.flow)<0||int(e.flow)>2||e.text.size()>16384)return fail("invalid UI kind, flow or text size");
         for(auto v:{e.anchorMin,e.anchorMax,e.offset,e.size,e.relativeSize,e.align,e.textAlign})if(!Finite(v.x)||!Finite(v.y))return fail("nonfinite UI layout");
         for(auto v:{e.margin,e.padding,e.background,e.color})for(int c=0;c<4;++c)if(!Finite(v[c]))return fail("nonfinite UI colour/insets");
@@ -37,20 +38,21 @@ bool UIDocument::Validate(std::string& error)const{
         if((!e.texture.empty()&&!IsValidAssetId(e.texture))||(!e.font.empty()&&!IsValidAssetId(e.font)))return fail("invalid UI asset ID");
     }error.clear();return true;
 }
-std::string SerializeUIDocument(const UIDocument& d){std::ostringstream s;s<<std::setprecision(9)<<"JudasUI 1\n"<<d.reference.x<<' '<<d.reference.y<<' '<<d.visible<<' '<<d.enabled<<' '<<d.modal<<' '<<d.elements.size()<<'\n';
+std::string SerializeUIDocument(const UIDocument& d){bool modern=std::any_of(d.elements.begin(),d.elements.end(),[](const auto& e){return !e.textKey.empty()||e.direction!=TextDirection::Auto||e.textLogicalAlign!=-1||e.mirrorRow;});std::ostringstream s;s.imbue(std::locale::classic());s<<std::setprecision(9)<<"JudasUI "<<(modern?2:1)<<"\n"<<d.reference.x<<' '<<d.reference.y<<' '<<d.visible<<' '<<d.enabled<<' '<<d.modal<<' '<<d.elements.size()<<'\n';
     for(const auto& e:d.elements){s<<std::quoted(e.id)<<' '<<std::quoted(e.parent)<<' '<<int(e.kind)<<' '<<int(e.flow)<<' '<<e.visible<<' '<<e.enabled<<' '<<e.clip<<' '<<e.wrap<<' '<<e.fit<<' ';
         for(auto v:{e.anchorMin,e.anchorMax,e.offset,e.size,e.relativeSize,e.align,e.textAlign})s<<v.x<<' '<<v.y<<' ';
         for(auto v:{e.margin,e.padding,e.background,e.color})for(int c=0;c<4;++c)s<<v[c]<<' ';
-        s<<e.spacing<<' '<<e.fontSize<<' '<<e.value<<' '<<e.minimum<<' '<<e.maximum<<' '<<std::quoted(e.text)<<' '<<std::quoted(e.texture)<<' '<<std::quoted(e.font)<<'\n';}return s.str();}
+        s<<e.spacing<<' '<<e.fontSize<<' '<<e.value<<' '<<e.minimum<<' '<<e.maximum<<' '<<std::quoted(e.text)<<' '<<std::quoted(e.texture)<<' '<<std::quoted(e.font);if(modern)s<<' '<<std::quoted(e.textKey)<<' '<<int(e.direction)<<' '<<e.textLogicalAlign<<' '<<e.mirrorRow;s<<'\n';}return s.str();}
 bool ParseUIDocument(const std::string& text,UIDocument& out,std::string& error){
-    if(text.size()>4*1024*1024){error="UI document too large";return false;}
-    std::istringstream s(text);std::string magic;int version;size_t count=0;UIDocument d;
+    if(text.size()>4*1024*1024){error="UI document too large";return false;}if(!ValidTextUTF8(text,error)){error="UI document UTF-8: "+error;return false;}
+    std::istringstream s(text);s.imbue(std::locale::classic());std::string magic;int version;size_t count=0;UIDocument d;
     auto fail=[&](){error="malformed or unsupported UI document";return false;};
-    if(!(s>>magic>>version)||magic!="JudasUI"||version!=1||!(s>>d.reference.x>>d.reference.y>>d.visible>>d.enabled>>d.modal>>count)||count>2048)return fail();
+    if(!(s>>magic>>version)||magic!="JudasUI"||(version!=1&&version!=2)||!(s>>d.reference.x>>d.reference.y>>d.visible>>d.enabled>>d.modal>>count)||count>2048)return fail();
     for(size_t i=0;i<count;++i){UIElement e;int kind,flow;if(!(s>>std::quoted(e.id)>>std::quoted(e.parent)>>kind>>flow>>e.visible>>e.enabled>>e.clip>>e.wrap>>e.fit))return fail();e.kind=UIKind(kind);e.flow=UIFlow(flow);
         for(auto* v:{&e.anchorMin,&e.anchorMax,&e.offset,&e.size,&e.relativeSize,&e.align,&e.textAlign})if(!(s>>v->x>>v->y))return fail();
         for(auto* v:{&e.margin,&e.padding,&e.background,&e.color})for(int c=0;c<4;++c)if(!(s>>(*v)[c]))return fail();
         if(!(s>>e.spacing>>e.fontSize>>e.value>>e.minimum>>e.maximum>>std::quoted(e.text)>>std::quoted(e.texture)>>std::quoted(e.font)))return fail();
+        if(version==2){int dir=0;if(!(s>>std::quoted(e.textKey)>>dir>>e.textLogicalAlign>>e.mirrorRow))return fail();e.direction=TextDirection(dir);}
         d.elements.push_back(e);}
     s>>std::ws;if(!s.eof()||!d.Validate(error))return false;out=std::move(d);return true;
 }
@@ -62,8 +64,8 @@ std::uint32_t RuntimeUI::Load(const std::string& asset,const std::string& name,s
     if(!r||r->missing||r->type!=AssetType::UI){error="missing UI document asset "+asset;return 0;}if(!LoadUIDocument(r->path,d,error)||!ValidateUIAssets(d,*a,error))return 0;return Add(d,name,owner,error,slot);}
 std::uint32_t RuntimeUI::Add(const UIDocument& d,const std::string& name,std::uint64_t owner,std::string& error,std::uint64_t slot){if(name.empty()||Find(name)||!d.Validate(error)){if(error.empty())error="duplicate/empty UI document name";return 0;}if(!m_next){error="UI handle space exhausted";return 0;}
     auto id=m_next++;m_documents.emplace(id,Instance{d,name,{},{},owner,slot,{},{}});return id;}
-bool RuntimeUI::Unload(std::uint32_t h){auto it=m_documents.find(h);if(it==m_documents.end())return false;const auto name=it->second.name;if(m_resources)for(const auto& ref:it->second.refs)m_resources->ReleaseRef(ref);m_documents.erase(it);m_events.erase(std::remove_if(m_events.begin(),m_events.end(),[&](const auto& e){return e.document==name;}),m_events.end());return true;}
-void RuntimeUI::Clear(){while(!m_documents.empty())Unload(m_documents.begin()->first);m_events.clear();m_quit=false;}
+bool RuntimeUI::Unload(std::uint32_t h){auto it=m_documents.find(h);if(it==m_documents.end())return false;const auto name=it->second.name;for(auto i=m_localizedText.begin();i!=m_localizedText.end();)if(i->first.first==h)i=m_localizedText.erase(i);else ++i;if(m_resources)for(const auto& ref:it->second.refs)m_resources->ReleaseRef(ref);m_documents.erase(it);m_events.erase(std::remove_if(m_events.begin(),m_events.end(),[&](const auto& e){return e.document==name;}),m_events.end());return true;}
+void RuntimeUI::Clear(){while(!m_documents.empty())Unload(m_documents.begin()->first);m_events.clear();m_localizedText.clear();m_quit=false;}
 void RuntimeUI::RemoveOwner(std::uint64_t id){std::vector<uint32_t> remove;for(auto& p:m_documents)if(p.second.owner==id)remove.push_back(p.first);for(auto h:remove)Unload(h);}
 std::uint32_t RuntimeUI::Find(const std::string& n)const{for(const auto& p:m_documents)if(p.second.name==n)return p.first;return 0;}
 UIDocument* RuntimeUI::Document(uint32_t h){auto it=m_documents.find(h);return it==m_documents.end()?nullptr:&it->second.doc;}
@@ -81,6 +83,7 @@ void RuntimeUI::Layout(int w,int h){
                 l.rect.position=content.position+e.anchorMin*content.size+(e.offset+glm::vec2(e.margin.x,e.margin.y))*scale-e.align*l.rect.size;
                 if(pe->flow!=UIFlow::Free){int axis=pe->flow==UIFlow::Horizontal?0:1;l.rect.position[axis]=content.position[axis]+cursor[e.parent]+(e.offset[axis]+e.margin[axis])*scale;if(e.visible)cursor[e.parent]+=l.rect.size[axis]+(pe->spacing+e.margin[axis]+e.margin[axis+2])*scale;}
                 l.clip=pe->clip?Intersect(parent.clip,parent.rect):parent.clip;l.visible=parent.visible&&e.visible;l.enabled=parent.enabled&&e.enabled;}
+            if(e.parent.size()){auto* pe=ById(d,e.parent);if(pe->flow==UIFlow::Horizontal&&pe->mirrorRow&&m_localization&&m_localization->RTL()){const auto& parent=in.layout.at(e.parent);float left=parent.rect.position.x+pe->padding.x*scale;float right=parent.rect.position.x+parent.rect.size.x-pe->padding.z*scale;l.rect.position.x=right-(l.rect.position.x-left)-l.rect.size.x;}}
             in.layout[e.id]=l;++m_stats.elements;}}
     m_stats.updateUs=Us(start);
 }
@@ -116,20 +119,23 @@ std::vector<UIEvent> RuntimeUI::TakeEvents(){auto events=std::move(m_events);m_e
 void RuntimeUI::Draw(Renderer& r,int w,int h){
     JUDAS_PROFILE_SCOPE("Runtime UI drawing");auto start=Clock::now();Layout(w,h);m_stats.draws=0;unsigned before=r.UIDrawCalls();
     for(auto& p:m_documents){auto& in=p.second;
-        if(m_resources){for(auto it=in.refs.begin();it!=in.refs.end();)if(std::none_of(in.doc.elements.begin(),in.doc.elements.end(),[&](const auto& e){return e.texture==*it;})){m_resources->ReleaseRef(*it);it=in.refs.erase(it);}else ++it;}
+        if(m_resources){for(auto it=in.refs.begin();it!=in.refs.end();)if(std::none_of(in.doc.elements.begin(),in.doc.elements.end(),[&](const auto& e){return e.texture==*it||e.font==*it;})){m_resources->ReleaseRef(*it);it=in.refs.erase(it);}else ++it;}
         float scale=std::min(w/in.doc.reference.x,h/in.doc.reference.y);for(auto& e:in.doc.elements){const auto& l=in.layout.at(e.id);if(!l.visible||l.clip.size.x<=0||l.clip.size.y<=0)continue;r.SetUIClip(l.clip.position,l.clip.size);
             auto bg=e.background;if(!l.enabled)bg.a*=.5f;if(in.focus==e.id&&Control(e.kind))bg=glm::vec4(glm::min(glm::vec3(bg)+glm::vec3(.15f),glm::vec3(1)),bg.a);
             if(bg.a>0){r.DrawUIRect(l.rect.position,l.rect.size,bg);++m_stats.draws;}
             if(e.kind==UIKind::Slider){auto size=l.rect.size;size.x*= (e.value-e.minimum)/(e.maximum-e.minimum);r.DrawUIRect(l.rect.position,size,e.color);++m_stats.draws;}
             if(e.kind==UIKind::Toggle&&e.value>.5f){r.DrawUIRect(l.rect.position+glm::vec2(5)*scale,glm::vec2(20)*scale,e.color);++m_stats.draws;}
             if(e.kind==UIKind::Image&&!e.texture.empty()&&m_resources){if(std::find(in.refs.begin(),in.refs.end(),e.texture)==in.refs.end()){m_resources->AddRef(e.texture);in.refs.push_back(e.texture);}m_resources->RequestTexture(e.texture);auto t=m_resources->TryGetTexture(e.texture);if(t.IsValid()){r.DrawUIImage(l.rect.position,l.rect.size,t,e.color,e.fit);++m_stats.draws;}}
-            if(!e.text.empty()){
-                std::string path;if(!e.font.empty()&&m_resources){auto* a=m_resources->Assets()->Find(e.font);if(a&&!a->missing&&a->type==AssetType::Font)path=a->path;}
-                std::string error;r.SelectUIFont(path,error);float fontScale=e.fontSize*scale/48.f;
-                std::vector<std::string> lines;std::istringstream words(e.text);std::string word,line;
-                while(std::getline(words,word,'\n')){if(!e.wrap){lines.push_back(word);continue;}std::istringstream ws(word);std::string token;line.clear();while(ws>>token){auto candidate=line.empty()?token:line+" "+token;if(!line.empty()&&r.MeasureUIText(candidate,fontScale).x>l.rect.size.x){lines.push_back(line);line=token;}else line=candidate;}lines.push_back(line);}
-                float y=l.rect.position.y+e.textAlign.y*std::max(0.f,l.rect.size.y-float(lines.size())*r.GetUITextLineHeight(fontScale));
-                for(auto& text:lines){auto size=r.MeasureUIText(text,fontScale);r.DrawUIText(text,{l.rect.position.x+e.textAlign.x*std::max(0.f,l.rect.size.x-size.x),y},fontScale,e.color);y+=r.GetUITextLineHeight(fontScale);++m_stats.draws;}
+            std::string text=e.text;if(!e.textKey.empty()&&m_localization){m_localization->Refresh();auto& cached=m_localizedText[{p.first,e.id}];std::string identity=e.textKey+":"+std::to_string(m_localization->Revision());if(cached.second.empty()||cached.first!=m_localization->Revision()||cached.second.substr(0,identity.size())!=identity){std::string error;auto value=m_localization->Format(e.textKey,{},error);cached={m_localization->Revision(),identity+'\0'+value};}auto nul=cached.second.find('\0');text=cached.second.substr(nul+1);}
+            if(!text.empty()){
+                std::vector<std::shared_ptr<const TextFont>> fonts;
+                if(!e.font.empty()&&m_resources){if(std::find(in.refs.begin(),in.refs.end(),e.font)==in.refs.end()){m_resources->AddRef(e.font);in.refs.push_back(e.font);}m_resources->RequestFont(e.font);if(auto f=m_resources->TryGetFont(e.font))fonts.push_back(f);}
+                if(fonts.empty())if(auto f=r.DefaultTextFont())fonts.push_back(f);
+                if(m_localization){auto fallback=m_localization->Fonts();fonts.insert(fonts.end(),fallback.begin(),fallback.end());}r.SelectTextFonts(std::move(fonts));
+                TextOptions options;options.pixels=e.fontSize*scale;options.width=l.rect.size.x;options.wrap=e.wrap;options.direction=e.direction;options.locale=m_localization?m_localization->Locale():"en";
+                if(options.direction==TextDirection::Auto){auto* parent=ById(in.doc,e.parent);while(parent){if(parent->direction!=TextDirection::Auto){options.direction=parent->direction;break;}parent=ById(in.doc,parent->parent);}}
+                options.alignment=e.textLogicalAlign>=0?TextAlignment(e.textLogicalAlign):e.textAlign.x>=.75f?TextAlignment::Right:e.textAlign.x>=.25f?TextAlignment::Centre:TextAlignment::Left;
+                auto layout=r.LayoutText(text,options);glm::vec2 position=l.rect.position;position.y+=e.textAlign.y*std::max(0.f,l.rect.size.y-layout->height);r.DrawTextLayout(*layout,position,e.color);
             }
         }}r.ClearUIClip();std::string error;r.SelectUIFont("",error);m_stats.draws=r.UIDrawCalls()-before;m_stats.renderUs=Us(start);
 }

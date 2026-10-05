@@ -9,6 +9,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "FontLoader.h"
+#include "TextLayout.h"
 #include "Light.h"
 #include "MeshData.h"
 #include "DebugDraw.h"
@@ -325,6 +326,14 @@ public:
     void ClearUIClip();
     void DrawUIImage(glm::vec2 position,glm::vec2 size,TextureHandle texture,glm::vec4 tint,bool fit);
     bool SelectUIFont(const std::string& path,std::string& error);
+    std::shared_ptr<const TextFont> DefaultTextFont()const{return m_defaultTextFont;}
+    void SelectTextFonts(std::vector<std::shared_ptr<const TextFont>> fonts);
+    std::shared_ptr<const TextLayout> LayoutText(const std::string&,const TextOptions&) const;
+    void DrawTextLayout(const TextLayout&,glm::vec2 position,glm::vec4 tint);
+    void ResetProjectText();
+    TextCacheStats TextStats()const{return m_textEngine.Stats();}
+    size_t TextAtlasBytes()const{return m_textPages.size()*1024*1024*4;}
+    unsigned TextAtlasGeneration()const{return m_textAtlasGeneration;}
     unsigned UIDrawCalls()const{return m_uiDrawCalls;}
 
     // Reads back the current color buffer as tightly-packed 8-bit RGB rows,
@@ -480,6 +489,8 @@ private:
 
     // --- Milestone 13: UI overlay state ---
     GLuint m_uiShaderProgram = 0;
+    GLuint m_textVao=0,m_textVbo=0;
+    GLint m_uiUTextVertices=-1;
     GLuint m_uiQuadVao = 0;
     GLuint m_uiQuadVbo = 0;
     GLint m_uiUScreenSize = -1;
@@ -499,15 +510,18 @@ private:
     GLint m_debugUViewProjection = -1;
     RenderStats m_stats;
 
-    struct UIFont {FontAtlasData data;TextureHandle texture;};
-    std::map<std::string,UIFont> m_uiFonts;
+    mutable TextEngine m_textEngine;
+    std::map<std::string,std::shared_ptr<const TextFont>> m_uiFonts;
     std::string m_defaultUIFont;
-    TextureHandle m_fontAtlasTexture;
-    FontGlyph m_fontGlyphs[kFontGlyphCount];
-    float m_fontPixelHeight = 0.0f;
-    float m_fontAscent = 0.0f;
-    float m_fontLineHeight = 0.0f;
-    bool m_fontLoaded = false;
+    std::vector<std::shared_ptr<const TextFont>> m_textFonts;
+    std::shared_ptr<const TextFont> m_defaultTextFont;
+    struct TextPage {TextureHandle texture;int x=1,y=1,row=0;};
+    struct AtlasGlyph {unsigned page;int x,y;TextRaster raster;};
+    std::vector<TextPage> m_textPages;
+    std::map<std::string,AtlasGlyph> m_atlasGlyphs;
+    unsigned m_textAtlasGeneration=1;
+    float m_fontPixelHeight=48;
+    bool m_fontLoaded=false;
 };
 
 // Coarse timestamp intervals may nest; Renderer owns every GL query.

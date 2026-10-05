@@ -1,3 +1,4 @@
+#include "SceneSession.h"
 #include "RuntimeWorld.h"
 #include "ResourceManager.h"
 #include "InputSystem.h"
@@ -111,3 +112,5 @@ void RuntimeWorld::PresentationScripts(const InputSystem* input,float dt,float a
     // Downstream of fixed simulation; reuse the renderer's existing pose history.
     if(m_scripts)m_scripts->Presentation(input,dt,alpha);
 }
+
+LocalizationSession& RuntimeWorld::Localization(){if(auto scenes=SceneControl())return scenes->Localization(m_assets);if(!m_localization)m_localization=std::make_unique<LocalizationSession>();m_localization->Bind(m_assets);return *m_localization;}
