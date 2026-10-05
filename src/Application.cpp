@@ -1,5 +1,6 @@
 #include "PerformanceProfiler.h"
 #include "Application.h"
+#include "AppIcon.h"
 
 #include <SDL2/SDL.h>
 
@@ -65,6 +66,15 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     // reference; a scene outside any project resolves nothing.
     if (options.project.IsLoaded()) {
         host.OpenProjectAssets(options.project.RootDir(), options.project.AssetsDir());
+        const auto& iconId = options.project.Settings().iconAsset;
+        if (!iconId.empty()) {
+            const auto* icon = host.Assets().Find(iconId);
+            std::string iconError;
+            if (!icon || icon->missing || icon->type != AssetType::Texture)
+                std::fprintf(stderr, "Missing project app icon %s; using Judas icon.\n", iconId.c_str());
+            else if (!ApplyAppIcon(window.NativeWindow(), icon->path, iconError))
+                std::fprintf(stderr, "Project app icon: %s; using Judas icon.\n", iconError.c_str());
+        }
         if(!host.GetWindow().Input().SetMap(options.project.Settings().input,error)){std::fprintf(stderr,"Input map: %s\n",error.c_str());return 1;}
         for (const AssetProblem& problem : host.Assets().Problems()) {
             std::fprintf(stderr, "Asset problem: %s: %s\n", problem.path.c_str(), problem.message.c_str());

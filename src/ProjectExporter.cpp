@@ -4,6 +4,7 @@
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
 #include "ProjectExporter.h"
+#include "AppIcon.h"
 #include "ScriptSystem.h"
 #include "AssetDatabase.h"
 #include "EnginePaths.h"
@@ -124,6 +125,16 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
         Require(fs::is_regular_file(engineRoot / "assets/fonts/DejaVuSans.ttf"), "Missing engine UI font");
         Require(fs::is_regular_file(engineRoot / "third_party/RUNTIME_NOTICES.txt"), "Missing runtime dependency license notices");
         AssetDatabase assets; assets.Scan(project.RootDir(), project.AssetsDir());
+        std::string iconPath;
+        if (!project.Settings().iconAsset.empty()) {
+            const auto* icon = assets.Find(project.Settings().iconAsset);
+            Require(icon && !icon->missing && icon->type == AssetType::Texture,
+                    "Missing project app icon " + project.Settings().iconAsset);
+            iconPath = icon->path;
+            Require(fs::path(iconPath).extension() == ".png", "Project app icon must be a PNG texture asset");
+            const bool iconValid = ValidateAppIcon(iconPath, error);
+            Require(iconValid, "Invalid project app icon: " + error);
+        }
         Require(ValidateLocalizationAssets(project.Settings().localization,assets,error),"Localization: "+error);
         Require(assets.Problems().empty(), assets.Problems().empty() ? "" :
                 "Asset database: " + assets.Problems().front().path + ": " + assets.Problems().front().message);
@@ -143,7 +154,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             Require(!relative.empty() && !relative.is_absolute() && Inside((root / relative).lexically_normal(), root), "Unsafe package content path: " + relative.string());
             const auto first = relative.begin()->string();
             Require(first != "engine" && first != "judas" && first != "game.judasproj" &&
-                    first != kGamePackageMarker && first != "RUNTIME_REQUIREMENTS.txt",
+                    first != kGamePackageMarker && first != "RUNTIME_REQUIREMENTS.txt" && first != "game-icon.png",
                     "Project content collides with reserved package path: " + relative.string());
         };
         safeContentPath(project.Settings().assetsDir);
@@ -188,6 +199,10 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
         Require(mkdtemp(pattern.data()) != nullptr, "Cannot create export staging directory");
         staging = pattern;
         Copy(executable, staging / "judas");
+        if (iconPath.empty()) {
+            const bool iconWritten = WriteDefaultAppIcon((staging / "game-icon.png").string(), error);
+            Require(iconWritten, error);
+        } else Copy(iconPath, staging / "game-icon.png");
         fs::permissions(staging / "judas", fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add);
         fs::create_directories(staging / project.Settings().assetsDir);
         fs::create_directories(staging / project.Settings().scenesDir);

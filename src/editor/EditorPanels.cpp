@@ -641,6 +641,14 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
     char name[256];
     CopyToBuffer(s.name, name, sizeof(name));
     if (ImGui::InputText("Name", name, sizeof(name))) s.name = name;
+    if (ImGui::BeginCombo("Game icon", s.iconAsset.empty() ? "(Judas fallback)" : s.iconAsset.c_str())) {
+        if (ImGui::Selectable("(Judas fallback)", s.iconAsset.empty())) s.iconAsset.clear();
+        if (state.assets) for (const auto& [id, asset] : state.assets->Records())
+            if (asset.type == AssetType::Texture && !asset.missing &&
+                std::filesystem::path(asset.path).extension() == ".png" &&
+                ImGui::Selectable(asset.relativePath.c_str(), s.iconAsset == id)) s.iconAsset = id;
+        ImGui::EndCombo();
+    }
     if (ImGui::BeginCombo("Startup scene", s.startupScene.empty() ? "(none)" : s.startupScene.c_str())) {
         for (const std::string& scene : state.sceneFiles) {
             if (ImGui::Selectable(scene.c_str(), scene == s.startupScene)) s.startupScene = scene;

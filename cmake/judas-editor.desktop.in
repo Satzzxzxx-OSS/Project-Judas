@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Judas Editor
+Comment=Create and edit Judas game projects
+Exec="@CMAKE_CURRENT_BINARY_DIR@/judas_editor" %f
+Icon=@CMAKE_CURRENT_SOURCE_DIR@/assets/branding/judas-icon.png
+Terminal=false
+Categories=Development;Graphics;
+StartupWMClass=judas_editor

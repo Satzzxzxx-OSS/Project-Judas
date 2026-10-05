@@ -53,6 +53,7 @@ std::string Generic(const fs::path& p) { return p.generic_string(); }
 std::string Project::SerializeToString(const ProjectSettings& s) {
     std::string out = "JudasProject " + std::to_string(kProjectFormatVersion) + "\n";
     out += "name " + Quote(s.name) + "\n";
+    if (!s.iconAsset.empty()) out += "icon-asset " + Quote(s.iconAsset) + "\n";
     if(!s.worldManifest.empty()) out += "world-manifest " + Quote(s.worldManifest) + "\n";
     out += "startup-scene " + Quote(s.startupScene) + "\n";
     out += "assets-dir " + Quote(s.assetsDir) + "\n";
@@ -118,6 +119,7 @@ bool Project::ParseFromString(const std::string& text, ProjectSettings& outSetti
     }
     for (const auto& [key, value] : values) {
         if (key == "name") s.name = value;
+        else if (key == "icon-asset") s.iconAsset = value;
         else if (key == "startup-scene") s.startupScene = value;
         else if (key == "assets-dir") s.assetsDir = value;
         else if (key == "scenes-dir") s.scenesDir = value;

@@ -37,6 +37,7 @@ struct ProjectSettings {
     ProjectLocalization localization;
     std::string worldManifest; // optional normal .judasworld asset identity
     std::string name;
+    std::string iconAsset; // optional texture asset ID; empty uses the Judas icon
     std::string startupScene;  // project-relative scene file
     std::string assetsDir = "Assets";
     std::string scenesDir = "Scenes";

@@ -11,6 +11,17 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(SDL2 REQUIRED)
+# The original app artwork is embedded, so neither editor nor game windows
+# need a development-tree path. Reconfigure when the PNG changes.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS assets/branding/judas-icon.png)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/branding/judas-icon.png" JUDAS_APP_ICON_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," JUDAS_APP_ICON_BYTES "${JUDAS_APP_ICON_HEX}")
+configure_file(cmake/JudasAppIcon.h.in generated/JudasAppIcon.h @ONLY)
+configure_file(cmake/judas-editor.desktop.in judas-editor.desktop @ONLY)
+add_library(judas_app_icon STATIC src/AppIcon.cpp src/TextureLoader.cpp)
+target_include_directories(judas_app_icon PUBLIC src PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_link_libraries(judas_app_icon PUBLIC SDL2::SDL2)
+target_compile_options(judas_app_icon PRIVATE -Wall -Wextra)
 find_package(glm REQUIRED)
 include(cmake/JudasTextDependencies.cmake)
 
@@ -129,7 +140,6 @@ add_library(judas_engine STATIC
     src/PilotControl.cpp
     src/ReferenceFrame.cpp
     src/ModelLoader.cpp
-    src/TextureLoader.cpp
     src/FontLoader.cpp
     src/UIWidgets.cpp
     src/PauseMenu.cpp
@@ -196,7 +206,7 @@ target_link_libraries(judas_audio_backend PUBLIC Threads::Threads ${CMAKE_DL_LIB
 if(UNIX)
     target_link_libraries(judas_audio_backend PUBLIC m)
 endif()
-target_link_libraries(judas_engine PUBLIC judas_materials SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads judas_audio_backend judas_navigation_backend)
+target_link_libraries(judas_engine PUBLIC judas_app_icon judas_materials SDL2::SDL2 ${JUDAS_GLM} judas_glad Threads::Threads judas_audio_backend judas_navigation_backend)
 target_compile_options(judas_engine PRIVATE -Wall -Wextra)
 
 add_executable(judas
@@ -1157,3 +1167,13 @@ target_compile_options(judas_streaming_performance_tests PRIVATE -Wall -Wextra -
 add_executable(judas_streaming_revisit_tests tests/StreamingRevisitTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_streaming_revisit_tests PRIVATE judas_engine)
 target_compile_options(judas_streaming_revisit_tests PRIVATE -Wall -Wextra)
+
+# Historical targets compile Window.cpp directly instead of linking the engine.
+# Keep their window/icon dependency identical to the editor and standalone game.
+get_property(JUDAS_ICON_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(JUDAS_ICON_TARGET IN LISTS JUDAS_ICON_TARGETS)
+    get_target_property(JUDAS_ICON_SOURCES ${JUDAS_ICON_TARGET} SOURCES)
+    if("src/Window.cpp" IN_LIST JUDAS_ICON_SOURCES)
+        target_link_libraries(${JUDAS_ICON_TARGET} PRIVATE judas_app_icon)
+    endif()
+endforeach()

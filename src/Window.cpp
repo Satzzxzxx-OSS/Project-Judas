@@ -1,4 +1,5 @@
 #include "Window.h"
+#include "AppIcon.h"
 
 #include <cstdio>
 
@@ -24,6 +25,10 @@ bool Window::Init(const char* title, int width, int height, bool visible) {
         std::fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         return false;
     }
+
+    std::string iconError;
+    if (!ApplyAppIcon(m_window, "", iconError))
+        std::fprintf(stderr, "App icon: %s\n", iconError.c_str());
 
     m_glContext = SDL_GL_CreateContext(m_window);
     if (!m_glContext) {
