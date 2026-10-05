@@ -35,6 +35,7 @@ struct ProjectSettings {
     ProjectClassification classification;
     ProjectNavigation navigation;
     ProjectLocalization localization;
+    std::string worldManifest; // optional normal .judasworld asset identity
     std::string name;
     std::string startupScene;  // project-relative scene file
     std::string assetsDir = "Assets";

@@ -26,6 +26,7 @@ public:
     void PhysicsEvent(SceneObjectId self,SceneObjectId other,const PhysicsWorld::TouchEvent& event,bool reverse);
     void UIEvents(const InputSystem* input,float dt);
     void Stop();
+    void RemoveEntities(const std::vector<SceneObjectId>&);
     std::vector<ScriptStateRecord> Capture() const;
     bool Restore(const std::vector<ScriptStateRecord>& records,std::string& error);
     const std::vector<ScriptDiagnostic>& Diagnostics() const;

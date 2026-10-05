@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M58)
+# JudasJS — current API reference (M59)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M58, based on
-M57 checkpoint `ba16c2c52c60194a95ff161d55b93ff874863b77`. It is not an
+This reference describes the public virtual `judas` module through M59, based on
+M58 checkpoint `6fb90d56562651d027a8740cc8d17bb655d9b8b0`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
@@ -11,6 +11,8 @@ and pointer capture intent; see [engine/game boundary](M51_ENGINE_BOUNDARY.md).
 M52 exposes the existing generic impulse-at-point body operation and render pose
 through `Entity.presentedTransform` / `presentationUpdate(dt, alpha)`; the
 [Spring Range project](M52_SHOOTER_GAME.md) implements all shooting/score rules in JS.
+
+M59 adds optional additive residency through [scenes streaming](judasjs/streaming.md).
 
 ## Find an API
 

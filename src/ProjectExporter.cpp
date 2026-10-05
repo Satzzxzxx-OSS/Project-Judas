@@ -1,3 +1,4 @@
+#include "WorldStreaming.h"
 #include "Material.h"
 #include "Environment.h"
 #include "NavigationAsset.h"
@@ -154,6 +155,14 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             const bool loaded = LoadSceneFromFile(path.string(), scene, detail);
             Require(loaded, "Invalid scene " + path.string() + ": " + detail);
             References(scene, assets, project.Settings().classification,project.Settings().navigation);
+        }
+        if(!project.Settings().worldManifest.empty()){
+            auto* record=assets.Find(project.Settings().worldManifest);WorldManifest manifest;std::string detail;
+            Require(record&&record->type==AssetType::World,"Missing world manifest asset");
+            Require(LoadWorldManifest(record->path,manifest,detail)&&ValidateWorldManifest(manifest,project,detail),detail);
+            std::map<std::string,PreparedWorldRegion> products;
+            for(auto& [id,region]:manifest.regions)Require(PrepareWorldRegion(region,project,assets,products[id],detail),"World region: "+detail);
+            Require(ValidateWorldQualifiedReferences(manifest,products,detail),detail);
         }
         for (const auto& [id, record] : assets.Records()) {
             (void)id; std::string detail;

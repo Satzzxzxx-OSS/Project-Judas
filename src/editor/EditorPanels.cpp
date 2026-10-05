@@ -1,3 +1,5 @@
+#include "WorldStreaming.h"
+#include "SceneSession.h"
 #include "ProfilerView.h"
 #include "Environment.h"
 #include "ResourceManager.h"
@@ -567,6 +569,12 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
                     ImGui::TextWrapped("In-scene preview: assign this asset to a render slot. Saving intentionally updates all non-overridden users.");if(ImGui::Button("Save shared material")){if(SaveMaterial(record->path,draft,error)){if(state.resources)state.resources->Invalidate(record->id);state.status="Saved shared material; instances reload normally";}else state.status=error;}ImGui::SameLine();if(ImGui::Button("Reload source"))LoadMaterial(record->path,draft,error);if(!error.empty())ImGui::TextWrapped("%s",error.c_str());
                 }
             }
+            if(record->type==AssetType::World&&state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("World manifest source",ImGuiTreeNodeFlags_DefaultOpen)){
+                static std::string worldPath;static std::vector<char> buffer(1024*1024+1);if(worldPath!=record->path){worldPath=record->path;std::ifstream f(worldPath);std::string text(std::istreambuf_iterator<char>(f),{});std::snprintf(buffer.data(),buffer.size(),"%s",text.c_str());}
+                ImGui::TextWrapped("Region IDs, source scenes, double absolute placement, bounds, priority, snapshot/resident policy and dependencies. Unit scale only.");
+                ImGui::InputTextMultiline("JudasWorld 1",buffer.data(),buffer.size(),{0,260});
+                if(ImGui::Button("Validate and save world manifest")){WorldManifest manifest;std::string error;if(ParseWorldManifest(buffer.data(),manifest,error)&&state.project&&ValidateWorldManifest(manifest,*state.project,error)){std::ofstream f(record->path,std::ios::binary);f<<buffer.data();state.status=f?"Saved world manifest":"World write failed";++state.worldPreviewRevision;}else state.status=error;}
+            }
             if(record->type==AssetType::Catalog&&state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Catalog UTF-8 source")){
                 static std::string catalogPath;static std::vector<char> buffer(2*1024*1024+1);if(catalogPath!=record->path){catalogPath=record->path;std::ifstream f(catalogPath);std::string text(std::istreambuf_iterator<char>(f),{});std::snprintf(buffer.data(),buffer.size(),"%s",text.c_str());}
                 ImGui::InputTextMultiline("ICU messages",buffer.data(),buffer.size(),{0,220});
@@ -637,6 +645,11 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
         for (const std::string& scene : state.sceneFiles) {
             if (ImGui::Selectable(scene.c_str(), scene == s.startupScene)) s.startupScene = scene;
         }
+        ImGui::EndCombo();
+    }
+    if(state.assets&&ImGui::BeginCombo("Optional world manifest",s.worldManifest.empty()?"(single scene)":s.worldManifest.c_str())){
+        if(ImGui::Selectable("(single scene)",s.worldManifest.empty()))s.worldManifest.clear();
+        for(auto& [id,asset]:state.assets->Records())if(asset.type==AssetType::World&&ImGui::Selectable(asset.relativePath.c_str(),s.worldManifest==id))s.worldManifest=id;
         ImGui::EndCombo();
     }
     ImGui::Text("Assets: %s   Scenes: %s   Saves: %s", s.assetsDir.c_str(), s.scenesDir.c_str(), s.savesDir.c_str());
@@ -913,4 +926,22 @@ SceneObjectId DuplicateObject(EditorDocument& doc, SceneObjectId id) {
     doc.CommitEdit();
     doc.Select(newId);
     return newId;
+}
+
+void DrawStreamingPanel(EditorDocument& doc,EditorPanelState& state,EditorRequests& requests){
+    if(!state.project||state.project->Settings().worldManifest.empty())return;
+    if(!ImGui::Begin("World regions")){ImGui::End();return;}
+    auto* asset=state.assets?state.assets->Find(state.project->Settings().worldManifest):nullptr;WorldManifest manifest;std::string error;
+    if(!asset||!LoadWorldManifest(asset->path,manifest,error)){ImGui::TextWrapped("%s",error.c_str());ImGui::End();return;}
+    if(state.mode==EditorMode::Edit){
+        ImGui::Checkbox("Read-only additive preview",&state.worldPreview);ImGui::SameLine();if(ImGui::Button("Refresh preview"))++state.worldPreviewRevision;
+        ImGui::TextWrapped("Choose an edit target to open its original source. Save writes only that document; other preview regions are read-only.");
+        for(auto& [id,r]:manifest.regions){ImGui::PushID(id.c_str());ImGui::Text("%s (%s) / priority %d",id.c_str(),r.policy.c_str(),r.priority);ImGui::SameLine();if(ImGui::Button("Edit source"))requests.openSceneRelative=r.scene;ImGui::PopID();}
+    }else if(state.runtime&&state.runtime->SceneControl()){
+        auto* stream=state.runtime->SceneControl()->Streaming(*state.runtime,error);
+        if(stream){auto stats=stream->Stats();ImGui::Text("%zu active / %zu preparing",stats.active,stats.pending);ImGui::Text("pending %zu / live estimate %zu / retained %zu bytes",stats.pendingBytes,stats.liveBytes,stats.retainedBytes);ImGui::Text("cache %zu / %zu bytes; boundary %.3f ms; largest unit %.3f ms",stats.resourceResidentBytes,stats.resourceCacheBudget,stats.integrationMs,stats.largestUnitMs);
+            static std::map<std::string,uint64_t> demand;for(auto& r:stream->Regions()){ImGui::PushID(r.id.c_str());ImGui::Text("%s: %s (%zu/%zu)",r.id.c_str(),r.state.c_str(),r.installed,r.entities);if(ImGui::Button("Request"))demand[r.id]=stream->Request(r.id,false,error);ImGui::SameLine();if(ImGui::Button("Release")){if(demand.count(r.id))stream->Release(demand[r.id]);demand.erase(r.id);stream->Unload(r.id);}for(auto& pin:r.pins)ImGui::BulletText("Pinned: %s",pin.c_str());if(!r.error.empty())ImGui::TextWrapped("%s",r.error.c_str());ImGui::PopID();}}
+        if(!error.empty())ImGui::TextWrapped("%s",error.c_str());
+    }
+    (void)doc;ImGui::End();
 }

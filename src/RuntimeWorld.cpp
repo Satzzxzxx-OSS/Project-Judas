@@ -317,6 +317,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
         e.state=StateFromDefinition(o);e.slot=std::numeric_limits<std::size_t>::max();m_extraEntities.push_back(e);
     }
+    m_composed=m_sceneControl&&m_sceneControl->ComposedProject();
     m_baselineFingerprint = legacyGameplay ? std::move(fingerprint)
         : SceneFingerprintSha256("Judas.ScriptedRuntime.1:" + fingerprint);
     return true;
@@ -627,7 +628,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     }
 
     RebuildCelestialParticipants();
-    if (m_assets && !m_fluidVolumes.empty() && m_assets->GetRenderer()) {
+    if (m_assets && !m_fluidVolumes.empty() && m_assets->GetRenderer() && !m_fluidMesh.IsValid()) {
         m_fluidMesh = m_assets->GetRenderer()->CreateMesh(MeshData{});
     }
     if (authored) PopulateFluid();
@@ -1215,6 +1216,7 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 }
 
 void RuntimeWorld::Destroy() {
+    m_regionPending.clear();m_regionAssets.clear();m_composed=false;
  JUDAS_PROFILE_SCOPE("World destroy"); PerformanceProfiler::Get().Boundary("World destroy");
     m_ragdolls.clear();m_ragdollReturns.clear();m_ragdollAutostarted.clear();
     ClearCharacters();
@@ -1299,6 +1301,7 @@ TextureHandle RuntimeWorld::CameraTexture(SceneObjectId id) const {
 void RuntimeWorld::UpdateVisualParticles(float dt){
  JUDAS_PROFILE_SCOPE("Visual particle simulation");
     for(auto& e:m_particleEmitters){
+        if(!IsPublished(e.id))continue;
         if(const auto* entity=FindEntity(e.id))if(entity->lifecycle==EntityLifecycle::Destroyed)continue;
         const auto t=PresentedTransform(e.id,e.transform,1);
         e.pool.Update(dt,t.position,t.rotation,t.scale,Gravity());
@@ -1327,6 +1330,7 @@ std::vector<EntityId> RuntimeWorld::QueryEntities(CategoryMask required,Category
     std::vector<EntityId> result;
     for(const auto& [id,info]:m_entityCategories){
         if(candidates&&std::find(candidates->begin(),candidates->end(),id)==candidates->end())continue;
+        if(!IsPublished(id))continue;
         const auto* e=FindEntity(id);if(e&&e->lifecycle==EntityLifecycle::Destroyed)continue;
         if((info.tags&required)==required&&!(info.tags&excluded))result.push_back(id);
     }

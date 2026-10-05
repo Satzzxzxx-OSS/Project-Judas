@@ -104,6 +104,8 @@ add_library(judas_engine STATIC
     src/WorldRagdoll.cpp
     src/GltfLoader.cpp
     src/WorldCharacter.cpp
+    src/WorldStreaming.cpp
+    src/WorldRegions.cpp
     src/WorldScripts.cpp
     src/RuntimeUI.cpp
     src/ScriptSystem.cpp
@@ -1136,3 +1138,22 @@ target_compile_options(judas_text_render_tests PRIVATE -Wall -Wextra)
 add_executable(judas_localization_application_tests tests/LocalizationApplicationTests.cpp src/Application.cpp src/TestHarness.cpp src/RuntimeDiagnostics.cpp src/RuntimeOptions.cpp)
 target_link_libraries(judas_localization_application_tests PRIVATE judas_engine)
 target_compile_options(judas_localization_application_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_streaming_tests tests/WorldStreamingTests.cpp)
+target_link_libraries(judas_streaming_tests PRIVATE judas_engine)
+target_compile_options(judas_streaming_tests PRIVATE -Wall -Wextra)
+add_executable(judas_streaming_demo_builder tools/StreamingDemo.cpp)
+target_link_libraries(judas_streaming_demo_builder PRIVATE judas_navigation_baker)
+add_executable(judas_streaming_application_tests tests/StreamingApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_streaming_application_tests PRIVATE judas_engine)
+target_compile_options(judas_streaming_application_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_streaming_performance_tests tests/StreamingPerformanceTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_streaming_performance_tests PRIVATE judas_engine)
+target_include_directories(judas_streaming_performance_tests PRIVATE src)
+target_compile_options(judas_streaming_performance_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+# M59 focused real-project spatial-interest suspension/revisit regression.
+add_executable(judas_streaming_revisit_tests tests/StreamingRevisitTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_streaming_revisit_tests PRIVATE judas_engine)
+target_compile_options(judas_streaming_revisit_tests PRIVATE -Wall -Wextra)

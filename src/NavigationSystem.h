@@ -15,7 +15,9 @@ public:
  explicit NavigationSystem(ProjectNavigation config={});~NavigationSystem();
  NavigationSystem(const NavigationSystem&)=delete;NavigationSystem& operator=(const NavigationSystem&)=delete;
  const ProjectNavigation& Configuration()const;
- bool LoadSurface(SceneObjectId,const SceneTransform&,std::shared_ptr<const NavigationData>,std::string&);
+ bool LoadSurface(SceneObjectId,const SceneTransform&,std::shared_ptr<const NavigationData>,std::string&,bool publish=true);
+ void PublishSurfaces(const std::vector<SceneObjectId>&);
+ void RemoveSurface(SceneObjectId);
  std::optional<NavigationLocation> Sample(glm::vec3,float,const NavigationFilter& = {})const;
  NavigationPath FindPath(glm::vec3,glm::vec3,const NavigationFilter& = {})const;
  std::optional<NavigationLocation> Raycast(glm::vec3,glm::vec3,const NavigationFilter& = {})const;

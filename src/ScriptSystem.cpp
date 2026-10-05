@@ -1,3 +1,4 @@
+#include "WorldStreaming.h"
 #include "PerformanceProfiler.h"
 #include <array>
 #include "ScriptSystem.h"
@@ -184,7 +185,12 @@ export const physics={
  sphereCast:(origin,radius,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'sphere',radius}),
  capsuleCast:(pose,radius,halfHeight,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'capsule',rotation:pose.rotation,radius,halfHeight}),
  boxCast:(pose,halfExtents,direction,maximum,filter={})=>cast(pose.position,direction,maximum,filter,{kind:'box',rotation:pose.rotation,halfExtents})};
-export const scenes={get current(){return call('sceneCurrent')},get registered(){return call('sceneList')},load:name=>call('sceneLoad',name),reload:()=>call('sceneReload')};
+export const scenes={get current(){return call('sceneCurrent')},get registered(){return call('sceneList')},load:name=>call('sceneLoad',name),reload:()=>call('sceneReload'),
+ get regions(){return call('regionList')},get streamingStats(){return call('regionStats')},
+ requestRegion:(name,options={})=>call('regionRequest',name,options),regionStatus:token=>call('regionStatus',token),activateRegion:token=>call('regionActivate',token),releaseRegion:token=>call('regionRelease',token),unloadRegion:name=>call('regionUnload',name),
+ owner:entity=>call('regionOwner',entity.id),resolveRegionEntity:(name,local)=>{const id=call('regionResolve',name,String(local));return id?new Entity(id):null},
+ pinRegion:(name,reason,pin=true)=>call('regionPin',name,reason,pin),adopt:(entity,name='root')=>call('regionAdopt',entity.id,name),
+ setInterest:(name,position,options)=>call('regionInterest',name,position,options),removeInterest:name=>call('regionRemoveInterest',name)};
 export const localization={get locale(){return call('localeInfo').locale},get available(){return call('localeInfo').available},get revision(){return call('localeInfo').revision},get direction(){return call('localeInfo').direction},setLocale:locale=>call('localeChoose',locale),format:(key,args={})=>call('localeFormat',key,args),number:(value,options={})=>call('localeNumber',value,options),reload:()=>call('localeReload')};
 export const session={get:key=>call('sessionGet',key),set:(key,value)=>call('sessionSet',key,value),delete:key=>call('sessionDelete',key)};
 export const input={get pointerCapture(){return call('pointerCapture')},set pointerCapture(value){call('setPointerCapture',value)},held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
@@ -448,6 +454,29 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         return result;
     }
 
+    if(op.rfind("region",0)==0){
+        auto control=world.SceneControl();std::string error;auto* stream=control?control->Streaming(world,error):nullptr;
+        if(!stream)return JS_ThrowTypeError(c,"Streaming: %s",error.c_str());
+        auto status=[&](const RegionStatus& st){auto result=JS_NewObject(c);
+            for(auto [key,value]:{std::pair<const char*,std::string>{"id",st.id},{"state",st.state},{"error",st.error}})JS_SetPropertyStr(c,result,key,JS_NewString(c,value.c_str()));
+            JS_SetPropertyStr(c,result,"visualReady",JS_NewBool(c,st.visualReady));
+            for(auto [key,value]:{std::pair<const char*,double>{"entities",double(st.entities)},{"installed",double(st.installed)},{"bytes",double(st.bytes)},{"retained",double(st.retained)},{"demands",double(st.demands)},{"preparationMs",st.preparationMs},{"integrationMs",st.integrationMs},{"largestUnitMs",st.largestUnitMs},{"loadMs",st.loadMs}})JS_SetPropertyStr(c,result,key,JS_NewFloat64(c,value));
+            auto pins=JS_NewArray(c);uint32_t i=0;for(auto& p:st.pins)JS_SetPropertyUint32(c,pins,i++,JS_NewString(c,p.c_str()));JS_SetPropertyStr(c,result,"pins",pins);return result;};
+        auto id=[&](int n)->uint64_t{try{auto text=String(c,arg(n));size_t consumed=0;auto value=std::stoull(text,&consumed);return consumed==text.size()?value:0;}catch(...){return 0;}};
+        if(op=="regionRequest"){if(!control->Accepting())return JS_ThrowTypeError(c,"Scene lifecycle ending");auto value=JS_GetPropertyStr(c,arg(2),"preload");bool preload=JS_ToBool(c,value);JS_FreeValue(c,value);auto token=stream->Request(String(c,arg(1)),preload,error,s->currentOwner,s->currentSlot);return token?JS_NewString(c,std::to_string(token).c_str()):JS_ThrowTypeError(c,"%s",error.c_str());}
+        if(op=="regionStatus"){auto st=stream->Status(id(1));return st?status(*st):JS_NULL;}
+        if(op=="regionActivate")return JS_NewBool(c,stream->Activate(id(1)));
+        if(op=="regionRelease")return JS_NewBool(c,stream->Release(id(1)));
+        if(op=="regionUnload")return JS_NewBool(c,stream->Unload(String(c,arg(1))));
+        if(op=="regionList"){auto result=JS_NewArray(c);uint32_t i=0;for(auto& st:stream->Regions())JS_SetPropertyUint32(c,result,i++,status(st));return result;}
+        if(op=="regionStats"){auto result=JS_NewObject(c);auto st=stream->Stats();for(auto [key,value]:{std::pair<const char*,double>{"active",double(st.active)},{"pending",double(st.pending)},{"pendingBytes",double(st.pendingBytes)},{"liveBytes",double(st.liveBytes)},{"retainedBytes",double(st.retainedBytes)},{"resourceResidentBytes",double(st.resourceResidentBytes)},{"resourceCacheBudget",double(st.resourceCacheBudget)},{"integrationMs",st.integrationMs},{"largestUnitMs",st.largestUnitMs}})JS_SetPropertyStr(c,result,key,JS_NewFloat64(c,value));return result;}
+        if(op=="regionOwner"){auto value=id(1);if(!world.RuntimeDefinition(value))return JS_ThrowReferenceError(c,"stale entity");return JS_NewString(c,stream->Owner(value).c_str());}
+        if(op=="regionResolve"){auto value=stream->Resolve(String(c,arg(1)),id(2));return value?JS_NewString(c,std::to_string(value).c_str()):JS_NULL;}
+        if(op=="regionPin")return JS_NewBool(c,stream->Pin(String(c,arg(1)),String(c,arg(2)),JS_ToBool(c,arg(3))));
+        if(op=="regionAdopt"){bool ok=stream->Adopt(id(1),String(c,arg(2)),error);return ok?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());}
+        if(op=="regionRemoveInterest"){stream->RemoveInterest(String(c,arg(1)));return JS_UNDEFINED;}
+        if(op=="regionInterest"){glm::vec3 position;float load=0,retain=0,priority=0;if(!ReadVec(c,arg(2),position)||!Number(c,arg(3),"load",load)||!Number(c,arg(3),"retain",retain))return JS_ThrowTypeError(c,"interest requires position/load/retain");auto p=JS_GetPropertyStr(c,arg(3),"priority");bool has=!JS_IsUndefined(p);JS_FreeValue(c,p);if(has&&(!Number(c,arg(3),"priority",priority)||priority<-100000||priority>100000||std::floor(priority)!=priority))return JS_ThrowTypeError(c,"invalid interest priority");return stream->Interest(String(c,arg(1)),position,load,retain,int(priority),error)?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());}
+    }
     if(op=="sceneCurrent"||op=="sceneList"||op=="sceneLoad"||op=="sceneReload"||op=="sessionGet"||op=="sessionSet"||op=="sessionDelete") {
         auto scenes=world.SceneControl();if(!scenes)return JS_ThrowTypeError(c,"No project scene session is active");
         if(op=="sceneCurrent")return JS_NewString(c,scenes->Current().c_str());
@@ -781,7 +810,15 @@ void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){
             auto existing=JS_GetPropertyStr(m->ctx,i.value,"state");if(state!=m->restored.end()||JS_IsUndefined(existing))JS_SetPropertyStr(m->ctx,i.value,"state",JS_ParseJSON(m->ctx,text.data(),text.size(),"saved state"));JS_FreeValue(m->ctx,existing);}
         m->instances.emplace(key,std::move(i));
     }
-    for(auto it=m->instances.begin();it!=m->instances.end();)if(!alive.count(it->first)){m->Callback(it->second,"destroy");if(m->world&&m->world->UIIfLoaded())m->world->UI().RemoveSlotOwner(it->first.first,it->first.second);JS_FreeValue(m->ctx,it->second.value);it=m->instances.erase(it);}else ++it;
+    for(auto it=m->instances.begin();it!=m->instances.end();)if(!alive.count(it->first)){m->Callback(it->second,"destroy");if(m->world&&m->world->SceneControl())if(auto* stream=m->world->SceneControl()->StreamingIfLoaded())stream->ReleaseRequester(it->first.first,it->first.second);if(m->world&&m->world->UIIfLoaded())m->world->UI().RemoveSlotOwner(it->first.first,it->first.second);JS_FreeValue(m->ctx,it->second.value);it=m->instances.erase(it);}else ++it;
+}
+void ScriptSystem::RemoveEntities(const std::vector<SceneObjectId>& ids) {
+    m->CheckThread();std::set<SceneObjectId> gone(ids.begin(),ids.end());
+    for(auto it=m->instances.begin();it!=m->instances.end();)if(gone.count(it->first.first)){
+        m->Callback(it->second,"destroy");if(m->world&&m->world->SceneControl())if(auto* stream=m->world->SceneControl()->StreamingIfLoaded())stream->ReleaseRequester(it->first.first,it->first.second);if(m->world&&m->world->UIIfLoaded())m->world->UI().RemoveSlotOwner(it->first.first,it->first.second);
+        JS_FreeValue(m->ctx,it->second.value);it=m->instances.erase(it);
+    }else ++it;
+    for(auto it=m->restored.begin();it!=m->restored.end();)if(gone.count(it->first.first))it=m->restored.erase(it);else ++it;
 }
 void ScriptSystem::Frame(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript update");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;

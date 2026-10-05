@@ -40,6 +40,8 @@ public:
     int Run(int argc, char** argv);
 
 private:
+    std::vector<Scene> m_regionPreview;
+    std::string m_regionPreviewKey;
     std::unique_ptr<LocalizationSession> m_previewLocalization;
     std::string m_previewLocalizationKey;
 

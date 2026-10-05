@@ -1,3 +1,4 @@
+#include "WorldStreaming.h"
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
 #include "AssetDatabase.h"
@@ -89,6 +90,7 @@ bool CanCreateMetadata(const std::string& metaPath, std::string& outError) {
 const char* AssetTypeName(AssetType type) {
     switch (type) {
         case AssetType::Material:return "material";
+        case AssetType::World: return "world";
         case AssetType::Catalog: return "catalog";
         case AssetType::Environment:return "environment";
         case AssetType::Mesh: return "mesh";
@@ -107,6 +109,7 @@ const char* AssetTypeName(AssetType type) {
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
     if(e==".judasmat"){outType=AssetType::Material;return true;}
+    if(e==".judasworld"){outType=AssetType::World;return true;}
     if(e==".judasloc"){outType=AssetType::Catalog;return true;}
     if(e==".judasenv"){outType=AssetType::Environment;return true;}
     if(e==".judasbasin"||e==".judascavity"){outType=AssetType::Liquid;return true;}
@@ -147,6 +150,7 @@ AssetId MintAssetId() {
 bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, std::string& outError) {
     switch (type) {
         case AssetType::Material:{MaterialDefinition m;return LoadMaterial(path,m,outError);}
+        case AssetType::World:{WorldManifest m;return LoadWorldManifest(path,m,outError);}
         case AssetType::Catalog:{Catalog d;return LoadCatalog(path,d,outError);}
         case AssetType::Environment:{EnvironmentData d;return LoadEnvironment(path,d,outError);}
         case AssetType::Mesh: {
@@ -209,6 +213,7 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
         } else if (key == "type") {
             if (typeSeen) return fail("duplicate type");
             if(tokens[1].first=="material")outType=AssetType::Material;
+            else if(tokens[1].first=="world")outType=AssetType::World;
             else if(tokens[1].first=="catalog")outType=AssetType::Catalog;
             else if(tokens[1].first=="environment")outType=AssetType::Environment;
             else if (tokens[1].first == "mesh") outType = AssetType::Mesh;

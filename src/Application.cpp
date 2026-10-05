@@ -97,7 +97,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     // Milestone 29: the saved world-state delta (if any) layers over the
     // freshly built baseline before the session begins.
     bool worldStateApplied = false;
-    if (!ApplyWorldStateFileIfPresent(world, options.worldStatePath, worldStateApplied, error)) {
+    if (!world.IsComposed()&&!ApplyWorldStateFileIfPresent(world, options.worldStatePath, worldStateApplied, error)) {
         std::fprintf(stderr, "World state '%s' could not be applied: %s\n", options.worldStatePath.c_str(),
                      error.c_str());
         return 1;
@@ -107,8 +107,9 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
         std::fprintf(stderr, "%s\n", error.c_str());
         return 1;
     }
-    play.SetWorldStatePath(options.worldStatePath, worldStateApplied);
-    if (!options.worldStatePath.empty()) {
+    play.SetWorldStatePath(world.IsComposed()?std::string{}:options.worldStatePath, worldStateApplied);
+    if(world.IsComposed())std::fprintf(stderr,"World state: disk saves disabled for additive compositions\n");
+    else if (!options.worldStatePath.empty()) {
         std::fprintf(stderr, "World state: %s (%s)\n", options.worldStatePath.c_str(),
                      worldStateApplied ? "loaded" : "none saved; F6 saves, F7 deletes");
     }
@@ -176,6 +177,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
         }
         if (control && control->afterFrame) control->afterFrame(host, world, play);
         { JUDAS_PROFILE_WAIT("Swap present wait"); window.SwapBuffers(); }
+        sceneControl->AdvanceStreaming(*worldOwner,play.IsPaused());
         if(!sceneControl->Apply(worldOwner,play,host.Resources(),error))
             std::fprintf(stderr,"Scene transition failed: %s\n",error.c_str());
     }

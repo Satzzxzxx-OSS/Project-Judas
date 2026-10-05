@@ -53,6 +53,7 @@ std::string Generic(const fs::path& p) { return p.generic_string(); }
 std::string Project::SerializeToString(const ProjectSettings& s) {
     std::string out = "JudasProject " + std::to_string(kProjectFormatVersion) + "\n";
     out += "name " + Quote(s.name) + "\n";
+    if(!s.worldManifest.empty()) out += "world-manifest " + Quote(s.worldManifest) + "\n";
     out += "startup-scene " + Quote(s.startupScene) + "\n";
     out += "assets-dir " + Quote(s.assetsDir) + "\n";
     out += "scenes-dir " + Quote(s.scenesDir) + "\n";
@@ -125,6 +126,7 @@ bool Project::ParseFromString(const std::string& text, ProjectSettings& outSetti
             if(value!="true"&&value!="false"){outError="legacy-gameplay must be true or false";return false;}
             s.legacyGameplay=value=="true";
         }
+        else if (key == "world-manifest") { s.worldManifest=value; }
         else if (key == "localization") { if(!ProjectLocalization::Parse(value,s.localization,outError))return false; }
         else if (key == "navigation") { if(!ProjectNavigation::Parse(value,s.navigation,outError))return false; }
         else if (key == "classification") { if(!ProjectClassification::Parse(value,s.classification,outError))return false; }

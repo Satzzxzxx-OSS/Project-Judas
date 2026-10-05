@@ -88,6 +88,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
                        float alpha, const WorldDrawOptions& options) {
     JUDAS_PROFILE_SCOPE("World culling and opaque submission");
     for (const RuntimeWorld::StaticRenderable& s : world.StaticRenderables()) {
+        if(!world.IsPublished(s.id))continue;
         r.SetRenderLayer(world.RenderLayerOf(s.id));
         const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,s.rotation,s.scale},alpha);
         DrawRenderable(r, world.Resources(), s.render, t.position, t.rotation, t.scale, 1.0f, world.CameraTexture(s.render.textureCamera),world.AnimationSkin(s.id));
@@ -131,7 +132,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
     for (std::size_t i = 0; i < bodies.size(); ++i) {
         const RuntimeWorld::DynamicVisual& v = visuals[i];
         r.SetRenderLayer(world.RenderLayerOf(v.id));
-        if (!v.hasRender) continue;
+        if (!v.hasRender||!world.IsPublished(v.id)) continue;
         const glm::vec3 position = bodies[i].GetPresentedPosition(alpha);
         const glm::quat rotation = bodies[i].GetPresentedOrientation(alpha);
         if (v.render.shape == SceneShape::Compound) {
@@ -185,7 +186,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
         for (std::size_t i = 0; i < bodies.size(); ++i) {
             const RuntimeWorld::DynamicVisual& v = visuals[i];
         r.SetRenderLayer(world.RenderLayerOf(v.id));
-            if (!v.hasRender || v.render.shape != SceneShape::Compound) continue;
+            if (!world.IsPublished(v.id)||!v.hasRender || v.render.shape != SceneShape::Compound) continue;
             const glm::vec3 position = bodies[i].GetPresentedPosition(alpha);
             const glm::quat rotation = bodies[i].GetPresentedOrientation(alpha);
             for (std::size_t part = 1; part < v.compoundBoxes.size(); ++part) {
@@ -241,6 +242,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
 
     // Runtime visual state is updated once in Simulation, never per camera.
     for(auto& emitter:world.VisualEmitters()){
+        if(!world.IsPublished(emitter.id))continue;
         r.SetRenderLayer(world.RenderLayerOf(emitter.id));
         if(!emitter.pool.settings.enabled)continue;
         if(const auto* entity=world.FindEntity(emitter.id))if(entity->lifecycle==EntityLifecycle::Destroyed)continue;
@@ -318,6 +320,7 @@ std::vector<DynamicLight> BuildWorldLights(const RuntimeWorld& world, const Game
         lights.push_back(lamp);
     }
     for (const RuntimeWorld::StaticLight& s : world.StaticLights()) {
+        if(!world.IsPublished(s.id))continue;
         DynamicLight light;
         light.kind = s.light.kind == SceneLightKind::Spot ? LightKind::Spot : LightKind::Point;
         const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,glm::quat(1,0,0,0),glm::vec3(1)},alpha);
@@ -405,6 +408,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
         world.BindCameraRenderer(renderer);
         const auto frame = world.NextCameraFrame();
         for (auto& camera : world.PresentationCameras()) {
+            if(!world.IsPublished(camera.id))continue;
             if (!camera.settings.enabled || frame % camera.settings.updateEveryFrames != 0) continue;
             glm::vec3 position = camera.transform.position;
             glm::quat rotation = glm::normalize(camera.transform.rotation);

@@ -74,3 +74,7 @@ retired at synchronization, not a promise that `destroy()` runs recursively befo
 the call returns. `destroy` may see an already-stale owner. Keep teardown defensive;
 faulted scripts receive no destroy callback. Support-body disappearance is handled
 by the motor's safe generations, not explicit transform parenting.
+
+## M59 additive residency
+
+For additive region requests, ownership, pins and suspension see [Streaming](streaming.md). Whole-world reload remains distinct. Composed-world disk saves are disabled.

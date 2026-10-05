@@ -1,3 +1,5 @@
+#include "WorldStreaming.h"
+#include "Prefab.h"
 #include "PerformanceProfiler.h"
 #include "ComponentEditors.h"
 #include "EditorApplication.h"
@@ -480,6 +482,7 @@ bool EditorApplication::StartPlay(std::string& outError) {
     // over the freshly instantiated baseline, exactly as the runtime does.
     m_panels.worldStatePath = WorldStatePathFor(m_document.Path());
     bool stateApplied = false;
+    if(m_world->IsComposed())m_panels.worldStatePath.clear();
     if (!ApplyWorldStateFileIfPresent(*m_world, m_panels.worldStatePath, stateApplied, outError)) {
         m_world.reset();
         return false;
@@ -843,6 +846,23 @@ void EditorApplication::FrameEditMode(float deltaSeconds) {
     renderer.SetCamera(m_camera.ViewMatrix(), m_camera.ProjectionMatrix(aspect));
     renderer.SetDynamicLights(BuildAuthoredLights(scene));
     DrawAuthoredScene(renderer, scene, m_host->Resources());
+    if(m_panels.worldPreview&&!m_project.Settings().worldManifest.empty()){
+        auto key=m_project.ProjectFile()+m_document.Path()+std::to_string(m_panels.worldPreviewRevision);
+        if(key!=m_regionPreviewKey){m_regionPreviewKey=key;m_regionPreview.clear();
+            auto* asset=m_host->Assets().Find(m_project.Settings().worldManifest);WorldManifest manifest;std::string error;
+            if(asset&&LoadWorldManifest(asset->path,manifest,error)){
+                glm::dvec3 origin=scene.Settings().worldOrigin;glm::quat orientation{1,0,0,0};
+                for(auto& [_,r]:manifest.regions)if(m_project.Resolve(r.scene)==m_document.Path()){origin=r.origin;orientation=r.rotation;}
+                for(auto& [_,r]:manifest.regions){if(m_project.Resolve(r.scene)==m_document.Path())continue;PreparedWorldRegion prepared;Scene flat;
+                    if(!PrepareWorldRegion(r,m_project,m_host->Assets(),prepared,error)||!FlattenHierarchy(prepared.source,flat,error)){m_panels.status="Preview: "+error;continue;}
+                    auto rotation=glm::inverse(orientation)*r.rotation;auto translation=glm::vec3(glm::inverse(glm::dquat(orientation))*(r.origin-origin));
+                    for(auto& o:flat.Objects()){o.transform.position=translation+rotation*o.transform.position;o.transform.rotation=rotation*o.transform.rotation;}
+                    m_regionPreview.push_back(std::move(flat));
+                }
+            }
+        }
+        for(auto& region:m_regionPreview)DrawAuthoredScene(renderer,region,m_host->Resources());
+    }else {m_regionPreview.clear();m_regionPreviewKey.clear();}
     DrawEditOverlay(renderer, scene);
     renderer.EndFrame();
 }
@@ -1061,6 +1081,7 @@ int EditorApplication::Run(int argc, char** argv) {
             // pause menu, which releases the mouse for the editor panels.
             m_play->Frame(window, renderer, deltaSeconds, /*drawHud=*/true);
             if(auto scenes=m_world->SceneControl()) {
+                scenes->AdvanceStreaming(*m_world,m_play->IsPaused());
                 if(!scenes->Apply(m_world,*m_play,host.Resources(),error))std::fprintf(stderr,"Scene transition: %s\n",error.c_str());
                 m_panels.runtime=m_world.get();
                 m_panels.worldStatePath=m_play->WorldStatePath();
@@ -1097,6 +1118,7 @@ int EditorApplication::Run(int argc, char** argv) {
             DrawProjectSettingsPanel(m_document, m_panels, requests);
         }
         DrawInspectorPanel(m_document, m_panels);
+        DrawStreamingPanel(m_document,m_panels,requests);
         { JUDAS_PROFILE_SCOPE("Profiler UI"); DrawProfilerPanel(m_panels); }
         DrawStatusBar(m_document, m_panels);
 
@@ -1163,6 +1185,7 @@ int EditorApplication::Run(int argc, char** argv) {
                 }
             }
             if (autotestFrame == 5) {
+                if(std::getenv("JUDAS_EDITOR_AUTOTEST_STREAMING"))m_panels.worldPreview=true;
                 if (!m_document.GetScene().Objects().empty()) m_document.Select(m_document.GetScene().Objects().front().id);
                 DebugViewOptions all;
                 all.collisionShapes = all.playerCapsule = all.contacts = all.gravity = all.frameAxes = all.lights =
@@ -1193,11 +1216,13 @@ int EditorApplication::Run(int argc, char** argv) {
                 std::fprintf(stderr, "[editor autotest] run project: %s: %s\n", launched ? "LAUNCHED" : "FAILED", message.c_str());
             } else if (autotestFrame == 20) {
                 screenshot(prefix + ".edit.png");
+                if(std::getenv("JUDAS_EDITOR_AUTOTEST_STREAMING"))std::fprintf(stderr,"[editor autotest] additive preview: %s (%zu sources)\n",!m_regionPreview.empty()?"PASS":"FAIL",m_regionPreview.size());
                 std::fprintf(stderr, "[editor autotest] edit frame: %u draw calls, %u triangles, %u debug lines\n",
                              m_panels.profiler.drawCalls, m_panels.profiler.triangles, m_panels.profiler.debugLines);
                 deferredRequests.play = true;
             } else if (autotestFrame == 140) {
                 screenshot(prefix + ".play.png");
+                if(std::getenv("JUDAS_EDITOR_AUTOTEST_STREAMING")){std::string error;auto* stream=m_world->SceneControl()->Streaming(*m_world,error);std::fprintf(stderr,"[editor autotest] shared world additive activation: %s\n",stream&&stream->Resolve("gallery-0",100)?"PASS":"FAIL");}
                 const ProfilerData& p = m_panels.profiler;
                 std::fprintf(stderr, "[editor autotest] play frame: %d steps, step %.3f ms, %zu bodies, %zu contacts, %u draw calls, %u triangles, %u shadow passes, %u lights, %u debug lines, %zu particles\n",
                              p.fixedStepsThisFrame, p.fixedStepMilliseconds, p.physicsBodies, p.contacts, p.drawCalls, p.triangles,

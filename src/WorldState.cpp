@@ -241,6 +241,7 @@ WorldState CaptureWorldState(const RuntimeWorld& world) {
 }
 
 bool ApplyWorldState(RuntimeWorld& world, const WorldState& state, std::string& outError) {
+    if(world.IsComposed()){outError="Disk saves are unsupported for composed worlds (M59)";return false;}
     outError.clear();
     if (!ValidateStructure(state, outError)) return false;
     if (!world.IsBuilt() || world.BaselineFingerprint().empty() || state.compatibility.baselineFingerprint != world.BaselineFingerprint()) {

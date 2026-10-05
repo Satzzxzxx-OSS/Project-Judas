@@ -237,7 +237,24 @@ declare module "judas" {
     capsuleCast(pose: CastPose, radius: number, halfHeight: number, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
     boxCast(pose: CastPose, halfExtents: Vec3, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
   };
+  /** Opaque request token; only valid in the requesting played-world session. */
+  export type RegionRequest = string;
+  export interface RegionStatus { id:string;state:"unloaded"|"preparing"|"prepared"|"installing"|"active"|"unloading"|"cancelled"|"failed"|"blocked";error:string;pins:string[];visualReady:boolean;entities:number;installed:number;bytes:number;retained:number;demands:number;preparationMs:number;integrationMs:number;largestUnitMs:number;loadMs:number }
+  export interface StreamingStats {active:number;pending:number;pendingBytes:number;liveBytes:number;retainedBytes:number;resourceResidentBytes:number;resourceCacheBudget:number;integrationMs:number;largestUnitMs:number}
   export const scenes: {
+    readonly regions:RegionStatus[];
+    readonly streamingStats:StreamingStats;
+    requestRegion(name:string,options?:{preload?:boolean}):RegionRequest;
+    regionStatus(token:RegionRequest):RegionStatus|null;
+    activateRegion(token:RegionRequest):boolean;
+    releaseRegion(token:RegionRequest):boolean;
+    unloadRegion(name:string):boolean;
+    owner(entity:Entity):string;
+    resolveRegionEntity(name:string,local:string|number):Entity|null;
+    pinRegion(name:string,reason:string,pin?:boolean):boolean;
+    adopt(entity:Entity,name?:string):boolean;
+    setInterest(name:string,position:Vec3,options:{load:number;retain:number;priority?:number}):boolean;
+    removeInterest(name:string):void;
     readonly current: string;
     readonly registered: string[];
     load(name: string): boolean;

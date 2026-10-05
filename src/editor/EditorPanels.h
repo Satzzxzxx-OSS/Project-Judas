@@ -93,6 +93,7 @@ struct EditorPanelState {
     // Milestone 29: the live world while playing (null in edit mode) so the
     // inspector can show persistent identity, lifecycle and fidelity and
     // offer the debug override; and the world-state path for the World menu.
+    bool worldPreview=false;unsigned worldPreviewRevision=0;
     RuntimeWorld* runtime = nullptr;
     std::string worldStatePath;
     bool playPaused = false;
@@ -154,3 +155,5 @@ SceneObjectId CreateObjectOfKind(EditorDocument& doc, const std::string& kind, c
 // Duplicates an object under a new id (name suffixed " copy"), inserted
 // right after the original, recording one undo step. Returns the new id.
 SceneObjectId DuplicateObject(EditorDocument& doc, SceneObjectId id);
+
+void DrawStreamingPanel(EditorDocument&,EditorPanelState&,EditorRequests&);

@@ -62,3 +62,5 @@ authoritative motion untouched. Attach to a moving body or CharacterMotor.
 [Executed localization example](examples/localization.js) uses the text-lab catalogs
 and document. It preserves supplementary/combining UTF-8, named whole messages,
 Russian plural rules and invalid-locale handling. [API and asset syntax](localization.md).
+
+- [Additive preload/activation](examples/streaming.js) runs on a persistent root in `projects/streamed_range`; requests never block.

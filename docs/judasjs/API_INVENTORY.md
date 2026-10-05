@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M58 review of the registered virtual module based on M57 checkpoint `ba16c2c52c60194a95ff161d55b93ff874863b77`.
+M59 review of the registered virtual module based on M58 checkpoint `6fb90d56562651d027a8740cc8d17bb655d9b8b0`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -192,10 +192,23 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `profiler.counter` | `profileCounter` | [declaration](../judas.d.ts) | [reference](profiling.md) |
 | `profiler.scope` | `profileScope` | [declaration](../judas.d.ts) | [reference](profiling.md) |
 | `scenes` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.activateRegion` | `regionActivate` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.adopt` | `regionAdopt` | [declaration](../judas.d.ts) | [reference](streaming.md) |
 | `scenes.current` | `sceneCurrent` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
 | `scenes.load` | `sceneLoad` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.owner` | `regionOwner` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.pinRegion` | `regionPin` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.regionStatus` | `regionStatus` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.regions` | `regionList` | [declaration](../judas.d.ts) | [reference](streaming.md) |
 | `scenes.registered` | `sceneList` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.releaseRegion` | `regionRelease` | [declaration](../judas.d.ts) | [reference](streaming.md) |
 | `scenes.reload` | `sceneReload` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
+| `scenes.removeInterest` | `regionRemoveInterest` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.requestRegion` | `regionRequest` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.resolveRegionEntity` | `regionResolve` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.setInterest` | `regionInterest` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.streamingStats` | `regionStats` | [declaration](../judas.d.ts) | [reference](streaming.md) |
+| `scenes.unloadRegion` | `regionUnload` | [declaration](../judas.d.ts) | [reference](streaming.md) |
 | `session` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
 | `session.delete` | `sessionDelete` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
 | `session.get` | `sessionGet` | [declaration](../judas.d.ts) | [reference](scenes-state.md) |

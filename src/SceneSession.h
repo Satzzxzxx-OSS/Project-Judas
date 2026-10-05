@@ -5,12 +5,19 @@
 #include <string>
 #include <vector>
 class RuntimeWorld;
+class WorldStreaming;
 class ResourceManager;
 class InteractivePlay;
 // Project/session lifetime, independent of scene-owned JS heaps and entities.
 class SceneSession {
 public:
     SceneSession(const Project& project, const std::string& current);
+    ~SceneSession();
+    WorldStreaming* Streaming(RuntimeWorld&,std::string& error);
+    void AdvanceStreaming(RuntimeWorld&,bool paused);
+    bool Accepting()const{return m_accepting;}
+    WorldStreaming* StreamingIfLoaded()const{return m_streaming.get();}
+    bool ComposedProject()const{return !m_project.Settings().worldManifest.empty();}
     bool Request(const std::string& scene, std::string& error);
     bool Reload(std::string& error) { return Request(m_current,error); }
     LocalizationSession& Localization(ResourceManager* r){m_localization.Bind(r);return m_localization;}
@@ -26,6 +33,9 @@ public:
     bool Pending() const { return !m_pending.empty(); }
     void EnableSaves(bool enabled) { m_saves=enabled; }
 private:
+    std::unique_ptr<WorldStreaming> m_streaming;
+    RuntimeWorld* m_streamWorld=nullptr;
+    std::string m_streamError;
     Project m_project;
     LocalizationSession m_localization;
     std::string m_current,m_pending;

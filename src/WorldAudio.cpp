@@ -18,7 +18,7 @@ bool Pose(const RuntimeWorld& world,SceneObjectId id,const SceneTransform& autho
     return true;
 }
 }
-void RuntimeWorld::BeginAudio(){EndAudio();m_audioRunning=true;for(auto& e:m_audioEmitters){e.wantPlay=e.settings.playOnStart;e.error.clear();}}
+void RuntimeWorld::BeginAudio(){EndAudio();m_audioRunning=true;for(auto& e:m_audioEmitters){if(!IsPublished(e.id))continue;e.wantPlay=e.settings.playOnStart;e.error.clear();}}
 void RuntimeWorld::EndAudio(){
     for(auto& e:m_audioEmitters){if(m_audioSystem)m_audioSystem->DestroyVoice(e.voice);e.voice={};}
     m_audioRunning=false;
@@ -35,7 +35,7 @@ void RuntimeWorld::UpdateAudio(const glm::mat4& activeView,float alpha){
             listenerPosition=glm::vec3(transform[3]);listenerOrientation=glm::normalize(glm::quat_cast(glm::mat3(transform)));
         }
     }
-    for(auto& e:m_audioEmitters){
+    for(auto& e:m_audioEmitters){if(!IsPublished(e.id))continue;
         glm::vec3 position;glm::quat rotation;
         const bool active=e.settings.enabled&&Pose(*this,e.id,e.transform,e.staticBody,alpha,position,rotation)&&(!e.settings.spatial||listenerActive);
         if(!active){

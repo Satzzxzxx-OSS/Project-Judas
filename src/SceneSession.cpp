@@ -1,3 +1,4 @@
+#include "WorldStreaming.h"
 #include "PerformanceProfiler.h"
 #include "SceneSession.h"
 #include "RuntimeWorld.h"
@@ -26,6 +27,21 @@ SceneSession::SceneSession(const Project& project,const std::string& current):m_
     std::sort(m_scenes.begin(),m_scenes.end());
     m_scenes.erase(std::unique(m_scenes.begin(),m_scenes.end()),m_scenes.end());
 }
+SceneSession::~SceneSession()=default;
+WorldStreaming* SceneSession::Streaming(RuntimeWorld& world,std::string& error){
+    if(!m_accepting&&(!m_streaming||m_streamWorld!=&world)){error="Scene lifecycle ending";return nullptr;}
+    if(!ComposedProject()){error="Project has no world manifest";return nullptr;}
+    if(m_streamWorld!=&world){m_streaming.reset();m_streamWorld=&world;m_streamError.clear();}
+    if(!m_streaming&&m_streamError.empty()){
+        auto* resources=world.Resources();auto* db=resources?resources->Assets():nullptr;
+        auto* asset=db?db->Find(m_project.Settings().worldManifest):nullptr;WorldManifest manifest;
+        if(!resources||!resources->Jobs()){m_streamError="Streaming requires the normal asynchronous JobSystem";}
+        else if(!asset||asset->type!=AssetType::World||!LoadWorldManifest(asset->path,manifest,m_streamError)||!ValidateWorldManifest(manifest,m_project,m_streamError)){if(m_streamError.empty())m_streamError="Missing world manifest asset";}
+        else m_streaming=std::make_unique<WorldStreaming>(world,*resources,m_project,std::move(manifest));
+    }
+    error=m_streamError;return m_streaming.get();
+}
+void SceneSession::AdvanceStreaming(RuntimeWorld& world,bool paused){if(!ComposedProject())return;std::string error;if(auto* stream=Streaming(world,error))stream->Advance(paused);}
 bool SceneSession::Request(const std::string& scene,std::string& error){
     if(!m_accepting){error="Scene lifecycle is ending";return false;}
     if(std::find(m_scenes.begin(),m_scenes.end(),scene)==m_scenes.end()){
@@ -59,12 +75,13 @@ bool SceneSession::Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& p
     auto state=world->SceneControl();
     m_accepting=false;
     play.End(); // stop callbacks, UI and audio before releasing scene resources
+    m_streaming.reset();m_streamWorld=nullptr;
     world=std::move(next);
     m_current=requested;
     m_accepting=true;
     world->SetSceneControl(std::move(state));
     if(!play.Begin(*world,WorldCoordinates(scene.Settings().worldOrigin),error))return false;
-    play.SetWorldStatePath(m_saves?m_project.WorldStatePathForScene(m_project.Resolve(requested)):"",false);
+    play.SetWorldStatePath(m_saves&&!world->IsComposed()?m_project.WorldStatePathForScene(m_project.Resolve(requested)):"",false);
     // No automatic save overlay: reload means fresh authored scene. Explicit
     // save/load compatibility remains tied to this new world's baseline.
     return true;

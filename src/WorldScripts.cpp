@@ -6,6 +6,7 @@
 #include <limits>
 
 const SceneObject* RuntimeWorld::RuntimeDefinition(EntityId id) const {
+    if(!IsPublished(id))return nullptr;
     if(const auto* e=FindEntity(id))if(e->lifecycle==EntityLifecycle::Destroyed)return nullptr;
     auto it=m_scriptDefinitions.find(id);return it==m_scriptDefinitions.end()?nullptr:&it->second;
 }

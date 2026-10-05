@@ -423,7 +423,22 @@ public:
     const std::vector<SceneObjectId>& DoorIds() const { return m_doorIds; }
     const std::vector<SceneObjectId>& LightSwitchIds() const { return m_lightSwitchIds; }
 
+// M59 registration seam uses the same component constructor as Build.
+    bool StageRegionObject(const SceneObject& worldObject,const SceneObject& localObject,std::string&);
+    void PublishRegion(const std::vector<EntityId>& ids);
+    bool RegionVisualReady(const std::vector<EntityId>& ids) const;
+    void HideRegion(const std::vector<EntityId>& ids);
+    void BindRegionCameraReference(EntityId id,EntityId target);
+    void RemoveRegionObject(EntityId id);
+    void EndRegionScripts(const std::vector<EntityId>& ids);
+    bool IsPublished(EntityId id) const { return !m_regionPending.count(id); }
+    void RebuildRegionGravity(const std::map<EntityId,std::string>& order);
+    void SetCompositionFingerprint(const std::string& hash) { m_baselineFingerprint=hash;m_composed=true; }
+    bool IsComposed() const { return m_composed; }
 private:
+    bool m_composed=false;
+    std::set<EntityId> m_regionPending;
+    std::map<EntityId,std::vector<AssetId>> m_regionAssets;
     std::shared_ptr<SceneSession> m_sceneControl;
     std::map<unsigned,EntityId> m_touchEntityHistory;
     struct FluidVolumeSetup;

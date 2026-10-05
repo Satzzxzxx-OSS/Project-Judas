@@ -1,5 +1,5 @@
 {
-  "checkpoint": "ba16c2c52c60194a95ff161d55b93ff874863b77",
+  "checkpoint": "6fb90d56562651d027a8740cc8d17bb655d9b8b0",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -1971,6 +1971,28 @@
       "reference": "docs/judasjs/scenes-state.md"
     },
     {
+      "symbol": "scenes.activateRegion",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionActivate"
+      ],
+      "type": "docs/judas.d.ts:scenes.activateRegion",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.adopt",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionAdopt"
+      ],
+      "type": "docs/judas.d.ts:scenes.adopt",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
       "symbol": "scenes.current",
       "kinds": [
         "get"
@@ -1993,6 +2015,50 @@
       "reference": "docs/judasjs/scenes-state.md"
     },
     {
+      "symbol": "scenes.owner",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionOwner"
+      ],
+      "type": "docs/judas.d.ts:scenes.owner",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.pinRegion",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionPin"
+      ],
+      "type": "docs/judas.d.ts:scenes.pinRegion",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.regionStatus",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionStatus"
+      ],
+      "type": "docs/judas.d.ts:scenes.regionStatus",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.regions",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "regionList"
+      ],
+      "type": "docs/judas.d.ts:scenes.regions",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
       "symbol": "scenes.registered",
       "kinds": [
         "get"
@@ -2004,6 +2070,17 @@
       "reference": "docs/judasjs/scenes-state.md"
     },
     {
+      "symbol": "scenes.releaseRegion",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionRelease"
+      ],
+      "type": "docs/judas.d.ts:scenes.releaseRegion",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
       "symbol": "scenes.reload",
       "kinds": [
         "call"
@@ -2013,6 +2090,72 @@
       ],
       "type": "docs/judas.d.ts:scenes.reload",
       "reference": "docs/judasjs/scenes-state.md"
+    },
+    {
+      "symbol": "scenes.removeInterest",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionRemoveInterest"
+      ],
+      "type": "docs/judas.d.ts:scenes.removeInterest",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.requestRegion",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionRequest"
+      ],
+      "type": "docs/judas.d.ts:scenes.requestRegion",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.resolveRegionEntity",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionResolve"
+      ],
+      "type": "docs/judas.d.ts:scenes.resolveRegionEntity",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.setInterest",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionInterest"
+      ],
+      "type": "docs/judas.d.ts:scenes.setInterest",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.streamingStats",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "regionStats"
+      ],
+      "type": "docs/judas.d.ts:scenes.streamingStats",
+      "reference": "docs/judasjs/streaming.md"
+    },
+    {
+      "symbol": "scenes.unloadRegion",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "regionUnload"
+      ],
+      "type": "docs/judas.d.ts:scenes.unloadRegion",
+      "reference": "docs/judasjs/streaming.md"
     },
     {
       "symbol": "session",
@@ -2386,6 +2529,19 @@
     "ragdollEnter",
     "ragdollExists",
     "ragdollLeave",
+    "regionActivate",
+    "regionAdopt",
+    "regionInterest",
+    "regionList",
+    "regionOwner",
+    "regionPin",
+    "regionRelease",
+    "regionRemoveInterest",
+    "regionRequest",
+    "regionResolve",
+    "regionStats",
+    "regionStatus",
+    "regionUnload",
     "released",
     "removeTag",
     "resumeAudio",

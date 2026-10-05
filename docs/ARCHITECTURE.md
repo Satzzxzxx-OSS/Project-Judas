@@ -8977,3 +8977,26 @@ without changing M54/M55 behaviour. See [profiler guide](PROFILER.md) and M56 ev
 ## M57 optional materials and environment lighting
 
 Current reusable `.judasmat` definitions and isolated instance overrides, core glTF primitive slots, PBR/unlit/legacy models and baked `.judasenv` resources use AssetDatabase/async ResourceManager and Renderer-owned GL3.3 lifetime. Opted-in scenes accumulate linear HDR, apply exposure/Reinhard/sRGB once, then display-stage UI. Modern secondary targets carry scene-linear radiance. Physics, liquid simulation and resolved skeletal poses remain independent of material policy. See [Materials](MATERIALS.md) for exact shading, colour/import/pass contracts and [JudasJS material API](judasjs/materials.md). Candidate awaits human visual/gameplay acceptance; historical milestone evidence is preserved.
+
+## M59 — additive composition and region residency
+
+Optional project `.judasworld` manifests describe stable source identities, oriented
+placements/bounds, dependencies and budgets. One RuntimeWorld/PhysicsWorld/gravity
+router/navigation service/QuickJS VM remains authoritative. JobSystem prepares
+immutable descriptors; private incremental registration and atomic publication run
+at the outer boundary. Teardown releases ordinary registrations/resources.
+
+Judas owns residency/lifetime; project JavaScript owns loading UI, travel gates and
+destinations. M43 replacement/reload retains its separate whole-world meaning.
+Session/root view/input/environment/locale/HUD remain selected explicitly; region
+completion does not replace them. Region gravity order follows declared priority
+and stable IDs before root fallback, never worker completion.
+
+Fresh runtime identities remap local/qualified references. Supports, physical/nav/
+gravity dependencies and unsuspendable liquid/articulation state pin with reasons.
+Supported JSON/physical session records and tombstones survive ordinary eviction;
+retention pressure blocks rather than silently resetting unique content. Composed
+disk saves are disabled/rejected. Fixed double origin/local floats remain M23: no
+live rebasing. Legacy single-scene canonical schema 5 is unchanged. See
+[M59 coverage, budgets and limitations](M59_WORLD_STREAMING.md) and
+[JudasJS streaming API](judasjs/streaming.md). Human candidate review remains pending.
