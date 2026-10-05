@@ -66,6 +66,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     // reference; a scene outside any project resolves nothing.
     if (options.project.IsLoaded()) {
         host.OpenProjectAssets(options.project.RootDir(), options.project.AssetsDir());
+
         const auto& iconId = options.project.Settings().iconAsset;
         if (!iconId.empty()) {
             const auto* icon = host.Assets().Find(iconId);
@@ -96,6 +97,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     auto worldOwner=std::make_unique<RuntimeWorld>();
     auto sceneControl=std::make_shared<SceneSession>(options.project,options.scenePath);
     sceneControl->EnableSaves(!options.worldStatePath.empty());
+    if(options.project.IsLoaded())worldOwner->audioGroups=options.project.Settings().audio;
     worldOwner->legacyGameplay = !options.project.IsLoaded() || options.project.Settings().legacyGameplay;
     worldOwner->SetSceneControl(sceneControl);
     RuntimeWorld& world=*worldOwner;

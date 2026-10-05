@@ -82,7 +82,7 @@ object 10 "Range character"
   position 0 0.9 8
   rotation 1 0 0 0
   scale 1 1 1
-  audio-emitter 
+  audio-emitter
   audio.asset "45440a128a59396ff8da5d1538fe7c37"
   audio.enabled true
   audio.play-on-start false
@@ -94,6 +94,7 @@ object 10 "Range character"
   audio.maximum-distance 40
   audio.rolloff 1
   audio.attenuation inverse
+  audio.group "effects"
   audio-listener 
   listener.enabled true
   listener.follow-view true
@@ -156,7 +157,7 @@ object 20 "Impact feedback"
   particle.end-color 1 0.2 0.02
   particle.end-alpha 0
   particle.seed 52
-  audio-emitter 
+  audio-emitter
   audio.asset "b3abc90beb149a4184a5794844052ec7"
   audio.enabled true
   audio.play-on-start false
@@ -168,6 +169,7 @@ object 20 "Impact feedback"
   audio.maximum-distance 40
   audio.rolloff 1
   audio.attenuation inverse
+  audio.group "effects"
 end
 
 object 21 "Shot flash"
@@ -224,4 +226,24 @@ object 552 ""
   position 0 0 0
   rotation 1 0 0 0
   scale 1 1 1
+end
+
+object 610 "Persistent root music"
+  position 0 0 0
+  rotation 1 0 0 0
+  scale 1 1 1
+  audio-emitter
+  audio.asset "60606060606060606060606060606001"
+  audio.enabled true
+  audio.play-on-start true
+  audio.loop true
+  audio.spatial false
+  audio.volume 0.12
+  audio.pitch 1
+  audio.reference-distance 1
+  audio.maximum-distance 30
+  audio.rolloff 1
+  audio.attenuation none
+  audio.loading streamed
+  audio.group "music"
 end

@@ -2,6 +2,8 @@
 #include "ScriptSystem.h"
 
 #include <array>
+#include <algorithm>
+#include <fstream>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -113,8 +115,10 @@ void WriteObject(CanonicalWriter& w, const SceneObject& o) {
     w.Boolean(o.audioEmitter.has_value());
     if(o.audioEmitter){const auto& a=*o.audioEmitter;w.Context(object+" audio emitter");w.Text(a.asset);w.Boolean(a.enabled);w.Boolean(a.playOnStart);w.Boolean(a.loop);w.Boolean(a.spatial);
         w.Number(a.volume);w.Number(a.pitch);w.Number(a.referenceDistance);w.Number(a.maximumDistance);w.Number(a.rolloff);w.Enum(a.attenuation,2,"audio attenuation");
+        if(a.loading!=AudioLoading::Buffered||a.streamPageFrames!=4096||!a.group.empty()||a.doppler!=0||a.send!=0||a.occlusion||a.bypass||a.occlusionMask!=kAllCategories||a.occludedGain!=.25f||a.occludedCutoff!=1200){w.Text("AudioAcoustics.1");w.Enum(a.loading,1,"audio loading");w.U64(a.streamPageFrames);w.Text(a.group);w.Number(a.doppler);w.Number(a.send);w.Boolean(a.occlusion);w.Boolean(a.bypass);w.U64(a.occlusionMask);w.Number(a.occludedGain);w.Number(a.occludedCutoff);}
         if(!ValidAudioSettings(a)||(!a.asset.empty()&&!IsValidAssetId(a.asset)))w.Fail("invalid audio settings or asset reference");
     }
+    if(o.audioZone){const auto& z=*o.audioZone;w.Text("AudioZone.1");w.Text(z.asset);w.Boolean(z.enabled);w.Enum(z.shape,1,"audio zone shape");w.Vector(z.halfExtents);w.Number(z.radius);w.Number(z.blendDistance);w.Number(z.amount);w.U64(static_cast<std::uint64_t>(z.priority));}
     w.Boolean(o.audioListener.has_value());
     if(o.audioListener){w.Boolean(o.audioListener->enabled);w.Boolean(o.audioListener->followActiveView);}
     w.Boolean(o.renderCamera.has_value());
@@ -217,22 +221,21 @@ void WriteObject(CanonicalWriter& w, const SceneObject& o) {
 
 }  // namespace
 
-std::string SceneFingerprintSha256(std::string_view bytes) {
-    // FIPS 180-4 SHA-256: 512-bit blocks and a 64-bit big-endian bit length.
-    std::string message(bytes);
-    const std::uint64_t bitLength = static_cast<std::uint64_t>(message.size()) * 8u;
-    message.push_back(static_cast<char>(0x80));
-    while (message.size() % 64 != 56) message.push_back('\0');
-    for (int shift = 56; shift >= 0; shift -= 8) message.push_back(static_cast<char>((bitLength >> shift) & 0xffu));
+namespace {
+// The same SHA-256 block primitive serves canonical strings and bounded file reads.
+struct FingerprintDigest {
     std::array<std::uint32_t, 8> hash{{
         0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
         0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u
     }};
-    for (std::size_t offset = 0; offset < message.size(); offset += 64) {
+    std::array<unsigned char, 64> pending{};
+    size_t used = 0;
+    uint64_t length = 0;
+    void Compress(const unsigned char* block) {
         std::array<std::uint32_t, 64> words{};
         for (std::size_t i = 0; i < 16; ++i) {
             for (std::size_t byte = 0; byte < 4; ++byte)
-                words[i] = (words[i] << 8) | static_cast<unsigned char>(message[offset + 4 * i + byte]);
+                words[i] = (words[i] << 8) | static_cast<unsigned char>(block[4 * i + byte]);
         }
         for (std::size_t i = 16; i < 64; ++i) {
             const auto s0 = RotateRight(words[i - 15], 7) ^ RotateRight(words[i - 15], 18) ^ (words[i - 15] >> 3);
@@ -254,12 +257,47 @@ std::string SceneFingerprintSha256(std::string_view bytes) {
         hash[0] += a; hash[1] += b; hash[2] += c; hash[3] += d;
         hash[4] += e; hash[5] += f; hash[6] += g; hash[7] += h;
     }
+    void Append(const char* data, size_t count) {
+        length += count;
+        while (count) {
+            const size_t amount = std::min(count, pending.size() - used);
+            std::memcpy(pending.data() + used, data, amount);
+            used += amount; data += amount; count -= amount;
+            if (used == pending.size()) { Compress(pending.data()); used = 0; }
+        }
+    }
+    std::string Finish() {
+        const uint64_t bits = length * 8u;
+        pending[used++] = 0x80;
+        if (used > 56) { std::fill(pending.begin()+used, pending.end(), 0); Compress(pending.data()); used = 0; }
+        std::fill(pending.begin()+used, pending.begin()+56, 0);
+        for (int i=0; i<8; ++i) pending[56+i] = static_cast<unsigned char>(bits >> (56-8*i));
+        Compress(pending.data());
     static constexpr char hex[] = "0123456789abcdef";
     std::string result;
     result.reserve(64);
     for (const auto word : hash)
         for (int shift = 28; shift >= 0; shift -= 4) result.push_back(hex[(word >> shift) & 0xfu]);
     return result;
+    }
+};
+} // namespace
+std::string SceneFingerprintSha256(std::string_view bytes) {
+    FingerprintDigest digest; digest.Append(bytes.data(), bytes.size()); return digest.Finish();
+}
+bool SceneFingerprintSha256File(const std::string& path, std::string& result,
+                               std::string& error, const std::function<bool()>& cancelled) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) { error = "Cannot hash asset: " + path; return false; }
+    FingerprintDigest digest;
+    std::array<char, 65536> page{};
+    while (file) {
+        if (cancelled && cancelled()) { error = "Asset hash cancelled"; return false; }
+        file.read(page.data(), page.size());
+        digest.Append(page.data(), static_cast<size_t>(file.gcount()));
+    }
+    if (!file.eof()) { error = "Cannot finish hashing asset: " + path; return false; }
+    result = digest.Finish(); error.clear(); return true;
 }
 
 bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,

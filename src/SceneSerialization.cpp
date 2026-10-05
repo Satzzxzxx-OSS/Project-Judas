@@ -178,7 +178,18 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("audio.loop",B(a.loop));w.Line("audio.spatial",B(a.spatial));w.Line("audio.volume",F(a.volume));w.Line("audio.pitch",F(a.pitch));
         w.Line("audio.reference-distance",F(a.referenceDistance));w.Line("audio.maximum-distance",F(a.maximumDistance));w.Line("audio.rolloff",F(a.rolloff));
         w.Line("audio.attenuation",a.attenuation==AudioAttenuation::Inverse?"inverse":a.attenuation==AudioAttenuation::Linear?"linear":"none");
+        if(a.loading!=AudioLoading::Buffered)w.Line("audio.loading","streamed");
+        if(a.streamPageFrames!=4096)w.Line("audio.page-frames",std::to_string(a.streamPageFrames));
+        if(!a.group.empty())w.Line("audio.group",Quote(a.group));
+        if(a.doppler!=0)w.Line("audio.doppler",F(a.doppler));
+        if(a.send!=0)w.Line("audio.send",F(a.send));
+        if(a.occlusion)w.Line("audio.occlusion",B(a.occlusion));
+        if(a.bypass)w.Line("audio.bypass",B(a.bypass));
+        if(a.occlusionMask!=kAllCategories)w.Line("audio.occlusion-mask",std::to_string(a.occlusionMask));
+        if(a.occludedGain!=.25f)w.Line("audio.occluded-gain",F(a.occludedGain));
+        if(a.occludedCutoff!=1200)w.Line("audio.occluded-cutoff",F(a.occludedCutoff));
     }
+    if(o.audioZone){const auto& z=*o.audioZone;w.Line("audio-zone","");w.Line("zone.asset",Quote(z.asset));w.Line("zone.enabled",B(z.enabled));w.Line("zone.shape",z.shape==SceneRegionShape::Box?"box":"sphere");w.Line("zone.half-extents",V(z.halfExtents));w.Line("zone.radius",F(z.radius));w.Line("zone.blend",F(z.blendDistance));w.Line("zone.amount",F(z.amount));w.Line("zone.priority",std::to_string(z.priority));}
     if(o.audioListener){w.Line("audio-listener", "");w.Line("listener.enabled",B(o.audioListener->enabled));w.Line("listener.follow-view",B(o.audioListener->followActiveView));}
     if (o.renderCamera) {
         const auto& c = *o.renderCamera;
@@ -745,8 +756,21 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         else if((*model)[0].text=="linear")a.attenuation=AudioAttenuation::Linear;
         else if((*model)[0].text=="none")a.attenuation=AudioAttenuation::None;
         else return reader.Fail("unknown audio attenuation");
+
+        if(p.Has("audio.loading")){auto* v=p.Header("audio.loading",1,1);if(!v)return false;if((*v)[0].text=="streamed")a.loading=AudioLoading::Streamed;else if((*v)[0].text!="buffered")return reader.Fail("invalid audio loading policy");}
+        int pages=int(a.streamPageFrames);
+        if((p.Has("audio.page-frames")&&!p.Int("audio.page-frames",pages))||(p.Has("audio.group")&&!p.String("audio.group",a.group))||(p.Has("audio.doppler")&&!p.Float("audio.doppler",a.doppler))||(p.Has("audio.send")&&!p.Float("audio.send",a.send))||(p.Has("audio.occlusion")&&!p.Bool("audio.occlusion",a.occlusion))||(p.Has("audio.bypass")&&!p.Bool("audio.bypass",a.bypass))||(p.Has("audio.occlusion-mask")&&!p.Mask("audio.occlusion-mask",a.occlusionMask))||(p.Has("audio.occluded-gain")&&!p.Float("audio.occluded-gain",a.occludedGain))||(p.Has("audio.occluded-cutoff")&&!p.Float("audio.occluded-cutoff",a.occludedCutoff)))return false;
+        a.streamPageFrames=unsigned(pages);
         if(!ValidAudioSettings(a)||(!a.asset.empty()&&!IsValidAssetId(a.asset)))return reader.Fail("invalid audio settings or asset id");
         o.audioEmitter=a;
+    }
+    if(p.Has("audio-zone")){
+        SceneAudioZoneComponent z;
+        if(!p.Header("audio-zone",0,0)||!p.String("zone.asset",z.asset)||!p.Bool("zone.enabled",z.enabled)||!p.Vec3("zone.half-extents",z.halfExtents)||!p.Float("zone.radius",z.radius)||!p.Float("zone.blend",z.blendDistance)||!p.Float("zone.amount",z.amount)||!p.Int("zone.priority",z.priority))return false;
+        const auto* shape=p.Header("zone.shape",1,1);if(!shape)return false;
+        if((*shape)[0].text=="box")z.shape=SceneRegionShape::Box;else if((*shape)[0].text=="sphere")z.shape=SceneRegionShape::Sphere;else return reader.Fail("invalid audio zone shape");
+        if(!IsValidAssetId(z.asset)||glm::any(glm::lessThanEqual(z.halfExtents,glm::vec3(0)))||z.radius<=0||z.blendDistance<0||z.amount<0||z.amount>1)return reader.Fail("invalid audio zone");
+        o.audioZone=z;
     }
     if(p.Has("audio-listener")){
         SceneAudioListenerComponent l;if(!p.Header("audio-listener",0,0)||!p.Bool("listener.enabled",l.enabled)||!p.Bool("listener.follow-view",l.followActiveView))return false;

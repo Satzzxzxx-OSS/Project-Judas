@@ -164,7 +164,7 @@ WorldStreaming::WorldStreaming(RuntimeWorld& w,ResourceManager& r,Project p,Worl
     auto product=this->m->baseline;auto project=this->m->project;auto assets=*r.Assets();auto manifest=this->m->manifest;
     this->m->baselineJob=r.Jobs()->Submit([product,project,assets,manifest,rootBaseline](JobContext& ctx){std::string identity="Judas.ComposedWorld.1:"+rootBaseline+":"+Project::SerializeToString(project.Settings()),error;
         for(auto& [id,region]:manifest.regions){if(ctx.CancelRequested()){ctx.ReportCancelled();return;}std::string bytes;if(!read(project.Resolve(region.scene),bytes,error)){ctx.SetError(error);return;}identity+=id+":"+SceneFingerprintSha256(bytes);}
-        for(auto& [id,asset]:assets.Records()){if(ctx.CancelRequested()){ctx.ReportCancelled();return;}std::string bytes;if(!read(asset.path,bytes,error,128*1024*1024)){ctx.SetError(error);return;}identity+=id+":"+AssetTypeName(asset.type)+":"+SceneFingerprintSha256(bytes);}
+        for(auto& [id,asset]:assets.Records()){if(ctx.CancelRequested()){ctx.ReportCancelled();return;}std::string digest;if(!SceneFingerprintSha256File(asset.path,digest,error,[&]{return ctx.CancelRequested();})){if(ctx.CancelRequested())ctx.ReportCancelled();else ctx.SetError(error);return;}identity+=id+":"+AssetTypeName(asset.type)+":"+digest;}
         *product=SceneFingerprintSha256(identity);
     },JobPriority::Low,"composed content identity");
 }
@@ -271,7 +271,7 @@ void WorldStreaming::Advance(bool paused){
                     remap(saved,replacements);saved.id=o.id;saved.transform.position=snap->second.state.position;saved.transform.rotation=snap->second.state.rotation;o=std::move(saved);
                 }
                 for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==original)reference(o,ref.field,Resolve(ref.target,ref.targetLocal));
-                std::string error;bool ok=false;unit([&]{JUDAS_PROFILE_SCOPE("Streaming component registration");ok=m->world.StageRegionObject(o,local,error);},r);r.members.push_back(o.id);m->owners[o.id]=id;
+                std::string error;bool ok=false;unit([&]{JUDAS_PROFILE_SCOPE("Streaming component registration");ok=m->world.StageRegionObject(o,local,error,id+":"+std::to_string(original));},r);r.members.push_back(o.id);m->owners[o.id]=id;
                 if(!ok){s.state="unloading";s.error=error;r.scriptsEnded=true;r.unload=true;break;}
                 ++r.next;s.installed=r.next;
             }

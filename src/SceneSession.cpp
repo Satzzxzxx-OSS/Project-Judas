@@ -65,6 +65,7 @@ bool SceneSession::Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& p
     Scene scene;
     if(!LoadSceneFromFile(m_project.Resolve(requested),scene,error))return false;
     auto next=std::make_unique<RuntimeWorld>();
+    next->audioGroups=m_project.Settings().audio;
     next->legacyGameplay=m_project.Settings().legacyGameplay;
     next->SetSceneControl(world->SceneControl());
     if(!next->Build(scene,&resources,error,&m_project.Settings().classification, &m_project.Settings().navigation))return false;

@@ -474,6 +474,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
                 m_assets->RequestTexture(o.particleEmitter->textureAsset,JobPriority::High);
             }
         }
+        if(o.audioZone){m_audioZones.push_back({o.id,o.transform,*o.audioZone});if(m_assets&&!o.audioZone->asset.empty()){m_assets->AddRef(o.audioZone->asset);m_referencedAssets.push_back(o.audioZone->asset);std::string error;m_assets->GetAudioEnvironment(o.audioZone->asset,error);}}
         if(o.audioEmitter){
             AudioEmitter emitter;emitter.id=o.id;emitter.transform=o.transform;emitter.settings=*o.audioEmitter;
             emitter.wantPlay=emitter.settings.playOnStart;
@@ -481,7 +482,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
             m_audioEmitters.push_back(emitter);
             if(m_assets&&!emitter.settings.asset.empty()){
                 m_assets->AddRef(emitter.settings.asset);m_referencedAssets.push_back(emitter.settings.asset);
-                if(emitter.settings.enabled)m_assets->RequestAudio(emitter.settings.asset);
+                if(emitter.settings.enabled&&emitter.settings.loading==AudioLoading::Buffered)m_assets->RequestAudio(emitter.settings.asset);
             }
         }
         if(o.audioListener&&o.audioListener->enabled){
@@ -948,7 +949,7 @@ bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
         eraseId(m_staticBodies);eraseId(m_staticRenderables);eraseId(m_staticLights);
     }
     m_particleEmitters.erase(std::remove_if(m_particleEmitters.begin(),m_particleEmitters.end(),[&](const auto& e){return e.id==id;}),m_particleEmitters.end());
-    if(m_audioSystem)for(auto& emitter:m_audioEmitters)if(emitter.id==id){m_audioSystem->DestroyVoice(emitter.voice);emitter.voice={};emitter.wantPlay=false;}
+    ReleaseEntityAudio(id);
     if(m_ui)m_ui->RemoveOwner(id);
     e->lifecycle = EntityLifecycle::Destroyed;
     if (m_cameraRenderer) for (auto& camera : m_renderCameras) {
@@ -1225,7 +1226,7 @@ void RuntimeWorld::Destroy() {
     m_scripts.reset();m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
     EndAudio();
     m_particleEmitters.clear();
-    m_audioEmitters.clear();m_audioListener.reset();m_audioSystem=nullptr;
+    m_audioEmitters.clear();m_audioZones.clear();m_audioIdentities.clear();m_audioListener.reset();m_audioSystem=nullptr;
     if (!m_built) return;
     if (m_cameraRenderer) for (const auto& camera : m_renderCameras) m_cameraRenderer->DestroyRenderTarget(camera.target);
     m_renderCameras.clear(); m_cameraRenderer = nullptr; m_cameraFrame = 0;

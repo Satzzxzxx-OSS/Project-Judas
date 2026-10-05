@@ -53,6 +53,10 @@ export class Entity {
  get character(){return call("characterExists",this.id)?new Character(this.id):null}
  get ragdoll(){return call('ragdollExists',this.id)?new Ragdoll(this.id):null}
  get audio(){return call('audioInfo',this.id)}
+ setAudio(settings){return call('audioSettings',this.id,settings)}
+ seekAudio(seconds){return call('audioSeek',this.id,seconds)}
+ setAudioVelocity(velocity=null){return call('audioVelocity',this.id,velocity)}
+ playAudioOneShot(){return call('audioOneShot',this.id)}
  setAudioEnabled(enabled){return call('audioEnabled',this.id,enabled)}
  get camera(){return call('cameraInfo',this.id)}
  material(slot=0){return new Material(this.id,slot)}
@@ -75,6 +79,7 @@ export class Entity {
  setParticles(settings){return call('particles',this.id,settings)}
  setCameraEnabled(enabled){return call('camera',this.id,enabled)}
 }
+export const audio={group:name=>call('audioGroup',name),setGroup:(name,settings,fadeSeconds=0)=>call('audioGroupSet',name,settings,fadeSeconds),get diagnostics(){return call('audioDiagnostics')}};
 export const entity=id=>id&&id!=='0'?new Entity(id):null;
 export const world={entity,get appearance(){return call('appearanceInfo')},setAppearance:settings=>call('appearanceSet',settings),setView:(pose,fov=70)=>call("setView",pose,fov),clearView:()=>call("clearView"),fluidSample:(point,up,halfHeight,radius,tangent)=>call("fluidSample",point,up,halfHeight,radius,tangent),get viewRay(){return call('viewRay')},queryTags:(required=[],excluded=[])=>call('queryTags',required,excluded).map(entity),
  spawnPrefab:(asset,transform)=>entity(call('spawn',asset,transform)),
@@ -374,6 +379,24 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     auto& world=*s->world;
 
 
+    if(op=="audioGroup"||op=="audioGroupSet"||op=="audioDiagnostics"){
+        auto* service=world.Resources()?world.Resources()->GetAudioSystem():nullptr;
+        if(!service)return JS_NULL;
+        if(op=="audioDiagnostics"){auto d=service->Diagnostics();auto o=JS_NewObject(c);
+            for(auto item:{std::pair<const char*,double>{"voices",double(d.voices)},{"streams",double(d.streams)},{"bufferedBytes",double(d.bufferedBytes)},{"streamBytes",double(d.streamBytes)},{"streamHighWater",double(d.streamHighWater)},{"pendingRetirements",double(d.pendingRetirements)},{"reverbProcessors",double(d.reverbProcessors)},{"underruns",double(d.underruns)},{"decodedFrames",double(d.decodedFrames)},{"occlusionQueries",double(world.AudioQueryCount())},{"maximumDetachMilliseconds",d.maximumDetachMilliseconds}})JS_SetPropertyStr(c,o,item.first,JS_NewFloat64(c,item.second));
+            return o;
+        }
+        if(!JS_IsString(arg(1)))return JS_ThrowTypeError(c,"sound group name required");
+        auto name=String(c,arg(1));AudioGroupSettings group;
+        if(!service->GetGroup(name,group))return op=="audioGroup"?JS_NULL:JS_ThrowTypeError(c,"unknown authored sound group");
+        if(op=="audioGroupSet"){
+            if(!JS_IsObject(arg(2)))return JS_ThrowTypeError(c,"group settings required");
+            auto gain=JS_GetPropertyStr(c,arg(2),"gain");bool supplied=!JS_IsUndefined(gain);JS_FreeValue(c,gain);if(supplied&&!Number(c,arg(2),"gain",group.gain))return JS_ThrowTypeError(c,"finite group gain required");
+            for(auto item:{std::pair<const char*,bool*>{"mute",&group.mute},{"paused",&group.paused}}){auto v=JS_GetPropertyStr(c,arg(2),item.first);if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"boolean group setting required");}*item.second=JS_ToBool(c,v);}JS_FreeValue(c,v);}
+            double fade;if(JS_ToFloat64(c,&fade,arg(3))!=0||!std::isfinite(fade)||!service->SetGroup(name,group,float(fade)))return JS_ThrowTypeError(c,"gain 0..1, fade 0..60 seconds required");return JS_TRUE;
+        }
+        auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"gain",JS_NewFloat64(c,group.gain));JS_SetPropertyStr(c,o,"mute",JS_NewBool(c,group.mute));JS_SetPropertyStr(c,o,"paused",JS_NewBool(c,group.paused));return o;
+    }
     if(op=="appearanceInfo"||op=="appearanceSet"){
         auto appearance=world.Settings();auto options=arg(1);
         auto has=[&](const char* name){auto v=JS_GetPropertyStr(c,options,name);bool found=!JS_IsUndefined(v);JS_FreeValue(c,v);return found;};
@@ -540,9 +563,9 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         if(!JS_IsUndefined(scale))ok=ok&&ReadVec(c,scale,t.scale)&&t.scale.x>0&&t.scale.y>0&&t.scale.z>0;
         JS_FreeValue(c,p);JS_FreeValue(c,r);JS_FreeValue(c,scale);return ok;};
     if(op=="setView"){
-        SceneTransform t;double fov=70;if(!readTransform(arg(1),t)||JS_ToFloat64(c,&fov,arg(2))||!world.SetRuntimeView(t,float(fov)))return JS_ThrowTypeError(c,"invalid runtime view");return JS_TRUE;
+        const bool initialView=!world.view;SceneTransform t;double fov=70;if(!readTransform(arg(1),t)||JS_ToFloat64(c,&fov,arg(2))||!world.SetRuntimeView(t,float(fov)))return JS_ThrowTypeError(c,"invalid runtime view");if(initialView)world.ResetAudioMotion();return JS_TRUE;
     }
-    if(op=="clearView"){world.view.reset();return JS_TRUE;}
+    if(op=="clearView"){world.view.reset();world.ResetAudioMotion();return JS_TRUE;}
     if(op=="fluidSample"){
         glm::vec3 p,up,tangent;double height,radius;
         if(!ReadVec(c,arg(1),p)||!ReadVec(c,arg(2),up)||!ReadVec(c,arg(5),tangent)||JS_ToFloat64(c,&height,arg(3))||JS_ToFloat64(c,&radius,arg(4))||!std::isfinite(height)||!std::isfinite(radius)||height<0||radius<=0||glm::length(up)<1e-6f||glm::length(glm::cross(up,tangent))<1e-6f)return JS_ThrowTypeError(c,"invalid liquid query");
@@ -752,8 +775,27 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(op=="audioEnabled"&&!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"audio enabled must be boolean");
     if(op=="audioEnabled")return JS_NewBool(c,world.SetAudioEnabled(id,JS_ToBool(c,arg(2))));
     if(op=="audioInfo"){for(const auto& emitter:world.AudioEmitters())if(emitter.id==id){auto o=JS_NewObject(c);AudioVoiceSnapshot snapshot;
-        auto* audio=world.Resources()?world.Resources()->GetAudioSystem():nullptr;bool loaded=audio&&audio->Snapshot(emitter.voice,snapshot);
-        JS_SetPropertyStr(c,o,"enabled",JS_NewBool(c,emitter.settings.enabled));JS_SetPropertyStr(c,o,"playing",JS_NewBool(c,loaded&&snapshot.state==AudioPlaybackState::Playing));JS_SetPropertyStr(c,o,"requested",JS_NewBool(c,emitter.wantPlay));return o;}return JS_NULL;}
+        auto* service=world.Resources()?world.Resources()->GetAudioSystem():nullptr;bool loaded=service&&service->Snapshot(emitter.voice,snapshot);
+        const char* state=!emitter.error.empty()&&emitter.error!="loading"?"failed":!loaded?"loading":!snapshot.error.empty()?"failed":snapshot.seeking&&!snapshot.ready?"seeking":!snapshot.ready?"loading":snapshot.state==AudioPlaybackState::Paused?"paused":snapshot.state==AudioPlaybackState::Finished?"ended":snapshot.state==AudioPlaybackState::Playing?(snapshot.starved?"starved":"playing"):"ready";
+        JS_SetPropertyStr(c,o,"state",JS_NewString(c,state));JS_SetPropertyStr(c,o,"error",emitter.error.empty()?JS_NULL:JS_NewString(c,emitter.error.c_str()));
+        for(auto item:{std::pair<const char*,bool>{"enabled",emitter.settings.enabled},{"playing",loaded&&snapshot.state==AudioPlaybackState::Playing},{"requested",emitter.wantPlay},{"ready",loaded&&snapshot.ready},{"streamed",emitter.settings.loading==AudioLoading::Streamed},{"loop",emitter.settings.loop},{"starved",snapshot.starved}})JS_SetPropertyStr(c,o,item.first,JS_NewBool(c,item.second));
+        JS_SetPropertyStr(c,o,"position",loaded&&snapshot.cursorAvailable?JS_NewFloat64(c,snapshot.positionSeconds):JS_NULL);JS_SetPropertyStr(c,o,"duration",loaded&&snapshot.durationKnown?JS_NewFloat64(c,snapshot.durationSeconds):JS_NULL);
+        for(auto item:{std::pair<const char*,double>{"bufferBytes",double(snapshot.bufferBytes)},{"underruns",double(snapshot.underruns)},{"dopplerRatio",snapshot.dopplerRatio},{"occlusionGain",snapshot.occlusionGain},{"cutoff",snapshot.cutoff},{"distanceGain",snapshot.distanceGain}})JS_SetPropertyStr(c,o,item.first,JS_NewFloat64(c,item.second));
+            return o;}return JS_NULL;}
+    if(op=="audioSeek"){double seconds;if(JS_ToFloat64(c,&seconds,arg(2))!=0||!std::isfinite(seconds)||seconds<0||seconds>1e8)return JS_ThrowTypeError(c,"finite seek seconds required");return JS_NewBool(c,world.SeekAudio(id,seconds));}
+    if(op=="audioVelocity"){glm::vec3 velocity;if(!JS_IsNull(arg(2))&&!ReadVec(c,arg(2),velocity))return JS_ThrowTypeError(c,"world velocity or null required");return JS_NewBool(c,world.SetAudioVelocity(id,JS_IsNull(arg(2))?std::nullopt:std::optional<glm::vec3>(velocity)));}
+    if(op=="audioOneShot"){std::string error;if(!world.PlayAudioOneShot(id,error)){if(error.empty())return JS_FALSE;return JS_ThrowTypeError(c,"one-shot: %s",error.c_str());}return JS_TRUE;}
+    if(op=="audioSettings"){
+        if(!JS_IsObject(arg(2)))return JS_ThrowTypeError(c,"audio settings required");
+        for(const auto& emitter:world.AudioEmitters())if(emitter.id==id){AudioSettings settings=emitter.settings;auto options=arg(2);
+            for(auto item:{std::pair<const char*,float*>{"volume",&settings.volume},{"pitch",&settings.pitch},{"doppler",&settings.doppler},{"send",&settings.send},{"occludedGain",&settings.occludedGain},{"occludedCutoff",&settings.occludedCutoff},{"referenceDistance",&settings.referenceDistance},{"maximumDistance",&settings.maximumDistance},{"rolloff",&settings.rolloff}}){auto v=JS_GetPropertyStr(c,options,item.first);bool present=!JS_IsUndefined(v);JS_FreeValue(c,v);if(present&&!Number(c,options,item.first,*item.second))return JS_ThrowTypeError(c,"finite audio setting required");}
+            for(auto item:{std::pair<const char*,bool*>{"loop",&settings.loop},{"spatial",&settings.spatial},{"occlusion",&settings.occlusion},{"bypass",&settings.bypass}}){auto v=JS_GetPropertyStr(c,options,item.first);if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"boolean audio setting required");}*item.second=JS_ToBool(c,v);}JS_FreeValue(c,v);}
+            for(auto field:{"group","loading","attenuation"}){auto v=JS_GetPropertyStr(c,options,field);if(!JS_IsUndefined(v)){if(!JS_IsString(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"string audio setting required");}auto value=String(c,v);if(std::string(field)=="group")settings.group=value;else if(std::string(field)=="loading"){if(value!="buffered"&&value!="streamed"){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"buffered/streamed required");}settings.loading=value=="streamed"?AudioLoading::Streamed:AudioLoading::Buffered;}else{if(value!="none"&&value!="inverse"&&value!="linear"){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"none/inverse/linear required");}settings.attenuation=value=="none"?AudioAttenuation::None:value=="inverse"?AudioAttenuation::Inverse:AudioAttenuation::Linear;}}JS_FreeValue(c,v);}
+            auto frames=JS_GetPropertyStr(c,options,"streamPageFrames");if(!JS_IsUndefined(frames)){double n;if(JS_ToFloat64(c,&n,frames)!=0||!std::isfinite(n)||n!=std::floor(n)||n<1024||n>16384){JS_FreeValue(c,frames);return JS_ThrowTypeError(c,"integer stream page frames 1024..16384 required");}settings.streamPageFrames=unsigned(n);}JS_FreeValue(c,frames);
+            auto mask=JS_GetPropertyStr(c,options,"occlusionLayers");if(!JS_IsUndefined(mask)){if(!JS_IsArray(mask)){JS_FreeValue(c,mask);return JS_ThrowTypeError(c,"collision layer names required");}auto len=JS_GetPropertyStr(c,mask,"length");uint32_t n;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);if(n>64){JS_FreeValue(c,mask);return JS_ThrowTypeError(c,"at most 64 layers");}settings.occlusionMask=0;for(uint32_t i=0;i<n;++i){auto v=JS_GetPropertyUint32(c,mask,i);int layer=JS_IsString(v)?world.Categories().collision.Find(String(c,v)):-1;JS_FreeValue(c,v);if(layer<0){JS_FreeValue(c,mask);return JS_ThrowTypeError(c,"unknown collision layer");}settings.occlusionMask|=CategoryMask(1)<<layer;}}JS_FreeValue(c,mask);
+            auto* service=world.Resources()?world.Resources()->GetAudioSystem():nullptr;AudioGroupSettings group;if(!ValidAudioSettings(settings)||(service&&!service->GetGroup(settings.group,group)))return JS_ThrowTypeError(c,"invalid audio settings or unknown group");return JS_NewBool(c,world.SetAudioSettings(id,settings));
+        }return JS_FALSE;
+    }
     if(op=="playAudio"||op=="stopAudio"||op=="pauseAudio"||op=="resumeAudio")return JS_NewBool(c,op=="playAudio"?world.PlayAudio(id):op=="stopAudio"?world.StopAudio(id):op=="pauseAudio"?world.PauseAudio(id):world.ResumeAudio(id));
     if(op=="burst"){uint32_t n=0;JS_ToUint32(c,&n,arg(2));if(n>65536)return JS_ThrowTypeError(c,"burst too large");return JS_NewBool(c,world.EmitParticleBurst(id,n));}
     if(op=="particles"){for(auto& e:world.VisualEmitters())if(e.id==id){auto settings=e.pool.settings;auto enabled=JS_GetPropertyStr(c,arg(2),"enabled");if(!JS_IsUndefined(enabled))settings.enabled=JS_ToBool(c,enabled);JS_FreeValue(c,enabled);

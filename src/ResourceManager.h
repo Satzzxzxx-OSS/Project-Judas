@@ -123,6 +123,8 @@ public:
     std::shared_ptr<const NavigationData> GetNavigation(const AssetId&,std::string& error);
     ResourceState RequestAudio(const AssetId& id, JobPriority priority = JobPriority::Normal);
     AudioClipHandle GetAudio(const AssetId& id, std::string& error, JobPriority priority = JobPriority::Normal);
+    std::shared_ptr<const AudioEnvironmentSettings> GetAudioEnvironment(const AssetId&,std::string& error);
+    std::string GetStreamAudioPath(const AssetId&,std::string& error)const;
     AudioSystem* GetAudioSystem() const { return m_audio; }
     ResourceState RequestMesh(const AssetId& id, JobPriority priority = JobPriority::Normal);
     ResourceState RequestTexture(const AssetId& id, JobPriority priority = JobPriority::Normal);
@@ -215,6 +217,7 @@ private:
         MeshData mesh;
         TextureData texture;
         AudioData audio;
+        std::shared_ptr<AudioEnvironmentSettings> audioEnvironment;
         std::shared_ptr<TextFont const> font;std::shared_ptr<Catalog> catalog;
         std::shared_ptr<NavigationData> navigation;
         std::shared_ptr<LiquidResource> liquid;
@@ -232,6 +235,7 @@ private:
         std::shared_ptr<const SkeletalAsset> skeletal;
         TextureHandle texture;
         AudioClipHandle audio;
+        std::shared_ptr<const AudioEnvironmentSettings> audioEnvironment;
         std::shared_ptr<const TextFont> font;std::shared_ptr<const Catalog> catalog;
         std::shared_ptr<const NavigationData> navigation;
         std::shared_ptr<const LiquidResource> liquid;

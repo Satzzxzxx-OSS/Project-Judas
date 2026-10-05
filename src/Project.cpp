@@ -53,6 +53,7 @@ std::string Generic(const fs::path& p) { return p.generic_string(); }
 std::string Project::SerializeToString(const ProjectSettings& s) {
     std::string out = "JudasProject " + std::to_string(kProjectFormatVersion) + "\n";
     out += "name " + Quote(s.name) + "\n";
+    if (!s.audio.groups.empty()) out += "audio-groups " + Quote(s.audio.Serialize()) + "\n";
     if (!s.iconAsset.empty()) out += "icon-asset " + Quote(s.iconAsset) + "\n";
     if(!s.worldManifest.empty()) out += "world-manifest " + Quote(s.worldManifest) + "\n";
     out += "startup-scene " + Quote(s.startupScene) + "\n";
@@ -119,6 +120,7 @@ bool Project::ParseFromString(const std::string& text, ProjectSettings& outSetti
     }
     for (const auto& [key, value] : values) {
         if (key == "name") s.name = value;
+        else if (key == "audio-groups") {if(!ProjectAudioSettings::Parse(value,s.audio,outError))return false;}
         else if (key == "icon-asset") s.iconAsset = value;
         else if (key == "startup-scene") s.startupScene = value;
         else if (key == "assets-dir") s.assetsDir = value;
@@ -173,7 +175,7 @@ bool Project::Load(const std::string& projectFilePath, std::string& outError) {
 }
 
 bool Project::Save(std::string& outError) const {
-    if(!m_settings.input.Validate(outError)||!m_settings.classification.Validate(outError)||!m_settings.navigation.Validate(outError)||!m_settings.localization.Validate(outError))return false;
+    if(!m_settings.input.Validate(outError)||!m_settings.classification.Validate(outError)||!m_settings.navigation.Validate(outError)||!m_settings.localization.Validate(outError)||!m_settings.audio.Validate(outError))return false;
     if (m_projectFile.empty()) {
         outError = "project has no file path";
         return false;

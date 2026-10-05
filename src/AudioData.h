@@ -11,3 +11,5 @@ struct AudioData {
 };
 bool DecodeAudioFromMemory(const void* bytes, std::size_t size, AudioData& out, std::string& error);
 bool LoadAudioFromFile(const std::string& path, AudioData& out, std::string& error);
+
+bool ValidateAudioFile(const std::string& path,std::string& error);

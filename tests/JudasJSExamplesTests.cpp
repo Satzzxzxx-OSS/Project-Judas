@@ -1,5 +1,7 @@
 // M50 executes the copyable documentation scripts through normal runtime APIs.
 #include "EngineHost.h"
+#include <thread>
+#include <chrono>
 #include "RuntimeWorld.h"
 #include "GameSession.h"
 #include "Simulation.h"
@@ -43,8 +45,10 @@ int main(int argc,char** argv){
   auto& window=host.GetWindow();window.SetTestInputMode(true);window.Input().SetMap(p.Settings().input,error);window.Input().SetPhysical("key:D",1);
   if(n=="localization"){world.Localization().Refresh();resources.WaitForAll();world.Localization().Refresh();}
   GameSession game;Check(game.Begin(world,error),n+" ordinary fixed-step session");
+  if(n=="audio"){resources.WaitForAll();world.BeginAudio();world.UpdateAudio(glm::mat4(1),1,1.f/60);}
   bool launched=false;
-  for(int frame=0;frame<100;++frame){
+  for(int frame=0;frame<(n=="streaming"?500:100);++frame){
+   if(n=="streaming")std::this_thread::sleep_for(std::chrono::milliseconds(1));
    if(n=="streaming")session->AdvanceStreaming(world,false);
    window.Input().BeginFixedStep();world.UpdateUIScripts(&window.Input(),1.f/60);world.UpdateScripts(&window.Input(),1.f/60);
    if(n=="character"&&!launched&&world.RuntimeCharacter(owner)->result.supported){window.Input().SetPhysical("key:Space",1);window.Input().BeginFixedStep();launched=true;}
@@ -65,7 +69,7 @@ int main(int argc,char** argv){
    n=="minimal"?state.find("\"started\":1")!=std::string::npos&&state.find("\"steps\":100")!=std::string::npos:
    n=="input-motion"?yes("moved"):n=="spawn"?yes("spawned"):n=="queries"?yes("ray")&&yes("shape"):
    n=="contacts"||n=="trigger"?state.find("\"enters\":1")!=std::string::npos&&state.find("\"exits\":1")!=std::string::npos&&state.find("\"stays\":0")==std::string::npos:
-   n=="audio"?yes("requested")&&yes("stopped"):n=="particles"?yes("configured")&&yes("burst"):
+   n=="audio"?yes("requested")&&yes("stopped")&&yes("settings")&&yes("seek")&&yes("oneShot")&&yes("group")&&yes("pausedDrop"):n=="particles"?yes("configured")&&yes("burst"):
    n=="ui"?yes("clicked"):n=="scene-session"?yes("queued")&&session->Pending()&&session->Get("example_visits")=="1":
    n=="joint"?yes("controlled"):n=="animation"?yes("ready")&&yes("fade")&&yes("layers"):
    n=="ragdoll"?yes("entered")&&yes("left"):n=="character"?yes("controlled")&&yes("launched"):

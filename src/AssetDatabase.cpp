@@ -1,4 +1,5 @@
 #include "WorldStreaming.h"
+#include "AudioEnvironment.h"
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
 #include "AssetDatabase.h"
@@ -89,6 +90,7 @@ bool CanCreateMetadata(const std::string& metaPath, std::string& outError) {
 
 const char* AssetTypeName(AssetType type) {
     switch (type) {
+        case AssetType::AudioEffect:return "audio-effect";
         case AssetType::Material:return "material";
         case AssetType::World: return "world";
         case AssetType::Catalog: return "catalog";
@@ -108,6 +110,7 @@ const char* AssetTypeName(AssetType type) {
 
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
+    if(e==".judasreverb"){outType=AssetType::AudioEffect;return true;}
     if(e==".judasmat"){outType=AssetType::Material;return true;}
     if(e==".judasworld"){outType=AssetType::World;return true;}
     if(e==".judasloc"){outType=AssetType::Catalog;return true;}
@@ -166,7 +169,8 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
         case AssetType::UI: {UIDocument d;return LoadUIDocument(path,d,outError);}
         case AssetType::Script: { std::ifstream input(path);if(!input){outError="Cannot read script";return false;}return true;}
         case AssetType::Prefab: { Scene scene; return LoadSceneFromFile(path,scene,outError) && ValidatePrefab(scene,outError); }
-        case AssetType::Audio: { AudioData data;return LoadAudioFromFile(path,data,outError); }
+        case AssetType::Audio: return ValidateAudioFile(path,outError);
+        case AssetType::AudioEffect:{AudioEnvironmentSettings d;return LoadAudioEnvironment(path,d,outError);}
         case AssetType::Font: { std::shared_ptr<const TextFont> f;return LoadTextFont(path,f,outError); }
     }
     return false;
@@ -212,7 +216,8 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
             idSeen = true;
         } else if (key == "type") {
             if (typeSeen) return fail("duplicate type");
-            if(tokens[1].first=="material")outType=AssetType::Material;
+            if(tokens[1].first=="audio-effect")outType=AssetType::AudioEffect;
+            else if(tokens[1].first=="material")outType=AssetType::Material;
             else if(tokens[1].first=="world")outType=AssetType::World;
             else if(tokens[1].first=="catalog")outType=AssetType::Catalog;
             else if(tokens[1].first=="environment")outType=AssetType::Environment;

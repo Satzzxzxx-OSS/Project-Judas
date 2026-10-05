@@ -94,13 +94,29 @@ public:
         SceneObjectId id=0;SceneTransform transform;BodyHandle staticBody;
         SceneAudioEmitterComponent settings;AudioVoiceHandle voice;
         bool wantPlay=false;std::string error;
+        bool motionValid=false;glm::vec3 lastPosition{0},lastVelocity{0};
+        std::optional<glm::vec3> explicitVelocity;
+        float obstruction=0;
+
     };
     struct AudioListener {
         SceneObjectId id=0;SceneTransform transform;BodyHandle staticBody;
         SceneAudioListenerComponent settings;
     };
+    struct AudioZone {SceneObjectId id=0;SceneTransform transform;SceneAudioZoneComponent settings;};
+    ProjectAudioSettings audioGroups;
+    std::vector<AudioZone>& AudioZones(){return m_audioZones;}
     void BeginAudio();void EndAudio();
-    void UpdateAudio(const glm::mat4& activeView,float alpha=1.0f);
+    bool PlayAudioOneShot(SceneObjectId,std::string& error);
+    void ReleaseEntityAudio(SceneObjectId);
+    bool SeekAudio(SceneObjectId,double seconds);
+    bool SetAudioSettings(SceneObjectId,const AudioSettings&);
+    bool SetAudioVelocity(SceneObjectId,std::optional<glm::vec3>);
+    void ResetAudioMotion();
+    std::string AudioStableIdentity(EntityId id)const{auto it=m_audioIdentities.find(id);return it==m_audioIdentities.end()?"root:"+std::to_string(id):it->second;}
+    std::uint64_t AudioQueryCount()const{return m_audioQueries;}
+
+    void UpdateAudio(const glm::mat4& activeView,float alpha=1.0f,float frameSeconds=1.f/60);
     bool PlayAudio(SceneObjectId id);bool StopAudio(SceneObjectId id);
     bool PauseAudio(SceneObjectId id);bool ResumeAudio(SceneObjectId id);
     bool SetAudioEnabled(SceneObjectId id,bool enabled);
@@ -424,7 +440,7 @@ public:
     const std::vector<SceneObjectId>& LightSwitchIds() const { return m_lightSwitchIds; }
 
 // M59 registration seam uses the same component constructor as Build.
-    bool StageRegionObject(const SceneObject& worldObject,const SceneObject& localObject,std::string&);
+    bool StageRegionObject(const SceneObject& worldObject,const SceneObject& localObject,std::string&,const std::string& stableIdentity="");
     void PublishRegion(const std::vector<EntityId>& ids);
     bool RegionVisualReady(const std::vector<EntityId>& ids) const;
     void HideRegion(const std::vector<EntityId>& ids);
@@ -493,10 +509,17 @@ private:
     std::vector<Terrain> m_terrains;
     std::vector<StaticRenderable> m_staticRenderables;
     AudioSystem* m_audioSystem=nullptr;
+    std::map<EntityId,std::string> m_audioIdentities;
+    std::vector<std::pair<EntityId,AudioVoiceHandle>> m_audioOneShots;
     bool m_audioRunning=false;
     mutable std::vector<ParticleEmitter> m_particleEmitters;
     std::vector<AudioEmitter> m_audioEmitters;
     std::optional<AudioListener> m_audioListener;
+    std::vector<AudioZone> m_audioZones;
+    bool m_listenerMotionValid=false;glm::vec3 m_lastListenerPosition{0};
+    float m_audioQueryClock=0;std::size_t m_audioQueryCursor=0;
+    std::uint64_t m_audioQueries=0;
+
     mutable std::vector<RenderCamera> m_renderCameras;
     mutable Renderer* m_cameraRenderer = nullptr;
     mutable std::uint64_t m_cameraFrame = 0;

@@ -1,8 +1,8 @@
-# JudasJS — current API reference (M59)
+# JudasJS — current API reference (M60)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M59, based on
+This reference describes the public virtual `judas` module through M60, based on
 M58 checkpoint `6fb90d56562651d027a8740cc8d17bb655d9b8b0`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
@@ -12,7 +12,7 @@ M52 exposes the existing generic impulse-at-point body operation and render pose
 through `Entity.presentedTransform` / `presentationUpdate(dt, alpha)`; the
 [Spring Range project](M52_SHOOTER_GAME.md) implements all shooting/score rules in JS.
 
-M59 adds optional additive residency through [scenes streaming](judasjs/streaming.md).
+M60 adds optional additive residency through [scenes streaming](judasjs/streaming.md).
 
 ## Find an API
 
@@ -86,3 +86,9 @@ remains authoritative.
 ## M58 Unicode text and localization
 
 [Localization reference](judasjs/localization.md), [text/font integration](M58.md) and [executed localization example](judasjs/examples/localization.js). Current public surface includes M58.
+
+## Streaming audio and acoustics
+
+[Audio reference](judasjs/audio.md) covers M60 emitter settings, cursor/readiness,
+independent one-shots, authored groups/fades and approximate spatial effects.
+[Listening lab](../projects/audio_lab/README.md) provides ordinary authored content.

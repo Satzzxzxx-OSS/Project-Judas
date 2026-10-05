@@ -216,7 +216,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     if(world.view){const auto& v=*world.view;view=glm::lookAt(v.pose.position,v.pose.position+v.pose.rotation*glm::vec3(0,0,-1),v.pose.rotation*glm::vec3(0,1,0));}
     const auto sceneStart = Clock::now();
     if(world.Scripts())world.Scripts()->SetView(view);
-    world.UpdateAudio(view,presentationAlpha);
+    world.UpdateAudio(view,presentationAlpha,frameDeltaTime);
     RenderWorldFrame(renderer, window.Width(), window.Height(), world, &m_session, view,
                      player.GetProjectionMatrix(aspectRatio), player.GetPresentedPosition(presentationAlpha),
                      presentationAlpha);

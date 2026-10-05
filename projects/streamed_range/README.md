@@ -47,3 +47,7 @@ component matrix and evidence: [M59](../../docs/M59_WORLD_STREAMING.md).
 
 Human visual/travel/carry acceptance is pending. A liquid or pose/articulation group
 is explicitly pinned because M59 does not invent lossless native-state suspension.
+
+## M60 audio integration
+
+Persistent-root 180-second streamed music continues across gallery travel. Gallery-local streamed ambience and alternating reverb settings use normal components. Q can adopt/carry the softly sounding physical prop out of its birthplace. Gallery removal retires streams asynchronously without pinning the region. Pause holds the effects group while music and UI remain independent. Shots request bounded independent buffered voices. The current [listening lab](../audio_lab/README.md) isolates audio comparisons.

@@ -321,7 +321,10 @@ void SectionTechDemoProject() {
           "it points at the existing assets tree and starts on the terrain scene");
     AssetDatabase db;
     db.Scan(project.RootDir(), project.AssetsDir());
-    Check(db.Problems().empty() && db.Untracked().empty() && db.Records().size() == 9, "every shipped asset is tracked, none untracked, no problems");
+    Check(db.Problems().empty() && db.Untracked().empty() && db.Records().size() == 10, "every shipped asset is tracked, none untracked, no problems");
+    const auto* icon=db.Find("6060606060606060606060606060600a");
+    Check(icon && icon->type == AssetType::Texture && !icon->missing && icon->relativePath == "assets/branding/judas-icon.png",
+          "editor/fallback icon has normal stable project asset identity");
     const auto* prefab=db.Find("36363636363636363636363636363636");
     Check(prefab&&prefab->type==AssetType::Prefab&&!prefab->missing,"shipped prefab resolves through ordinary project asset identity");
     const AssetRecord* audio = db.Find("34000000000000000000000000000001");

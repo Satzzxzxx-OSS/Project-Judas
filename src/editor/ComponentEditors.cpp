@@ -132,6 +132,10 @@ void DrawAudioEmitter(EditorDocument& doc,SceneObject& o,EditorPanelState& state
     auto& a=*o.audioEmitter;
     AssetField(doc,"Audio clip",a.asset,AssetType::Audio,true,state);
     Checkbox(doc,"Enabled",a.enabled);Checkbox(doc,"Play on start",a.playOnStart);
+    const char* const policies[]={"Buffered (short effects)","Streamed (bounded PCM)"};Combo(doc,"Loading policy",a.loading,policies,2);
+    if(a.loading==AudioLoading::Streamed){int frames=int(a.streamPageFrames);bool changed=ImGui::InputInt("Stream page frames (4 pages)",&frames);if(ImGui::IsItemActivated())doc.BeginEdit();if(changed)a.streamPageFrames=unsigned(std::clamp(frames,1024,16384));if(ImGui::IsItemDeactivatedAfterEdit())doc.CommitEdit();else if(ImGui::IsItemDeactivated())doc.CancelEdit();}
+    TextField(doc,"Sound group (empty = master)",a.group);
+    Checkbox(doc,"Effect bypass",a.bypass);DragScalar(doc,"Environment send",a.send,.01f,0,1);
     Checkbox(doc,"Loop",a.loop);Checkbox(doc,"Spatial (3D)",a.spatial);
     DragScalar(doc,"Volume",a.volume,.01f,0,1);DragScalar(doc,"Pitch",a.pitch,.01f,.125f,8);
     if(a.spatial){
@@ -140,7 +144,19 @@ void DrawAudioEmitter(EditorDocument& doc,SceneObject& o,EditorPanelState& state
         DragScalar(doc,"Reference distance",a.referenceDistance,.1f,.001f,a.maximumDistance-.001f);
         DragScalar(doc,"Maximum distance",a.maximumDistance,.1f,a.referenceDistance+.001f,100000);
         DragScalar(doc,"Rolloff",a.rolloff,.01f,0,100);
+        DragScalar(doc,"Doppler scale (0 = off)",a.doppler,.01f,0,4);
+        Checkbox(doc,"Geometry obstruction",a.occlusion);
+        if(a.occlusion){if(state.project)DrawCategoryMask(doc,"Sound obstruction layers",a.occlusionMask,state.project->Settings().classification.collision);DragScalar(doc,"Obstructed gain",a.occludedGain,.01f,0,1);DragScalar(doc,"Obstructed cutoff Hz",a.occludedCutoff,10,40,24000);}
+
     }
+}
+void DrawAudioZone(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
+ auto& z=*o.audioZone;AssetField(doc,"Reverb settings",z.asset,AssetType::AudioEffect,true,state);Checkbox(doc,"Enabled",z.enabled);
+ const char* const shapes[]={"Sphere","Box"};Combo(doc,"Zone shape",z.shape,shapes,2);
+ if(z.shape==SceneRegionShape::Box)DragVec3(doc,"Half extents",z.halfExtents,.1f);else DragScalar(doc,"Radius",z.radius,.1f,.01f,10000);
+ DragScalar(doc,"Blend distance",z.blendDistance,.1f,0,1000);DragScalar(doc,"Amount",z.amount,.01f,0,1);
+ DragInt(doc,"Zone priority",z.priority,-100000,100000);
+ ImGui::TextWrapped("Listener-weighted reverb, independent of gravity and render visibility. Equal priorities blend; higher priority wins. Use the entity pose for orientation.");
 }
 void DrawAudioListener(EditorDocument& doc,SceneObject& o,EditorPanelState&){
     auto& l=*o.audioListener;Checkbox(doc,"Enabled",l.enabled);Checkbox(doc,"Follow active camera view",l.followActiveView);
@@ -512,6 +528,7 @@ const std::vector<ComponentEditor>& ComponentEditorRegistry() {
         {"Scripts",'J',[](const SceneObject& o){return !o.scripts.empty();},[](SceneObject& o){o.scripts.push_back({1,"",true,"{}"});},[](SceneObject& o){o.scripts.clear();},DrawScripts},
         Make<ParticleEmitterSettings>("Particle emitter", 'E', &SceneObject::particleEmitter, DrawParticleEmitter),
         Make<SceneAudioEmitterComponent>("Audio emitter", 'U', &SceneObject::audioEmitter, DrawAudioEmitter),
+        Make<SceneAudioZoneComponent>("Audio environment", 'Z', &SceneObject::audioZone, DrawAudioZone),
         Make<SceneAudioListenerComponent>("Audio listener", 'N', &SceneObject::audioListener, DrawAudioListener),
         Make<SceneRenderCameraComponent>("Render camera", 'K', &SceneObject::renderCamera, DrawRenderCamera),
         Make<SceneRenderComponent>("Render", 'R', &SceneObject::render, DrawRender),

@@ -25,7 +25,7 @@ const char* ResourceStateName(ResourceState state) {
 }
 
 ResourceManager::ResourceManager(Renderer* renderer, const AssetDatabase* assets, JobSystem* jobs, AudioSystem* audio)
-    : m_audio(audio), m_renderer(renderer), m_assets(assets), m_jobs(jobs), m_ownerThread(std::this_thread::get_id()) {}
+    : m_audio(audio), m_renderer(renderer), m_assets(assets), m_jobs(jobs), m_ownerThread(std::this_thread::get_id()) {if(m_audio)m_audio->SetJobSystem(m_jobs);}
 
 ResourceManager::~ResourceManager() {
     Shutdown();
@@ -115,6 +115,7 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
     } else if(task.type==AssetType::Liquid){task.liquid=std::make_shared<LiquidResource>();task.succeeded=DecodeLiquidResource(bytes,*task.liquid,task.error);
     } else if (task.type == AssetType::Navigation) {
         task.navigation=std::make_shared<NavigationData>();task.succeeded=DecodeNavigation(bytes,*task.navigation,task.error);
+    } else if(task.type==AssetType::AudioEffect){task.audioEnvironment=std::make_shared<AudioEnvironmentSettings>();task.succeeded=ParseAudioEnvironment(std::string(bytes.begin(),bytes.end()),*task.audioEnvironment,task.error);
     } else if (task.type == AssetType::Audio) {
         task.succeeded = DecodeAudioFromMemory(bytes.data(),bytes.size(),task.audio,task.error);
     } else {
@@ -143,7 +144,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     ++m_stats.misses;
     entry.error.clear();
     if (m_shutDown) { Fail(entry, "resource manager is shut down"); return entry; }
-    if (expected != AssetType::Font && expected != AssetType::Catalog && expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
+    if (expected != AssetType::AudioEffect && expected != AssetType::Font && expected != AssetType::Catalog && expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
     std::string path;
     if (!Resolve(id, expected, entry, path)) return entry;
 
@@ -202,7 +203,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         Fail(entry, task->error.empty() ? std::string("load failed") : task->error);
         return;
     }
-    if (task->type != AssetType::Font && task->type != AssetType::Catalog && task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
+    if (task->type != AssetType::AudioEffect && task->type != AssetType::Font && task->type != AssetType::Catalog && task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
     if(task->type==AssetType::Font){entry.font=task->font;entry.bytes=entry.font->bytes.size();
     } else if(task->type==AssetType::Catalog){entry.catalog=task->catalog;entry.bytes=0;for(auto& p:entry.catalog->messages)entry.bytes+=p.first.size()+p.second.size();
     } else if (task->type == AssetType::Mesh) {
@@ -217,6 +218,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
     } else if(task->type==AssetType::Liquid){entry.liquid=task->liquid;entry.bytes=entry.liquid->geometry.cells.size()*sizeof(LiquidTet);if(entry.liquid->basin)entry.bytes+=entry.liquid->basin->geometry.cells.size()*sizeof(LiquidTet)+entry.liquid->basin->curve.size()*sizeof(LiquidCurvePoint);
     } else if (task->type == AssetType::Navigation) {
         entry.navigation=task->navigation;entry.bytes=0;for(auto& layer:entry.navigation->layers)entry.bytes+=layer.size();
+    } else if(task->type==AssetType::AudioEffect){entry.audioEnvironment=task->audioEnvironment;entry.bytes=sizeof(AudioEnvironmentSettings);
     } else if (task->type == AssetType::Audio) {
         entry.bytes=task->audio.samples.size()*sizeof(float);
         entry.audio=m_audio->CreateClip(std::move(task->audio));
@@ -447,7 +449,7 @@ void ResourceManager::DestroyGpu(Entry& entry) {
     entry.mesh = MeshHandle{};
     entry.skeletal.reset();entry.navigation.reset();entry.liquid.reset();entry.font.reset();entry.catalog.reset();
     entry.texture = TextureHandle{};
-    entry.audio = AudioClipHandle{};
+    entry.audio = AudioClipHandle{};entry.audioEnvironment.reset();
     entry.bytes = 0;
 }
 
@@ -600,3 +602,9 @@ ResourceState ResourceManager::RequestFont(const AssetId& id,JobPriority p){if(i
 ResourceState ResourceManager::RequestCatalog(const AssetId& id,JobPriority p){if(id.empty())return ResourceState::Unloaded;auto& e=Begin(id,AssetType::Catalog,p);return TypeMismatch(e.state,e.type,AssetType::Catalog)?ResourceState::Failed:e.state;}
 std::shared_ptr<const TextFont> ResourceManager::TryGetFont(const AssetId& id){auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready)return {};it->second.lastUse=++m_useClock;return it->second.font;}
 std::shared_ptr<const Catalog> ResourceManager::TryGetCatalog(const AssetId& id){auto it=m_entries.find(id);if(it==m_entries.end()||it->second.state!=ResourceState::Ready)return {};it->second.lastUse=++m_useClock;return it->second.catalog;}
+
+std::shared_ptr<const AudioEnvironmentSettings> ResourceManager::GetAudioEnvironment(const AssetId& id,std::string& error){auto& e=Begin(id,AssetType::AudioEffect,JobPriority::Normal);error=e.state==ResourceState::Failed?e.error:e.state==ResourceState::Ready?"":"loading";return e.state==ResourceState::Ready?e.audioEnvironment:nullptr;}
+std::string ResourceManager::GetStreamAudioPath(const AssetId& id,std::string& error)const{
+ auto* record=m_assets?m_assets->Find(id):nullptr;if(!record||record->missing||record->type!=AssetType::Audio){error="Missing/wrong-type streamed audio asset: "+id;return {};}
+ error.clear();return record->path;
+}

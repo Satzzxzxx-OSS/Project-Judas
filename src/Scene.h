@@ -262,6 +262,14 @@ struct SceneAudioListenerComponent {
     bool followActiveView=false;
 };
 
+struct SceneAudioZoneComponent {
+ std::string asset;
+ bool enabled=true;
+ SceneRegionShape shape=SceneRegionShape::Box;
+ glm::vec3 halfExtents{4};float radius=4,blendDistance=1,amount=1;
+ int priority=0;
+};
+
 struct SceneUIComponent {std::string asset,name;bool enabled=true;};
 
 struct SceneScriptSlot {
@@ -312,6 +320,7 @@ struct SceneObject {
     std::optional<SceneAudioEmitterComponent> audioEmitter;
     std::optional<ParticleEmitterSettings> particleEmitter;
     std::optional<SceneAudioListenerComponent> audioListener;
+    std::optional<SceneAudioZoneComponent> audioZone;
     std::optional<SceneBodyComponent> body;
     std::optional<SceneGravityComponent> gravity;
     std::optional<SceneLightComponent> light;

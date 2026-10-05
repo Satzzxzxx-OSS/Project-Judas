@@ -106,7 +106,7 @@ this is not a hard real-time scheduler.
 | Navigation surface/agent/obstacle/link/modifier | Local bake validation, private Detour registration, normal guidance | Corridor/link dependencies and owned active/stopped intent pin; idle guidance reconstructs; removal invalidates refs/repath |
 | Gravity fields/zones | Ordinary uniform/radial fields, rotated volumes | Winning in-use region pins; deterministic precedence |
 | Mesh/material/texture/lights/render cameras | Normal async resources and per-camera rendering | Ref release, targets/lights unregister; camera soft refs rebind |
-| Audio emitters / particles | Normal voice/pool registration | Visual particles/voices restart; authoritative unique state belongs in JS `state` |
+| Audio emitters / particles | Normal voice/pool registration; **M60 later extension:** bounded audio streams and authored environment zones | Visual particles/region voices restart on reconstruction; retained root/adopted voices keep their cursor. Streams detach and retire asynchronously; zone removal fades shared reverb. Authoritative unique state belongs in JS `state` |
 | Animation / ragdoll | Ordinary shared asset / pose / articulation paths | Region pinned: no lossless pose/articulation suspension |
 | M54/M55 basin/container/connection/interaction | Required baked geometry and ordinary liquid service | Conserved owners/connections pinned; no parked-parcel then duplicate initial water |
 | Scripts | Existing played-world VM / normal lifecycle | JSON `state` retained; handles reacquired in start; module cache remains per-world |
@@ -145,7 +145,9 @@ remain visible in accounting. No pretend-free live resources.
 
 A composed baseline uses its own domain (`Judas.ComposedWorld.1`), root canonical
 fingerprint, serialized project configuration, stable region identities/source hashes
-and sorted registered asset identity/type/content hashes. Residency/request/profiler
+and sorted registered asset identity/type/content hashes. M60 computes the same
+asset digests incrementally with a 64 KiB file buffer, so long music does not
+require whole-file identity allocation. Residency/request/profiler
 state and absolute filesystem roots are excluded. Legacy schema-5 canonical scene
 hashing is unchanged. Composed disk-save application is explicitly rejected and
 normal save actions disabled; bounded M43 session JSON is still available. Region

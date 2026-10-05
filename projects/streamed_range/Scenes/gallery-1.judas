@@ -227,6 +227,22 @@ object 30 "Non-scoring physical crate"
   render.mesh-asset ""
   render.texture-asset ""
   render.materials "1 \"5ca6e4d47305a7d5d95a0d513740dd30\" 0"
+  audio-emitter
+  audio.asset "60606060606060606060606060606002"
+  audio.enabled true
+  audio.play-on-start true
+  audio.loop true
+  audio.spatial true
+  audio.volume 0.03
+  audio.pitch 1
+  audio.reference-distance 1
+  audio.maximum-distance 30
+  audio.rolloff 1
+  audio.attenuation inverse
+  audio.group "effects"
+  audio.doppler 1
+  audio.send 0.4
+  audio.occlusion true
   body dynamic box
   body.half-extents 0.6 0.6 0.6
   body.radius 0.5
@@ -337,4 +353,41 @@ object 60 ""
   render.secondary-alpha 1
   render.mesh-asset "59595959595959595959595959595001"
   render.texture-asset ""
+end
+
+object 610 "Region-local ambience"
+  position 0 2 -5
+  rotation 1 0 0 0
+  scale 1 1 1
+  audio-emitter
+  audio.asset "60606060606060606060606060606003"
+  audio.enabled true
+  audio.play-on-start true
+  audio.loop true
+  audio.spatial true
+  audio.volume 0.08
+  audio.pitch 1
+  audio.reference-distance 1
+  audio.maximum-distance 30
+  audio.rolloff 1
+  audio.attenuation inverse
+  audio.loading streamed
+  audio.group "effects"
+  audio.send 0.5
+  audio.occlusion true
+end
+
+object 611 "Gallery acoustics"
+  position 0 0 0
+  rotation 1 0 0 0
+  scale 1 1 1
+  audio-zone
+  zone.asset "60606060606060606060606060606006"
+  zone.enabled true
+  zone.shape box
+  zone.half-extents 11 4 11
+  zone.radius 4
+  zone.blend 1
+  zone.amount 1
+  zone.priority 0
 end

@@ -45,6 +45,7 @@ bool EngineHost::Init(const char* title, int width, int height, bool visible, st
         return false;
     }
     m_jobs = std::make_unique<JobSystem>();  // worker count derived from the hardware
+    m_audio.SetJobSystem(m_jobs.get());
     m_resources = std::make_unique<ResourceManager>(&m_renderer, &m_assetDatabase, m_jobs.get(), &m_audio);
     m_resources->SetTrace(m_resourceTrace);
     return true;
@@ -53,6 +54,7 @@ bool EngineHost::Init(const char* title, int width, int height, bool visible, st
 void EngineHost::PumpResources() {
     JUDAS_PROFILE_SCOPE("Resource pump");
     if (m_resources) m_resources->Pump();
+    m_audio.Update();
 }
 
 void EngineHost::OpenProjectAssets(const std::string& projectRoot, const std::string& assetsDir) {
@@ -71,6 +73,8 @@ void EngineHost::Shutdown() {
     m_audio.StopAll();
     if (m_resources) m_resources->Shutdown();
     m_resources.reset();
+    m_audio.Shutdown();
+    m_audio.SetJobSystem(nullptr);
     if (m_jobs) {
         m_jobs->Shutdown();
         if (m_resourceTrace) {
@@ -80,7 +84,6 @@ void EngineHost::Shutdown() {
         }
     }
     m_jobs.reset();
-    m_audio.Shutdown();
     if (m_rendererInitialized) {
         m_renderer.Shutdown();
         m_rendererInitialized = false;

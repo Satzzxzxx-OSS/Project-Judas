@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <functional>
 #include <string_view>
 
 class Scene;
@@ -31,3 +32,7 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
 // tests. Returns 64 lowercase hex digits. This is integrity/identity hashing,
 // not authentication of an untrusted save.
 std::string SceneFingerprintSha256(std::string_view bytes);
+
+// Same digest, fixed 64 KiB IO buffer; output is unchanged on failure/cancellation.
+bool SceneFingerprintSha256File(const std::string& path, std::string& result,
+                               std::string& error, const std::function<bool()>& cancelled = {});

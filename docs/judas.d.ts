@@ -1,5 +1,5 @@
-/** Current JudasJS through M58; reviewed against ScriptSystem.cpp based on M57
- * ba16c2c52c60194a95ff161d55b93ff874863b77. Tooling only, no TS runtime.
+/** Current JudasJS through M60; reviewed against ScriptSystem.cpp based on M59 icon
+ * 277e67d2b0811644b2122bae27a4301d6dd3c96b. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
@@ -25,7 +25,21 @@ declare module "judas" {
   }
   export interface Classification { renderLayer: number; collisionLayer: number; collisionMask: string }
   export interface CameraInfo { enabled: boolean; width: number; height: number }
-  export interface AudioInfo { enabled: boolean; playing: boolean; requested: boolean }
+  export interface AudioInfo {
+    enabled:boolean;playing:boolean;requested:boolean;ready:boolean;streamed:boolean;loop:boolean;starved:boolean;
+    state:"loading"|"seeking"|"ready"|"playing"|"paused"|"ended"|"starved"|"failed";
+    error:string|null;position:number|null;duration:number|null;bufferBytes:number;underruns:number;
+    dopplerRatio:number;occlusionGain:number;cutoff:number;distanceGain:number;
+  }
+  export interface AudioSettingsPatch {
+    loading?:"buffered"|"streamed";streamPageFrames?:number;group?:string;loop?:boolean;spatial?:boolean;
+    volume?:number;pitch?:number;doppler?:number;send?:number;occlusion?:boolean;bypass?:boolean;
+    occlusionLayers?:string[];occludedGain?:number;occludedCutoff?:number;
+    referenceDistance?:number;maximumDistance?:number;rolloff?:number;attenuation?:"none"|"inverse"|"linear";
+  }
+  export interface AudioGroup {gain:number;mute:boolean;paused:boolean}
+  export interface AudioDiagnostics {voices:number;streams:number;bufferedBytes:number;streamBytes:number;streamHighWater:number;pendingRetirements:number;reverbProcessors:number;underruns:number;decodedFrames:number;occlusionQueries:number;maximumDetachMilliseconds:number}
+  export const audio:{group(name:string):AudioGroup|null;setGroup(name:string,settings:Partial<AudioGroup>,fadeSeconds?:number):boolean|null;readonly diagnostics:AudioDiagnostics|null};
   export interface ParticleSettingsPatch { enabled?: boolean; rate?: number }
   export interface CastHit {
     entity: Entity | null; entityId: EntityId; bodyId: number;
@@ -72,6 +86,10 @@ declare module "judas" {
     readonly character: Character | null;
     readonly ragdoll: Ragdoll | null;
     readonly audio: AudioInfo | null;
+    setAudio(settings:AudioSettingsPatch):boolean;
+    seekAudio(seconds:number):boolean;
+    setAudioVelocity(velocity?:Vec3|null):boolean;
+    playAudioOneShot():boolean;
     setAudioEnabled(enabled: boolean): boolean;
     readonly camera: CameraInfo | null;
     scriptState(slot: string | number): JSONValue;

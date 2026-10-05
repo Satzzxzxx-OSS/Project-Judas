@@ -123,6 +123,8 @@ add_library(judas_engine STATIC
     src/Classification.cpp
     src/GamePackage.cpp
     src/ProjectExporter.cpp
+    src/AudioStream.cpp
+    src/AudioEnvironment.cpp
     src/AudioData.cpp
     src/AudioSystem.cpp
     src/WorldAudio.cpp
@@ -199,8 +201,8 @@ add_library(judas_engine STATIC
 )
 target_include_directories(judas_engine PUBLIC src ${SDL2_INCLUDE_DIRS})
 find_package(Threads REQUIRED)
-add_library(judas_audio_backend STATIC src/AudioBackend.c)
-target_include_directories(judas_audio_backend PUBLIC third_party/miniaudio)
+add_library(judas_audio_backend STATIC src/AudioBackend.c src/ReverbBackend.c)
+target_include_directories(judas_audio_backend PUBLIC third_party/miniaudio third_party/verblib)
 target_compile_definitions(judas_audio_backend PUBLIC MA_NO_RESOURCE_MANAGER MA_NO_ENCODING MA_NO_GENERATION)
 target_link_libraries(judas_audio_backend PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 if(UNIX)
@@ -1177,3 +1179,18 @@ foreach(JUDAS_ICON_TARGET IN LISTS JUDAS_ICON_TARGETS)
         target_link_libraries(${JUDAS_ICON_TARGET} PRIVATE judas_app_icon)
     endif()
 endforeach()
+
+# M60 production PCM streaming/acoustics checks (no device required).
+add_executable(judas_audio_acoustics_tests tests/AudioAcousticsTests.cpp)
+target_link_libraries(judas_audio_acoustics_tests PRIVATE judas_engine)
+target_compile_options(judas_audio_acoustics_tests PRIVATE -Wall -Wextra)
+add_executable(judas_audio_demo tools/AudioDemo.cpp)
+target_link_libraries(judas_audio_demo PRIVATE judas_engine)
+
+add_executable(judas_audio_world_tests tests/AudioWorldTests.cpp)
+target_link_libraries(judas_audio_world_tests PRIVATE judas_engine)
+target_compile_options(judas_audio_world_tests PRIVATE -Wall -Wextra)
+
+add_executable(judas_audio_application_tests tests/AudioApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_audio_application_tests PRIVATE judas_engine)
+target_compile_options(judas_audio_application_tests PRIVATE -Wall -Wextra -Wpedantic)

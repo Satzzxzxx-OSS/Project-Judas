@@ -5,6 +5,7 @@
 #include "Classification.h"
 #include "NavigationTypes.h"
 #include "Localization.h"
+#include "AudioEnvironment.h"
 
 // Milestone 30: a Judas PROJECT — the unit a game is made in. It sits above
 // individual scenes: a root directory, where its assets and scenes live,
@@ -35,6 +36,7 @@ struct ProjectSettings {
     ProjectClassification classification;
     ProjectNavigation navigation;
     ProjectLocalization localization;
+    ProjectAudioSettings audio;
     std::string worldManifest; // optional normal .judasworld asset identity
     std::string name;
     std::string iconAsset; // optional texture asset ID; empty uses the Judas icon

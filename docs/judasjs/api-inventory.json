@@ -1,5 +1,5 @@
 {
-  "checkpoint": "6fb90d56562651d027a8740cc8d17bb655d9b8b0",
+  "checkpoint": "277e67d2b0811644b2122bae27a4301d6dd3c96b",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -431,7 +431,7 @@
         "audioInfo"
       ],
       "type": "docs/judas.d.ts:Entity.audio",
-      "reference": "docs/judasjs/entities.md"
+      "reference": "docs/judasjs/audio.md"
     },
     {
       "symbol": "Entity.burst",
@@ -623,7 +623,7 @@
         "pauseAudio"
       ],
       "type": "docs/judas.d.ts:Entity.pauseAudio",
-      "reference": "docs/judasjs/entities.md"
+      "reference": "docs/judasjs/audio.md"
     },
     {
       "symbol": "Entity.playAudio",
@@ -634,7 +634,18 @@
         "playAudio"
       ],
       "type": "docs/judas.d.ts:Entity.playAudio",
-      "reference": "docs/judasjs/entities.md"
+      "reference": "docs/judasjs/audio.md"
+    },
+    {
+      "symbol": "Entity.playAudioOneShot",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "audioOneShot"
+      ],
+      "type": "docs/judas.d.ts:Entity.playAudioOneShot",
+      "reference": "docs/judasjs/audio.md"
     },
     {
       "symbol": "Entity.presentedTransform",
@@ -678,7 +689,7 @@
         "resumeAudio"
       ],
       "type": "docs/judas.d.ts:Entity.resumeAudio",
-      "reference": "docs/judasjs/entities.md"
+      "reference": "docs/judasjs/audio.md"
     },
     {
       "symbol": "Entity.scriptState",
@@ -692,6 +703,28 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.seekAudio",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "audioSeek"
+      ],
+      "type": "docs/judas.d.ts:Entity.seekAudio",
+      "reference": "docs/judasjs/audio.md"
+    },
+    {
+      "symbol": "Entity.setAudio",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "audioSettings"
+      ],
+      "type": "docs/judas.d.ts:Entity.setAudio",
+      "reference": "docs/judasjs/audio.md"
+    },
+    {
       "symbol": "Entity.setAudioEnabled",
       "kinds": [
         "call"
@@ -700,7 +733,18 @@
         "audioEnabled"
       ],
       "type": "docs/judas.d.ts:Entity.setAudioEnabled",
-      "reference": "docs/judasjs/entities.md"
+      "reference": "docs/judasjs/audio.md"
+    },
+    {
+      "symbol": "Entity.setAudioVelocity",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "audioVelocity"
+      ],
+      "type": "docs/judas.d.ts:Entity.setAudioVelocity",
+      "reference": "docs/judasjs/audio.md"
     },
     {
       "symbol": "Entity.setCameraEnabled",
@@ -755,7 +799,7 @@
         "stopAudio"
       ],
       "type": "docs/judas.d.ts:Entity.stopAudio",
-      "reference": "docs/judasjs/entities.md"
+      "reference": "docs/judasjs/audio.md"
     },
     {
       "symbol": "Entity.transform",
@@ -1523,6 +1567,48 @@
       ],
       "type": "docs/judas.d.ts:UIElement.visible",
       "reference": "docs/judasjs/ui.md"
+    },
+    {
+      "symbol": "audio",
+      "kinds": [
+        "namespace"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:audio",
+      "reference": "docs/judasjs/audio.md"
+    },
+    {
+      "symbol": "audio.diagnostics",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "audioDiagnostics"
+      ],
+      "type": "docs/judas.d.ts:audio.diagnostics",
+      "reference": "docs/judasjs/audio.md"
+    },
+    {
+      "symbol": "audio.group",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "audioGroup"
+      ],
+      "type": "docs/judas.d.ts:audio.group",
+      "reference": "docs/judasjs/audio.md"
+    },
+    {
+      "symbol": "audio.setGroup",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "audioGroupSet"
+      ],
+      "type": "docs/judas.d.ts:audio.setGroup",
+      "reference": "docs/judasjs/audio.md"
     },
     {
       "symbol": "console",
@@ -2439,8 +2525,15 @@
     "animationStop",
     "appearanceInfo",
     "appearanceSet",
+    "audioDiagnostics",
     "audioEnabled",
+    "audioGroup",
+    "audioGroupSet",
     "audioInfo",
+    "audioOneShot",
+    "audioSeek",
+    "audioSettings",
+    "audioVelocity",
     "axis",
     "burst",
     "camera",

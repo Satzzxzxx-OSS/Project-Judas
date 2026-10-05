@@ -7,12 +7,29 @@
 
 // Single engine audio owner. Main-thread API; miniaudio owns device/mixing threads.
 // No backend object crosses this boundary. Device opens lazily at first voice.
+class JobSystem;
 class AudioSystem {
 public:
     AudioSystem(); ~AudioSystem();
     AudioSystem(const AudioSystem&)=delete;AudioSystem& operator=(const AudioSystem&)=delete;
     bool Init(std::string& error, bool noDevice=false);
     void Shutdown();
+    void SetJobSystem(JobSystem* jobs);
+    AudioVoiceHandle CreateStreamVoice(const std::string& path,const AudioSettings&,std::string& error);
+    bool Seek(AudioVoiceHandle,double seconds);
+    bool SetMotion(AudioVoiceHandle,const glm::vec3& velocity);
+    bool SetListenerMotion(const glm::vec3& velocity);
+    bool SetOcclusion(AudioVoiceHandle,float obstruction);
+    bool SetGroup(const std::string&,const AudioGroupSettings&,float fadeSeconds=0);
+    bool GetGroup(const std::string&,AudioGroupSettings&)const;
+    void ConfigureGroups(const ProjectAudioSettings&);
+    void SetEnvironment(const AudioEnvironmentSettings&,float weight);
+    void ResetEnvironment();
+    AudioDiagnostics Diagnostics()const;
+    bool ReadWithoutDevice(float* stereo,std::uint64_t frames);
+    bool SetStreamDecodeDelay(AudioVoiceHandle,unsigned milliseconds);
+    static float DopplerRatio(const glm::vec3& source,const glm::vec3& listener,const glm::vec3& sourceVelocity,const glm::vec3& listenerVelocity,float scale,float speed=343.3f);
+
     AudioClipHandle CreateClip(AudioData data);
     void DestroyClip(AudioClipHandle clip); // existing voices retain immutable PCM
     AudioVoiceHandle CreateVoice(AudioClipHandle clip,const AudioSettings& settings,std::string& error);

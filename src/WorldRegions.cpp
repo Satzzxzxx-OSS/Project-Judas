@@ -14,9 +14,10 @@ public:OrientedRegionVolume(glm::vec3 p_,glm::quat q,glm::vec3 h_):p(p_),h(h_),i
     bool Contains(const glm::vec3& x)const override {auto a=glm::abs(inverse*(x-p));return a.x<=h.x&&a.y<=h.y&&a.z<=h.z;}
 };
 }
-bool RuntimeWorld::StageRegionObject(const SceneObject& definition,const SceneObject& local,std::string& error) {
+bool RuntimeWorld::StageRegionObject(const SceneObject& definition,const SceneObject& local,std::string& error,const std::string& stableIdentity) {
     if(FindEntity(definition.id)){error="duplicate staged identity";return false;}
     m_regionPending.insert(definition.id);
+    if(definition.audioEmitter||definition.audioZone)m_audioIdentities[definition.id]=stableIdentity;
     auto stage=definition;stage.gravity.reset(); // globally routed only at publication
     if(stage.body)stage.body->enabled=false;
     Scene batch;batch.Settings()=m_settings;batch.Objects().push_back(stage);
@@ -47,7 +48,7 @@ void RuntimeWorld::PublishRegion(const std::vector<EntityId>& ids) {
 }
 bool RuntimeWorld::RegionVisualReady(const std::vector<EntityId>& ids)const {
     if(!m_assets)return true;
-    for(auto id:ids)if(auto it=m_regionAssets.find(id);it!=m_regionAssets.end())for(auto& asset:it->second)if(m_assets->StateOf(asset)!=ResourceState::Ready)return false;
+    for(auto id:ids)if(auto it=m_regionAssets.find(id);it!=m_regionAssets.end())for(auto& asset:it->second){auto* r=m_assets->Assets()->Find(asset);if(r&&(r->type==AssetType::Audio||r->type==AssetType::AudioEffect))continue;if(m_assets->StateOf(asset)!=ResourceState::Ready)return false;}
     return true;
 }
 void RuntimeWorld::EndRegionScripts(const std::vector<EntityId>& ids){if(m_scripts)m_scripts->RemoveEntities(ids);}
@@ -67,12 +68,12 @@ void RuntimeWorld::RemoveRegionObject(EntityId id) {
             for(auto& c:m_combustibles)if(c.dynamicIndex>slot)--c.dynamicIndex;
         }else if(auto it=m_entityCategories.find(id);it!=m_entityCategories.end()){handle=it->second.body;if(handle.IsValid())m_physics.DestroyBody(handle);}
     }
-    if(m_audioSystem)for(auto& e:m_audioEmitters)if(e.id==id)m_audioSystem->DestroyVoice(e.voice);
+    ReleaseEntityAudio(id);m_audioIdentities.erase(id);
     if(m_cameraRenderer)for(auto& c:m_renderCameras)if(c.id==id)m_cameraRenderer->DestroyRenderTarget(c.target);
     if(m_ui)m_ui->RemoveOwner(id);
     auto erase=[&](auto& v){v.erase(std::remove_if(v.begin(),v.end(),[&](const auto& e){return e.id==id;}),v.end());};
     erase(m_entities);erase(m_extraEntities);erase(m_staticBodies);erase(m_staticRenderables);erase(m_staticLights);
-    erase(m_audioEmitters);erase(m_particleEmitters);erase(m_renderCameras);
+    erase(m_audioZones);erase(m_audioEmitters);erase(m_particleEmitters);erase(m_renderCameras);
     m_characters.erase(id);m_animationInstances.erase(id);m_animationOwners.erase(id);m_jointOwners.erase(id);m_jointParticipants.erase(id);
     m_scriptDefinitions.erase(id);m_entityCategories.erase(id);m_hierarchy.DestroyObject(id);
     if(auto it=m_regionAssets.find(id);it!=m_regionAssets.end()){

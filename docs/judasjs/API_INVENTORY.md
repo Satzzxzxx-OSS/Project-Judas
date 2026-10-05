@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M59 review of the registered virtual module based on M58 checkpoint `6fb90d56562651d027a8740cc8d17bb655d9b8b0`.
+M60 review of the registered virtual module based on M59 icon checkpoint `277e67d2b0811644b2122bae27a4301d6dd3c96b`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -47,7 +47,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.applyImpulse` | `impulse` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.applyImpulseAtPoint` | `impulseAtPoint` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.applyTorque` | `torque` | [declaration](../judas.d.ts) | [reference](entities.md) |
-| `Entity.audio` | `audioInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.audio` | `audioInfo` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.burst` | `burst` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.camera` | `cameraInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.character` | `characterExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -65,19 +65,23 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.navigationLink` | `navLinkInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.navigationObstacle` | `navObstacleInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.parent` | `parent` | [declaration](../judas.d.ts) | [reference](entities.md) |
-| `Entity.pauseAudio` | `pauseAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
-| `Entity.playAudio` | `playAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.pauseAudio` | `pauseAudio` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `Entity.playAudio` | `playAudio` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `Entity.playAudioOneShot` | `audioOneShot` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.presentedTransform` | `presentedTransform` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.ragdoll` | `ragdollExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.removeTag` | `removeTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
-| `Entity.resumeAudio` | `resumeAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.resumeAudio` | `resumeAudio` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.scriptState` | `scriptState` | [declaration](../judas.d.ts) | [reference](entities.md) |
-| `Entity.setAudioEnabled` | `audioEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.seekAudio` | `audioSeek` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `Entity.setAudio` | `audioSettings` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `Entity.setAudioEnabled` | `audioEnabled` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `Entity.setAudioVelocity` | `audioVelocity` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.setCameraEnabled` | `camera` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setColliderEnabled` | `colliderEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setNavigationEnabled` | `navEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setParticles` | `particles` | [declaration](../judas.d.ts) | [reference](entities.md) |
-| `Entity.stopAudio` | `stopAudio` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.stopAudio` | `stopAudio` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.transform` | `setTransform`, `transform` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.valid` | `valid` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.velocity` | `setVelocity`, `velocity` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -150,6 +154,10 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `UIElement.texture` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.value` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
 | `UIElement.visible` | `uiGet`, `uiSet` | [declaration](../judas.d.ts) | [reference](ui.md) |
+| `audio` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `audio.diagnostics` | `audioDiagnostics` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `audio.group` | `audioGroup` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `audio.setGroup` | `audioGroupSet` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `console` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](input.md) |
 | `console.log` | `log` | [declaration](../judas.d.ts) | [reference](input.md) |
 | `entity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |

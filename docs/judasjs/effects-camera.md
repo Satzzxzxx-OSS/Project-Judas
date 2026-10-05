@@ -4,22 +4,9 @@
 
 ## Audio
 
-Author AudioEmitter/Listener components and registered WAV/MP3/FLAC clips through
-the existing asset/editor path. JS acts on `Entity`, not a global audio mixer.
-
-- `audio`: `{enabled,playing,requested}` snapshot or null if no emitter.
-  `playing` requires a loaded voice in Playing state; `requested` is pending intent.
-- `playAudio()`, `stopAudio()`, `pauseAudio()`, `resumeAudio()`: boolean success,
-  false when missing/unsupported state. An accepted play request is not proof the
-  device has audibly played sound; resources load asynchronously.
-- `setAudioEnabled(bool)`: boolean success; disabling stops runtime sound.
-
-Positions and listener orientation follow ordinary runtime transforms. Authored
-spatial=false ignores position; one active listener uses the documented authored
-selection rule. JS does not expose clip assignment, volume/pitch setters, global
-one-shot creation, mixing buses, streaming or device control. Author those settings
-normally. Whole clips load/decode; no acoustic occlusion/reverb/HRTF guarantee.
-Audio shuts down with world/owner lifetime. Human listening is authoritative.
+Author AudioEmitter/Listener components and registered WAV/MP3/FLAC assets.
+[Audio playback and acoustics](audio.md) is the current reference for emitter
+controls, bounded streams, motion, obstruction, reverb, sound groups and lifetime.
 
 ## Particles
 

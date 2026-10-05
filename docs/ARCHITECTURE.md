@@ -9000,3 +9000,28 @@ disk saves are disabled/rejected. Fixed double origin/local floats remain M23: n
 live rebasing. Legacy single-scene canonical schema 5 is unchanged. See
 [M59 coverage, budgets and limitations](M59_WORLD_STREAMING.md) and
 [JudasJS streaming API](judasjs/streaming.md). Human candidate review remains pending.
+
+
+## Milestone 60 — Streaming audio and environmental acoustics
+
+M34 buffered playback remains supported; its whole-clip description is historical
+for the buffered policy, rather than the only current loading path. M60 adds
+bounded incremental WAV/MP3/FLAC decode using the existing JobSystem, independent
+per-voice cursors, generation-safe seek/prefill, safe starvation and asynchronous
+decoder retirement after mixer-graph detachment. EngineHost still owns one
+miniaudio 0.11.23 service independent of Renderer. Worlds/regions own bindings,
+not devices. Shutdown drains detached jobs before destroying their scheduler.
+
+Optional Doppler uses presented world poses and consistent-frame point velocities,
+including angular offsets, with backend Doppler disabled. Bounded resident
+PhysicsWorld rays supply smoothed real gain/low-pass obstruction. Authored oriented
+`.judasreverb` zones deterministically select listener-weighted settings for one
+shared bounded Verblib processor; dry is submitted once. Authored groups/master
+provide sample-clock gain fades, mute and pause; JS chooses gameplay policy.
+
+M59 root music retains its cursor; local streams retire on removal; adopted
+emitters retain voice identity. Suspended region sounds still restart on revisit.
+Composed asset hashing now uses bounded incremental reads with unchanged SHA-256
+digests. Canonical schema stays 5 with ordinary conditional authored fields.
+No decoder pointers, buffers, tails or playback cursors become persistence state.
+See [M60 contracts and limits](M60_AUDIO.md) and the [current JudasJS audio API](judasjs/audio.md).

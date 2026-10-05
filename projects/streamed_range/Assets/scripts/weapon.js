@@ -15,8 +15,8 @@ export default class {
    if(e.hasTag('physical'))e.applyImpulseAtPoint(mul(direction,this.impulse),result.point);
    if(e.hasTag('target'))scored=hit(e);
    if(e.hasTag('navigator'))scored=navigators.get(e.id)?.hit()||false;
-   this.impact.transform={position:result.point};this.impact.burst(18);this.impact.playAudio();}
-  this.flash.transform={position:add(view.eye,mul(direction,.45)),rotation:view.rotation};this.flash.burst(4);this.player.entity.playAudio();
+   this.impact.transform={position:result.point};this.impact.burst(18);this.impact.playAudioOneShot();}
+  this.flash.transform={position:add(view.eye,mul(direction,.45)),rotation:view.rotation};this.flash.burst(4);this.player.entity.playAudioOneShot();
   if(!scored){round.message=result?'Impact - plate cooling down or non-scoring prop.':'Miss - aim at a coloured plate.';}
   this.report={hit:result?.entity?.id||null,scored,point:result?.point||null};return true;
  }

@@ -27,3 +27,12 @@ bool LoadAudioFromFile(const std::string& path, AudioData& out, std::string& err
     std::vector<std::uint8_t> bytes;
     return ReadWholeFile(path,bytes,error) && DecodeAudioFromMemory(bytes.data(),bytes.size(),out,error);
 }
+
+bool ValidateAudioFile(const std::string& path,std::string& error){
+ ma_decoder d{};auto c=ma_decoder_config_init(ma_format_f32,0,48000);
+ if(ma_decoder_init_file(path.c_str(),&c,&d)!=MA_SUCCESS){error="Cannot decode WAV/MP3/FLAC: "+path;return false;}
+ float samples[64*2]{};ma_uint64 read=0;bool ok=d.outputChannels>0&&d.outputChannels<=2;
+ if(ok){auto result=ma_decoder_read_pcm_frames(&d,samples,64,&read);ok=(result==MA_SUCCESS||result==MA_AT_END)&&read>0;}
+ ma_decoder_uninit(&d);if(!ok){error="Empty/corrupt audio or unsupported channels";return false;}for(unsigned i=0;i<read*2;++i)if(!std::isfinite(samples[i])){error="Nonfinite audio samples";return false;}
+ error.clear();return true;
+}

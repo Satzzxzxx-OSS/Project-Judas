@@ -1,4 +1,4 @@
-import {ui,input,scenes,session,localization} from 'judas';
+import {ui,input,scenes,session,localization,audio} from 'judas';
 import {round,targets,navigators} from './round.js';
 // Only presentation changes with language. Score/physics/weapon rules are untouched.
 function message(){const s=round.message;const points=/^\+(\d+) - physical hit!$/.exec(s);if(points)return localization.format('range.hit',{points:Number(points[1])});
@@ -8,7 +8,7 @@ function message(){const s=round.message;const points=/^\+(\d+) - physical hit!$
 export default class {
  constructor(player){this.player=player;this.doc=ui.get('range_ui');this.last='';}
  start(){ui.debugOverlayVisible=false;this.doc.modal=false;this.doc.get('pause').visible=false;input.pointerCapture=true;}
- menu(open){this.doc.modal=open;this.doc.get('pause').visible=open;input.pointerCapture=!open;}
+ menu(open){audio.setGroup("effects",{paused:open});this.doc.modal=open;this.doc.get('pause').visible=open;input.pointerCapture=!open;}
  nextLanguage(){const languages=localization.available;localization.setLocale(languages[(languages.indexOf(localization.locale)+1)%languages.length]);}
  update(){if(input.pressed('pause'))this.menu(!this.doc.modal);if(input.pressed('language_next'))this.nextLanguage();
   let ready=0;for(const t of targets.values())if(t.state.ready)ready++;

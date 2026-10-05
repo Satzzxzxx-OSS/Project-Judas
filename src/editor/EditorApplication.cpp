@@ -473,6 +473,7 @@ bool EditorApplication::RunProject(std::string& outMessage) {
 bool EditorApplication::StartPlay(std::string& outError) {
     m_world = std::make_unique<RuntimeWorld>();
     m_world->legacyGameplay = m_project.Settings().legacyGameplay;
+    m_world->audioGroups=m_project.Settings().audio;
     m_world->SetSceneControl(std::make_shared<SceneSession>(m_project,m_document.Path()));
     if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError, &m_project.Settings().classification, &m_project.Settings().navigation)) {
         m_world.reset();
