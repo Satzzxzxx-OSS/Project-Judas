@@ -1,6 +1,6 @@
 # Audio playback and acoustics
 
-Current public API through M60. Judas owns playback, spatial processing and resource lifetime; projects own clips, groups and reverb settings; JavaScript decides when and why they play. See [lifecycle](lifecycle.md), [entities](entities.md) and [world streaming](streaming.md).
+M60 audio API, current through M64. Judas owns playback, spatial processing and resource lifetime; projects own clips, groups and reverb settings; JavaScript decides when and why they play. See [lifecycle](lifecycle.md), [entities](entities.md) and [world streaming](streaming.md).
 
 ## Entity audio controls
 

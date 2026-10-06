@@ -1,6 +1,6 @@
 # Deformable
 
-M62 public API candidate. Judas owns deformation and contact; project JavaScript chooses
+M62 deformation API, current through M64. Judas owns deformation and contact; project JavaScript chooses
 forces, attachments and game meaning. Obtain `entity.deformable`; it returns null
 until the normal immutable resource is ready, or if the component is absent.
 Failed/stale baked resources throw a diagnostic `TypeError`; they are not a successful empty simulation.
@@ -74,8 +74,11 @@ export default class Fabric {
 
 See [lifecycle](lifecycle.md), [physics](physics.md),
 [animation](animation-ragdolls.md), [saves](saves.md) and [streaming](streaming.md).
-The full physical support envelope and current candidate results belong in the
-M62 implementation document, not in gameplay examples.
+M64 extends sampled rigid contact to cooked static meshes, convex hulls and
+oriented compound children through the same authoritative geometry path. This
+does not add exact mesh/cloth CCD, motor blocking or deformable M42 events.
+See [M64 geometry coverage](../M64_COLLISION.md) and the
+[M62 implementation/limits](../M62_DEFORMABLES.md) for the physical support envelope.
 
 ## M63 fracture cooks
 

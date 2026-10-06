@@ -25,7 +25,8 @@ project SceneSession; isolated no-session worlds throw.
 maximum 256 keys/64 KiB combined. Values obey the same bounded plain-data checks
 below. Invalid values/budgets throw TypeError. get/delete missing keys are safe.
 Session data survives scene replacement/reload but ends when Play/application
-session ends. It is NOT disk persistence. Re-fetch values after modification:
+session ends. It is not automatically disk-persistent; explicit [M61 slots](saves.md)
+include the bounded session map. Re-fetch values after modification:
 mutating `session.get('x')` does not update the stored value.
 
 ## this.state and disk persistence

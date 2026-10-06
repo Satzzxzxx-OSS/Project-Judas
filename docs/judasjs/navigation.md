@@ -1,6 +1,6 @@
 # Navigation
 
-Current JudasJS through M53. Navigation proposes traversable routes and steering;
+M53 navigation API, current through M64. Navigation proposes traversable routes and steering;
 [CharacterMotor](character.md) resolves authoritative collision-aware movement.
 Destination choice, chase, link traversal, animation and combat belong to project JS.
 Navigation does not read input, gravity or player state, and never writes entity transforms.
@@ -134,13 +134,18 @@ setters cover agents, obstacles and links, not moving/enabling surfaces.
 Scene replacement, reload and Stop discard routes, agents, links and mutable caches.
 Snapshots are detached values; entity wrappers remain subject to normal safe-handle
 rules. Session JSON can store game intent, not a live navmesh/path pointer.
+[M61 slots](saves.md) preserve destination/settings, stop and link-progress state;
+restoration rebuilds corridors against ordinary baked resources, not saved Detour pointers.
 
 Recast is locally 2.5D; arbitrary **orientation** is supported, whole-planet continuous
 curvature/streaming is not. Use separate locally oriented surfaces and explicit links.
 Current budgets: 4096 bake grid tiles, 16384 serialized layers, 256 obstacles per
 surface, 512 polygon/corner query buffers, 32 avoidance neighbours. Buffer-limited
-paths are partial. Source boxes/compound boxes are exact collider tessellation;
-spheres/terrain are finite tessellations of real collision surfaces. Modifier boxes
+paths are partial. M64 bake extraction uses authoritative cooked mesh/hull faces
+and independently oriented box/sphere/hull compound children. Boxes use exact
+collider faces; spheres/terrain use finite tessellations of real collision surfaces.
+Changed physical geometry invalidates the bake fingerprint; render meshes are not
+substitutes for collision sources. Modifier boxes
 are conservatively projected. No moving navmesh surface, live rebasing or runtime bake.
 
 See [authoring/baking](../NAVIGATION.md), [worked navigation script](examples/navigation.js),

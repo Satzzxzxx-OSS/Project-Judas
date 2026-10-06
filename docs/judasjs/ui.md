@@ -38,8 +38,10 @@ not boolean. The setter does not restrict a toggle to those two values.
 Programmatic changes do not synthesize click/change events. Hidden/disabled controls
 reject input; setters still edit their stored state.
 
-No JS font/layout/colour setter, manual focus setter/getter, hover event, per-widget
-callback registration or DOM exists. Configure layout/style/font in the asset.
+Text-specific setters include `font`, `textKey`, `direction` and `textAlignment`
+(see below). No general layout/colour setter, manual focus setter/getter, hover
+event, per-widget callback registration or DOM exists. Author general layout/style
+and initial font selection in the asset.
 
 ## onUI and focus
 
@@ -54,7 +56,8 @@ Do not implement polling loops or private control event buses.
 
 Unload/owner destruction/Stop/scene changes invalidate handles. UI runtime values
 are not automatically saved; store game data in bounded `this.state` and rebuild
-presentation in `start`. Script-loaded documents unload with their slot. No VM/UI
+presentation in `start` or modern-load `restore`. Script-loaded documents unload
+with their slot. No VM/UI
 heap is carried through scene replacement. Copyable [UI example](examples/ui.js).
 
 ## M58 text / direction / fonts

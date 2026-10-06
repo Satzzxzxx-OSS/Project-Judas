@@ -92,7 +92,10 @@ forces through normal PhysicsWorld.
 Snapshot m³ totals: `reservoirs`, `containers`, `detached`, `total`, `expected`,
 `error`, `tolerance`. Expected includes authored/runtime-spawned initial water.
 Materials have separate ledgers. Geometry/solve errors never edit the expected
-total. This is session runtime state, not liquid save-state migration.
+total. This is a live runtime snapshot, not a save-state migration operation.
+[M61 slots](saves.md) persist the quantity ledger and dynamic surface partitions/
+flows together; neither queries nor restoration invent a second owner of water.
+Legacy deltas omit this state, and ordinary scene reload restores authored amounts.
 
 ## Diagnostics
 

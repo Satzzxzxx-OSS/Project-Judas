@@ -1,6 +1,10 @@
 # Current public JudasJS inventory
 
-M64 review of the registered virtual module based on starting checkpoint `b5676438ed12d9cb3d05c634eaf5f578d7216ada`.
+Current inventory through accepted M64 checkpoint
+`e452751ee98f6c1900a9f6b8dad3fe6bcdecb27b`. The M64 binding audit was based on
+starting checkpoint `b5676438ed12d9cb3d05c634eaf5f578d7216ada`; the machine manifest's
+`checkpoint` field and declaration header retain that audit provenance, not the
+current accepted HEAD identity. This documentation refresh changes no API symbols.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 

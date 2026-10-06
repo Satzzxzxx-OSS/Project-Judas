@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M63)
+# JudasJS — current API reference (M64)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through the M63 candidate, based on
-accepted checkpoint `29845bbdb911d2129a2d2b995fed22a1448594e7` plus the uncommitted M63 additions. It is not an
+This reference describes the public virtual `judas` module through accepted M64
+checkpoint `e452751ee98f6c1900a9f6b8dad3fe6bcdecb27b`. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
@@ -18,21 +18,23 @@ M59 added optional additive residency through [scenes streaming](judasjs/streami
 
 | Topic | Reference |
 |---|---|
-| Imports, properties, start/update/fixedUpdate/presentationUpdate/uiUpdate/destroy | [Lifecycle](judasjs/lifecycle.md) |
+| Imports, properties, start/restore/update/fixedUpdate/presentationUpdate/uiUpdate/destroy | [Lifecycle](judasjs/lifecycle.md) |
 | Fracture, physical parts, interface failure and explicit removal | [Fracture](judasjs/fracture.md) |
 | Deformable, cloth/solid forces, attachments and current-surface picking | [Deformables](judasjs/deformables.md) |
 | Entity, transform, tags, spawnPrefab | [Entities/prefabs](judasjs/entities.md) |
 | profiler.scope / profiler.counter | [Custom diagnostics](judasjs/profiling.md) |
 | input, time, console | [Input/time](judasjs/input.md) |
-| physics.raycast/sphereCast/capsuleCast/boxCast, Joint, contacts/triggers | [Physics](judasjs/physics.md) |
+| physics.raycast/sphereCast/capsuleCast/boxCast/closestPoint, Entity.collider, Joint, contacts/triggers | [Physics](judasjs/physics.md) · [Collider inspection](judasjs/entities.md#entitycollider) |
 | Audio, particles, camera, world.fluidSample | [Effects/view](judasjs/effects-camera.md) |
 | ui, UIDocument, UIElement, onUI | [Runtime UI](judasjs/ui.md) |
 | localization, Unicode layout, catalogs/fonts | [Localization/text](judasjs/localization.md) |
 | scenes, session, script state, safe handles | [Lifetime/state](judasjs/scenes-state.md) |
+| saves, durable references, restore lifecycle | [Project save slots](judasjs/saves.md) |
 | Animation.crossFade/layers, Ragdoll | [Animation/ragdolls](judasjs/animation-ragdolls.md) |
 | entity.character / CharacterMotor | [Character](judasjs/character.md) |
 | navigation / NavigationAgent | [Navigation](judasjs/navigation.md) |
 | liquid / LiquidVolume / conserved reservoirs | [Liquid](judasjs/liquid.md) |
+| entity.material, scene lighting/environment overrides | [Materials](judasjs/materials.md) |
 | Executed scripts | [Cookbook](judasjs/cookbook.md) |
 | JSDoc, editor setup, practical conventions | [Practices](judasjs/practices.md) |
 

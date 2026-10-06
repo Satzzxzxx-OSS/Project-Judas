@@ -1,6 +1,6 @@
 # `localization` — project messages and horizontal Unicode text
 
-Current API through M58, using ICU4C 76.1 MessageFormat and number data. Import
+M58 localization API, current through M64, using ICU4C 76.1 MessageFormat and number data. Import
 `localization` from the virtual `judas` module. QuickJS has no `Intl` requirement.
 Judas owns primitives; projects supply fonts/catalogs; scripts choose language policy.
 
@@ -18,7 +18,10 @@ Judas owns primitives; projects supply fonts/catalogs; scripts choose language p
 | `reload(): void` | Invalidates active catalog chain, asynchronously validates replacement before publication. Invalid replacement leaves prior texts live; inspect ResourceManager/editor diagnostics. |
 
 At first asynchronous startup, formatting may temporarily return `[key]` until
-the configured resources publish. Refresh cached HUD strings against `revision`;
+the configured resources publish. The `localization catalog not yet published`
+diagnostic is non-throwing, just like `missing localization key`; genuinely absent
+keys retain their normal missing-key diagnostic. Invalid arguments still throw.
+Refresh cached HUD strings against `revision`;
 do not assume one-time formatting in `start()` is permanently ready.
 
 Formatting accepts at most 32 named arguments. Keys ≤128 UTF-8 bytes, string
@@ -63,7 +66,9 @@ rules; `number()` uses **the published display locale**.
 
 Locale state is project/runtime-session owned. Scene load/reload preserves it;
 Stop/project replacement creates fresh defaults. It is not persistent user settings,
-a save delta or fingerprint input. Authored catalogs/font bytes/configuration are
+a legacy save delta or fingerprint input. Explicit [M61 slots](saves.md) preserve
+the selected locale alongside session state; this is not automatic user-preference
+storage. Authored catalogs/font bytes/configuration are
 content fingerprint inputs. Resource replacement publishes a complete validated
 chain, never part of a changed catalog. A failed resource is not retried automatically;
 fix the file then call `reload()`.

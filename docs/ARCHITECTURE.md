@@ -8,14 +8,36 @@ milestones land, rather than kept as a per-milestone snapshot — see
 
 ## Current reference and historical capability overview
 
-Accepted baseline: M57 (`ba16c2c52c60194a95ff161d55b93ff874863b77`).
-The [M58 Unicode/localization candidate](M58.md) extends the shared runtime text
-path; operator acceptance is pending. Later milestone documents and source take
-precedence over the historical exclusions below.
+Accepted baseline: M64 (`e452751ee98f6c1900a9f6b8dad3fe6bcdecb27b`).
+M64 is the latest completed, human-accepted milestone. M58 Unicode/localization
+and the later milestones are checkpointed, not awaiting candidate review.
+The earlier M57-baseline/M58-pending wording recorded a previous review state.
 
-### Historical overview — completed through M43
+**Current reading guide:** Judas owns engine primitives; project JavaScript owns
+game behaviour. Current projects use CharacterMotor + logical input + JS rather
+than native player gameplay. Skeleton poses are resolved from contributions;
+navigation is advisory; collision/query geometry is independent of render meshes.
+Renderer owns raw GL, RuntimeWorld owns simulation instances, and the shared
+ResourceManager supports both immutable CPU resources and Renderer-backed assets.
 
-Checkpoint at this historical overview: `6f199eff9378270d7291a9dd8605fcfde5760569` (M43).
+Modern M61 save slots preserve supported world/session state; the legacy M29
+delta path has a separate, narrower contract. M54 owns conserved liquid quantity
+and M55 optionally evolves its dynamic surface. The accepted legacy PBF path and
+protected P1-C/P1-C-M/P1-PF research remain separate. Neither liquid model is a
+claim of final fluid fidelity. The legacy fluid demo's 20 Hz repair cadence and
+deferred quality work are recorded in [FLUID_DEMO.md](FLUID_DEMO.md).
+
+Current implementation limits remain explicit in subsystem references: fixed
+M23 origin (no live rebasing), static-only concave collision, bounded geometric
+queries/solves, query-only motors and local navigation surfaces. Historical
+accounts below retain what was true at their checkpoints; their exclusions do
+not override later completed work. Current JS usage starts at [JUDASJS.md](JUDASJS.md).
+
+### Historical foundation through M43 and later legacy-fluid repair notes
+
+Checkpoint for the M43 foundation: `6f199eff9378270d7291a9dd8605fcfde5760569`.
+The legacy-fluid demo optimization notes also record the later accepted repair;
+they do not describe the separate M54/M55 conserved-liquid path.
 FTFT stabilization is complete within its documented approximations. The M33–M43
 sections below describe completed capabilities. Earlier milestone accounts retain
 their original evidence and exclusions; those exclusions are not current limits
@@ -112,7 +134,7 @@ The earlier two-planet demonstration described below is
 
 ## Milestone history
 
-The early milestones below have Git tags; later checkpoints, including M33–M43,
+The early milestones below have Git tags; later checkpoints, including M33–M64,
 are commits without milestone tags. Recover their recorded commits rather than
 preserving parallel runtime code:
 
@@ -408,6 +430,12 @@ technical reason to prefer it.
 
 ## Dependencies
 
+**Historical initial dependency rationale.** The SDL paragraph below predates
+M35's logical gamepad integration; SDL controller support is now used. Current
+dependencies also include the pinned libraries described with audio, scripting,
+animation, navigation and text, plus the offline M64 QuickHull cooker. See those
+subsystem sections and their dependency provenance files for current scope.
+
 **SDL2** — window creation, OS event handling, keyboard/mouse state, and
 OpenGL context creation. A solved, commodity problem; SDL2 is mature,
 widely shipped, and its scope (window/input/context, plus audio/controller
@@ -428,6 +456,11 @@ as commodity a problem as they come, and a package manager or
 `FetchContent` step would add process for a single self-contained header.
 
 ## Physics ownership
+
+**Historical M7-Final account.** The ownership decision remains current; the
+geometry/solver inventory below records that checkpoint. M32/FTFT supersede its
+early contact/broadphase implementation, M64 extends physical geometry, and
+M49/M51 separate generic character motion from project-owned gameplay.
 
 **Milestone 3 through the first attempt at Milestone 7-Final used [Jolt
 Physics](https://github.com/jrouwe/JoltPhysics) (pinned `v5.6.0`, MIT
@@ -455,7 +488,7 @@ axis-agnostic. The fix wasn't another gravity-resolution redesign; it was
 making "no global up or down" a property of the physics layer itself, not
 just of Judas's logic sitting on top of it.
 
-**What Judas now owns, in full** (`src/RigidBody.*`, `src/Contacts.*`,
+**What Judas owned at M7-Final** (`src/RigidBody.*`, `src/Contacts.*`,
 `src/ContactSolver.*`, `src/PhysicsWorld.cpp`): rigid-body state (position,
 free-quaternion orientation, linear/angular velocity, inverse mass, full
 3x3 inverse inertia tensor), force/gravity accumulation, semi-implicit
@@ -499,6 +532,12 @@ type), so replacing what's behind it was exactly as contained as the
 interface always promised.
 
 ## Player/controller ownership
+
+**Historical M5–M7 controller boundary; retained as legacy compatibility.**
+The modern boundary is CharacterMotor-owned collision-aware motion with JS-owned
+input policy, locomotion/jump/swimming behaviour and separate camera policy.
+See M49 and M51 below; the following preserves why the original controller was
+made Judas-owned, not a prescription for current C++ gameplay.
 
 Milestone 4 built the player on Jolt's `CharacterVirtual` — a reasonable,
 purpose-built choice *for that milestone*, but one where Jolt itself
@@ -597,6 +636,11 @@ gravity of its own; Judas still samples a `GravityField` and hands the
 result to the physics layer as an applied acceleration, exactly as before.
 
 ### Gravity: one interface, interchangeable implementations
+
+**Current extension:** M54 added optional `GravityField::Equilibrium` descriptors
+for conservative liquid geometry. Acceleration still comes from `Sample`; both
+capabilities use the same authoritative field/zone selection. This supplements
+the historical acceleration contract below without adding a separate gravity model.
 
 `GravityField` (`src/GravityField.h`) is an abstract interface — a single
 pure-virtual method, `Sample(worldPosition) -> acceleration` — and is
@@ -4157,6 +4201,10 @@ boundary."
 
 ## Simulation timing
 
+The fixed timestep and catch-up bounds below remain current. The example and
+player-input account record the legacy loop; current fixed-system ordering is
+described under M28's later-status note, and M52 adds the script presentation phase.
+
 Physics is stepped on a **fixed timestep of 1/60 second**
 (`SimulationTiming::kFixedTimestep`, `src/SimulationTiming.h`, added this
 milestone), unchanged in value since Milestone 3 — only pulled out of
@@ -5663,14 +5711,14 @@ deferred, not oversights:
   mandate). A pilot flying at high speed near solid geometry should expect
   a hard collision to cost more speed than gentle Coulomb friction alone
   would suggest.
-- **HISTORICAL / superseded by M58 candidate: Milestone 13 UI font atlas is a fixed 512x512 bake at one pixel
+- **HISTORICAL / superseded by completed M58: Milestone 13 UI font atlas is a fixed 512x512 bake at one pixel
   height (48px), covering only printable ASCII (32-126).** Sufficient for
   this milestone's HUD telemetry and menu labels; a future UI needing
   Unicode, multiple font weights/styles, or much larger on-screen text
   would need either a bigger/multiple atlas or `stb_truetype`'s more
   configurable packing API (`stbtt_PackBegin`/`PackFontRange`) instead of
   the simple `stbtt_BakeFontBitmap` call used here.
-- **HISTORICAL / superseded by M41/M58 candidate: Milestone 13 `DrawUIText` draws exactly one line; there is no
+- **HISTORICAL / superseded by completed M41/M58: Milestone 13 `DrawUIText` draws exactly one line; there is no
   wrapping, multi-line layout, or text alignment beyond what callers
   compute themselves** (`HUD`/`UIMenuScreen` each call it once per line at
   a manually computed Y offset). A future UI screen with paragraph-length
@@ -5771,7 +5819,7 @@ Later milestone notes identify fulfilled parts; this is not a current feature ba
   implemented a fixed double-precision absolute origin with local float
   simulation. This supports compact scenes at large absolute coordinates;
   it does not provide live origin rebasing. Continuous travel requiring
-  origin shifts remains a [future capability](ROADMAP.md).
+  origin shifts remains a future capability.
 - **Terrain, many collision objects, raycasts/shape queries, constraints**
   — Milestone 5 was evidence this was practical under Jolt (the player's
   entire support/movement system built from exactly one query primitive,
@@ -6427,7 +6475,7 @@ continuity is claimed.
 A compact game can use a very large absolute scene origin without enabling
 planetary systems. Its authoritative physics remains in one fixed local
 float frame. FTFT5 verifies that existing boundary; it does not add an
-origin-shift operation. Live rebasing is a [future capability](ROADMAP.md),
+origin-shift operation. Live rebasing is a future capability,
 requiring a coordinated shift of simulation and presentation state before
 continuous long-distance travel can be claimed. Historical M23 acceptance
 and its explicit exclusion of runtime rebasing remain unchanged.
@@ -7353,6 +7401,11 @@ after and comparing bytes.
 
 ### Runtime instantiation (`src/RuntimeWorld.h`)
 
+**Historical M28 construction account.** FTFT9 superseded the light-body particle
+reaction cutoff described below. Static compounds and M64 collision resources are
+now supported. M51 restricts native vehicle/door/player gameplay to explicit legacy
+compatibility; ordinary project game behaviour belongs to JS.
+
 `Build` walks the objects in order and, per component, creates the engine
 state and records only what stepping and drawing need to reach it again.
 Two rules that used to be name-based in `Application.cpp` are now
@@ -7386,6 +7439,15 @@ The normal fixed-step integrator has finite timestep error, not exact orbital
 energy conservation. See [executed FTFT7 evidence](evidence/stabilization/ftft7/README.md).
 
 ### Fixed-step ordering (`src/Simulation.h`)
+
+**Current ordering:** navigation → liquid BeginStep → JS fixedUpdate → conserved
+liquid update/loading → ordinary gravity/forces and enabled legacy adapters →
+rigid physics/legacy fluid coupling → combustion/coarse integration → legacy
+observer/player → CharacterMotors → animation → ragdolls → deformables/fracture →
+visual particles → simulation clock/contact and fracture events → fidelity policy.
+The world advances once;
+render cameras do not step it. M52's presentationUpdate runs after catch-up.
+The sequence below is the historical M28 path, not the current system inventory.
 
 `StepPlayedWorld` is the M7-Final..M27 interactive step, verbatim in order:
 dynamic bodies sample local gravity → Full/Full and cross-fidelity celestial forces → vehicle
@@ -7902,12 +7964,13 @@ at `assets`, its scenes-dir at `assets/scenes` and its startup scene at
 finds nothing but the project's display name in a comment. The tiny game
 is the same kind of thing with the default `Assets/Scenes/Saves` layout.
 
-**Engine data versus project data.** The one file the engine itself needs
+**Historical M30 engine-data contract; extended by M38/M58.** The one file the engine itself needed
 — the UI font — is engine data, not project content, and is resolved by
 `src/EnginePaths.h` (`$JUDAS_ENGINE_ROOT`, the executable's directory and
 its parent, then the working directory). A project does not ship a font;
 a build tree anywhere under the repository finds it from any working
-directory.
+directory. Current projects may register and export their own font assets and
+localization catalogs; the packaged DejaVu font remains the engine fallback.
 
 ### Stable asset identity (`src/AssetDatabase.h`)
 
@@ -7968,6 +8031,12 @@ at the new path while the saved scene text contains the id and no file
 name. No filename heuristics exist to fall back on.
 
 ### The resource manager boundary (`src/ResourceManager.h`)
+
+**Historical synchronous M30 contract.** M31 replaces synchronous interactive
+loading with worker decode/main-thread publication. Later CPU resources (audio,
+fonts/catalogs, navigation, liquids, deformables and M64 collision data) do not
+require a GPU upload or a Renderer just to load. The following retains the original
+mesh/texture contract and its headless limitations.
 
 `ResourceManager` replaces M28's `RenderAssetCache` (path → handle) and is
 the *only* path on which a project asset becomes a GPU resource:
@@ -8066,6 +8135,10 @@ capsule and fluid lattice bounds from the Scene.
 
 ### Profiler (`DrawProfilerPanel`)
 
+**Historical M30 panel.** M56 adds integrated bounded CPU/GPU profiling, including
+a separate `Rigid physics` scope inside PhysicsWorld::Step. The earlier assertion
+below that rigid-step time was not separated records the original panel only.
+
 Every number is produced by the code doing the work and labelled with what
 it counts: frame wall time (rolling average) and the FPS it implies; fixed
 steps this frame and the wall time of the last `StepPlayedWorld` (always
@@ -8140,7 +8213,8 @@ scene before exiting.
 **Historical M30 limits:** M31/FTFT2 supersede synchronous resource loading;
 M36 supplies parent-local hierarchies; M32/FTFT4 replace the old creep mechanism.
 M38 export and M40 scripting also supersede their exclusions in the scope list
-below. The remaining limits are not claimed fixed by those milestones.
+below; M56 adds isolated physics profiling and M64 adds physical collider cooking.
+Other remaining limits are not claimed fixed by those milestones.
 
 - **Picking is a bounding sphere per object.** A long thin plank picks as
   a large ball; overlapping spheres pick the nearer centre. Precise
@@ -8701,7 +8775,9 @@ the lazy output device. RuntimeWorld owns authored emitter/listener bindings and
 releases voices on Play/Stop, disable/destruction and world teardown. InteractivePlay
 updates positions once per main frame using presented entity poses and full listener
 orientation, optionally from the active view; secondary render cameras do not tick audio.
-No gameplay-specific sounds, streaming or acoustics model is implied. M34 introduced
+No gameplay-specific sounds are implied. The original M34 scope was buffered;
+M60 adds bounded streaming and environmental acoustics through this same ownership.
+M34 introduced
 authored schema 4 with audio fields; M36 superseded it with current schema 5.
 Earlier-schema save fingerprints are incompatible.
 See [M34](M34.md) for exact settings, lifecycle, limits and listening acceptance.
@@ -8789,7 +8865,8 @@ clipping. Layout/focus/input run before gameplay; modal documents preserve the
 existing fixed-step pause boundary. Script `uiUpdate/onUI` can operate while paused,
 while ordinary frame/fixed gameplay callbacks remain paused. Handles validate live
 document IDs; source is never rewritten by runtime. UI menus/HUD behaviour lives
-in project JS, with the legacy engine menu retained only as a no-document fallback.
+in project JS. M51 retains the no-document engine-menu fallback only when
+`legacy-gameplay` is enabled; scripted projects do not acquire a fallback game menu.
 See [RUNTIME_UI.md](RUNTIME_UI.md) for authoring, scaling, APIs and limits.
 
 ### M42 contact event ownership
@@ -8806,11 +8883,13 @@ the same session. No scene-local entities or JS heap objects survive. Existing M
 scene-directory packaging and FTFT1 baseline identity remain authoritative.
 See `docs/SCENE_TRANSITIONS.md` for the API and synchronous-loading limits.
 
-## M44 — explicit runtime geometry queries (candidate)
+## M44 — explicit runtime geometry queries (accepted)
 
 `PhysicsWorld` exposes nearest ray, sphere, capsule and fixed-orientation box
 casts. Existing tree candidates and M39 filters feed resolved sphere/box/
-compound geometry; robust signed contact geometry supplies box witnesses.
+compound geometry; M64 adds cooked hulls and static triangle surfaces to the
+same path, plus nearest-surface inspection. Robust signed contact geometry
+supplies box witnesses.
 M40's `physics` module returns safe entity hit snapshots or null. Queries are
 read-only, distinct from player locomotion sweeps and M42 contact events:
 **Judas answers geometric questions; JavaScript decides why they matter.**
@@ -8822,10 +8901,11 @@ simulation authority. Details and limits: `PHYSICS_QUERIES.md`; focused demo:
 
 ## Milestone 45 — rigid-body joints
 
-PhysicsWorld owns fixed, hinge, ball/socket and slider constraints. Body-local frames/anchors feed a shared accumulated impulse solver alternating with contact rows; joints do not overwrite poses. Hinge/slider limits, bounded motors and implicit spring/damping operate along their free coordinate. Coupled impact islands include passive joint rows under the existing inelastic island policy. Safe joint handles, ordinary scene references, prefab remapping, editor settings and `physics.joint(owner)` JavaScript controls expose the primitive without game-specific meaning. See [JOINTS.md](JOINTS.md). The compact `projects/joint_demo` physical door is body + hinge + JS; historical M16 remains preserved. Tagged joint fingerprint content extends canonical schema 5 without changing no-joint baselines. Runtime motor settings and impulse caches are transient.
+PhysicsWorld owns fixed, hinge, ball/socket and slider constraints. Body-local frames/anchors feed a shared accumulated impulse solver alternating with contact rows; joints do not overwrite poses. Hinge/slider limits, bounded motors and implicit spring/damping operate along their free coordinate. Coupled impact islands include passive joint rows under the existing inelastic island policy. Safe joint handles, ordinary scene references, prefab remapping, editor settings and `physics.joint(owner)` JavaScript controls expose the primitive without game-specific meaning. See [JOINTS.md](JOINTS.md). The compact `projects/joint_demo` physical door is body + hinge + JS; historical M16 remains preserved. Tagged joint fingerprint content extends canonical schema 5 without changing no-joint baselines. At M45, runtime motor settings and impulse caches were transient. M61 slots now
+preserve runtime joint settings; solver caches rebuild on load.
 
 
-## Milestone 46 — skeletons, poses and visual clip playback (candidate)
+## Milestone 46 — skeletons, poses and visual clip playback (accepted)
 
 Judas owns `Skeleton` and `SkeletalPose`. Immutable mesh resources share rest
 hierarchy, skin palette, inverse binds and named clips imported with pinned MIT
@@ -8833,7 +8913,8 @@ cgltf 1.15. The existing worker decode/main-thread GPU handoff also loads GLB
 and embedded-buffer glTF. Clip sampling produces joint-local pose data; the
 RuntimeWorld instance owns the final resolved pose and skin matrices. Playback
 is one producer, not the owner of bone transforms. `SetFinalPose` allows another
-producer to provide a pose at the resolution boundary; M46 has no blending,
+producer to provide a pose at the resolution boundary; since M47 this enters
+the resolver as an external contribution. The original M46 scope had no blending,
 IK or physical bone mapping. Fixed-step visual playback updates once, and all
 cameras consume the same result. Renderer alone owns the optional skin stream
 and colour/shadow GPU skinning. Ordinary collision geometry remains separate.
@@ -8843,7 +8924,7 @@ Tagged animation settings extend canonical fingerprint schema 5; scenes with
 no animation retain their existing fingerprint. See [ANIMATION.md](ANIMATION.md)
 for supported import limits and the focused demo.
 
-## M47 — resolved pose composition (candidate)
+## M47 — resolved pose composition (accepted)
 
 M46's single-player scope is extended by per-instance clip mixing, interrupted
 crossfades, ordered masked layers and additive local TRS contributions relative
@@ -8853,7 +8934,7 @@ validated external contributions participate in the same deterministic resolver.
 No producer owns the final skeleton and Renderer still consumes only its palette.
 See [POSE_COMPOSITION.md](POSE_COMPOSITION.md). No state machine, blend tree or IK.
 
-## M48 — passive articulated skeletons (candidate)
+## M48 — passive articulated skeletons (accepted)
 
 An authored joint-key mapping creates ordinary PhysicsWorld bodies and M45 passive
 constraints. Current resolved pose/recent motion initializes entry. Physical
@@ -8866,7 +8947,7 @@ Transient internal bodies are not independent save entities. No motors, recovery
 or M49 control is implemented. See [RAGDOLLS.md](RAGDOLLS.md) for scale, lifetime,
 persistence and supported-shape limits. Protected research remains separate.
 
-## M49 — scriptable character motor (candidate)
+## M49 — scriptable character motor (accepted)
 
 Judas owns collision-aware character motion; JavaScript owns character behaviour.
 The per-entity CharacterMotor generalizes the historical capsule/motion-ledger
@@ -8878,8 +8959,10 @@ body transforms/point velocity and bounded collision-aware carry, not parenting.
 Finite configurable impulses replace unlimited legacy velocity seeding for motors.
 Input, camera, gameplay states, skeleton/pose and ragdoll authority stay separate.
 Motor settings serialize through scenes/prefabs with a conditional schema-5
-fingerprint extension; motor-free authored hashes remain unchanged. Existing
-entity-state saves restore position/velocity; support is transient. The current
+fingerprint extension; motor-free authored hashes remain unchanged. The
+legacy entity-state saves restore position/velocity; support was transient under
+that contract. M61 slots also retain motor support/motion state and reconstruct
+generation-safe supporting identities. The current
 character project uses JS movement/launch and existing liquid-field queries for
 swimming; production fluid mechanics and protected evidence remain unchanged.
 Legacy scenes retain their compatibility controller. See
@@ -8896,7 +8979,7 @@ are explicit inventory exceptions. M38 runtime packages do not bundle this whole
 documentation tree; developers obtain the offline reference/types from the matching
 engine checkout. Historical milestone records/evidence retain their original scope.
 
-## M51 — explicit engine/game execution boundary (candidate)
+## M51 — explicit engine/game execution boundary (accepted)
 
 The reviewed source audit found that a script-owned main camera only bypassed
 legacy locomotion; other historical GameSession controls still ran. Project
@@ -8919,9 +9002,26 @@ canonical scene schema 5 are unchanged. Export carries normal project settings.
 Details, exact compatibility scope and limitations:
 [M51 engine/game boundary](M51_ENGINE_BOUNDARY.md). The accepted production fluid
 repair, current fluid project and protected historical/research evidence are
-unchanged. This candidate still requires operator review.
+unchanged. M51 and its final content-only radial gravity-zone correction were
+human-accepted and checkpointed at `73698d1`.
 
-## M53 — world-owned navigation (candidate)
+## M52 — project game composition and script presentation
+
+Spring Range is an ordinary project: JS composes logical input, CharacterMotor,
+views, queries, hit-point impulses, hinged spring targets, score, UI, audio and
+particles. Weapon/target/score rules do not become engine C++ systems. The generic
+body operation `Entity.applyImpulseAtPoint(impulse, point)` uses normal world-space
+rigid-body impulse semantics; M53 later extends the project with advisory navigation.
+
+Human testing exposed camera/model jitter because scripts followed fixed poses
+while Renderer displayed interpolated poses. `presentationUpdate(dt, alpha)` now
+runs after fixed-step catch-up, before view/audio/draw; readonly
+`Entity.presentedTransform` exposes the same existing interpolation. Shooter and
+spacecraft cameras use that phase. `Entity.transform`, queries and physical intent
+remain authoritative, not presentation-driven. See [M52](M52_SHOOTER_GAME.md) and
+[JudasJS lifecycle](judasjs/lifecycle.md). M52 was accepted at `3c52b13`.
+
+## M53 — world-owned navigation (accepted)
 
 Navigation surfaces carry explicit local frames and registered tiled `.judasnav`
 assets. RecastNavigation v1.6.0 provides editor/tool baking from authoritative
@@ -8942,19 +9042,23 @@ ordinary chase/health/score scripts, not a native Enemy/AI system. See
 
 ## M54 — conserved implicit liquid foundation
 
-Candidate foundation alongside preserved production PBF; no dynamic waves/free-surface solver. RuntimeWorld owns double-volume reservoir/container/detached ledgers. Quantity is authoritative; surface geometry is downstream and owns no duplicate mass. Paired bounded transactions, generation-safe handles and fixed-step opening/connection/parcel updates keep accounting separate from geometric tolerance.
+Accepted M54 foundation alongside preserved production PBF. Its original scope
+had no dynamic waves/free-surface solver; optional M55 surfaces extend it. RuntimeWorld owns double-volume reservoir/container/detached ledgers. Quantity is authoritative; surface geometry is downstream and owns no duplicate mass. Paired bounded transactions, generation-safe handles and fixed-step opening/connection/parcel updates keep accounting separate from geometric tolerance.
 
 Static physical tetrahedral basins bake adaptive monotonic capacity assets; runtime inversion is O(log N). Optional GravityField conservative equilibrium descriptors use the existing zone resolver: arbitrary uniform planes and the actual constant-magnitude radial equipotentials. Modest vented rotating containers clip their cavity against locally sampled gravity; authored openings drive real scoop/spill transport. Existing M44 queries constrain ballistic parcels; unsupported landings retain owned volume. Box/compound hydrostatic interaction is opt-in; M54-owned bodies are excluded from legacy PBF loading. No new swimming policy, particle-bulk fill, world-Y fallback or origin rebasing.
 
-Normal assets/resources/editor/scene/prefab/export and JudasJS integrate this path. Fingerprint schema remains 5; relevant physical and baked bytes contribute without machine paths. The existing saved-delta format does not persist this new liquid ledger; quantities are runtime-session state. Dry body mass/inertia are not automatically rewritten by contained water. Current authoring, gravity/geometry error bounds, limitations and human lab/radial checks: [LIQUID_RESERVOIRS.md](LIQUID_RESERVOIRS.md).
+Normal assets/resources/editor/scene/prefab/export and JudasJS integrate this path. Fingerprint schema remains 5; relevant physical and baked bytes contribute without machine paths. The legacy saved-delta format does not persist this liquid ledger. M61 modern
+slots persist owner quantities, parcels, connections and M55 cell/flow state;
+ordinary scene reload still reconstructs authored initial quantities. Dry body mass/inertia are not automatically rewritten by contained water. Current authoring, gravity/geometry error bounds, limitations and human lab/radial checks: [LIQUID_RESERVOIRS.md](LIQUID_RESERVOIRS.md).
 
-## M55 — optional dynamic liquid surfaces (candidate)
+## M55 — optional dynamic liquid surfaces (accepted)
 
 M54 LiquidSystem remains the quantity owner. Optional CPU finite-volume surface cells partition each reservoir's same double-precision volume; shared face discharges are paired transfers, not additional ledger quantities. Physical tetrahedral storage and apertures, supported uniform/radial equilibrium descriptors, bounded semi-implicit pressure/continuity resolution and real collider union exclusion produce the occupied surface. Containers keep the vented M54 lip/cavity model; actual water transfers to conserved parcels and receiver cells. One normal PhysicsWorld hydrostatic/drag loading path remains.
 
-Authoritative liquid samples drive project-JS CharacterMotor swimming. Presented samples and Renderer caps/step bands use the same previous/current interpolation. Per-camera optical paths clip attenuation to actual water intervals, leaving sky/HUD independent. New opted-in basin data uses JudasBasin2; non-opted M54 assets/fingerprints remain valid. See [method, authoring and limitations](LIQUID_SURFACES.md) and [JudasJS liquid API](judasjs/liquid.md). Candidate acceptance and measurements are recorded in M55 evidence; no P1 prototype is promoted to production.
+Authoritative liquid samples drive project-JS CharacterMotor swimming. Presented samples and Renderer caps/step bands use the same previous/current interpolation. Per-camera optical paths clip attenuation to actual water intervals, leaving sky/HUD independent. New opted-in basin data uses JudasBasin2; non-opted M54 assets/fingerprints remain valid. See [method, authoring and limitations](LIQUID_SURFACES.md) and [JudasJS liquid API](judasjs/liquid.md). M55 acceptance and measurements, including the preserved drain/refill failure
+and corrected wet/dry follow-up, are recorded in M55 evidence; no P1 prototype is promoted to production.
 
-## M56 — integrated diagnostic profiling (candidate)
+## M56 — integrated diagnostic profiling (accepted)
 
 `PerformanceProfiler` is process-owned observability, independent of RuntimeWorld,
 Renderer and gameplay. Native RAII scopes write bounded per-thread lanes with
@@ -8976,7 +9080,26 @@ without changing M54/M55 behaviour. See [profiler guide](PROFILER.md) and M56 ev
 
 ## M57 optional materials and environment lighting
 
-Current reusable `.judasmat` definitions and isolated instance overrides, core glTF primitive slots, PBR/unlit/legacy models and baked `.judasenv` resources use AssetDatabase/async ResourceManager and Renderer-owned GL3.3 lifetime. Opted-in scenes accumulate linear HDR, apply exposure/Reinhard/sRGB once, then display-stage UI. Modern secondary targets carry scene-linear radiance. Physics, liquid simulation and resolved skeletal poses remain independent of material policy. See [Materials](MATERIALS.md) for exact shading, colour/import/pass contracts and [JudasJS material API](judasjs/materials.md). Candidate awaits human visual/gameplay acceptance; historical milestone evidence is preserved.
+Current reusable `.judasmat` definitions and isolated instance overrides, core glTF primitive slots, PBR/unlit/legacy models and baked `.judasenv` resources use AssetDatabase/async ResourceManager and Renderer-owned GL3.3 lifetime. Opted-in scenes accumulate linear HDR, apply exposure/Reinhard/sRGB once, then display-stage UI. Modern secondary targets carry scene-linear radiance. Physics, liquid simulation and resolved skeletal poses remain independent of material policy. See [Materials](MATERIALS.md) for exact shading, colour/import/pass contracts and [JudasJS material API](judasjs/materials.md). M57 is human-accepted and checkpointed at `ba16c2c`; historical milestone evidence is preserved.
+
+## M58 — shared Unicode text and project localization
+
+Judas owns the shared text layout/rendering and localization primitives; projects
+own font/catalog assets and JS owns language policy. UTF-8 text uses pinned
+FreeType 2.13.3, HarfBuzz 10.4.0 and ICU4C 76.1 (Unicode 16.0 / CLDR 46.0).
+RuntimeUI measurement and Renderer consume one immutable layout with bidi,
+script/font fallback, wrapping and real glyph metrics. Renderer alone owns bounded
+on-demand glyph atlases and consecutive-page batching; the old ASCII font bake is
+historical test infrastructure, not the current runtime text contract.
+
+Registered `.judasloc` catalogs and project font/locale settings use normal
+AssetDatabase, asynchronous ResourceManager and export paths. Complete validated
+locale chains publish together. Missing keys and the brief unpublished-catalog
+startup window return visible `[key]` fallbacks without throwing; invalid message
+arguments remain errors. Horizontal outline text is supported, not rich text,
+text entry/IME, colour emoji or automatic translation. See [M58](M58.md),
+[text/localization API](judasjs/localization.md) and dependency provenance there.
+M58 was accepted at `6fb90d5`; PR #1 preserved the non-throwing startup fallback.
 
 ## M59 — additive composition and region residency
 
@@ -8996,10 +9119,12 @@ Fresh runtime identities remap local/qualified references. Supports, physical/na
 gravity dependencies and unsuspendable liquid/articulation state pin with reasons.
 Supported JSON/physical session records and tombstones survive ordinary eviction;
 retention pressure blocks rather than silently resetting unique content. Composed
-disk saves are disabled/rejected. Fixed double origin/local floats remain M23: no
+legacy delta disk saves remain disabled/rejected. M61 slots support composed
+resident/retained state and qualified references. Fixed double origin/local floats remain M23: no
 live rebasing. Legacy single-scene canonical schema 5 is unchanged. See
 [M59 coverage, budgets and limitations](M59_WORLD_STREAMING.md) and
-[JudasJS streaming API](judasjs/streaming.md). Human candidate review remains pending.
+[JudasJS streaming API](judasjs/streaming.md). M59 is human-accepted and checkpointed
+at `7ad5301`; the original revisit failure and fixes remain in its evidence.
 
 
 ## Milestone 60 — Streaming audio and environmental acoustics
@@ -9068,7 +9193,7 @@ See [participation, limits and human review](M61_SAVES.md), the
 No fluid/audio/navigation algorithms, cloud service or VM checkpointing introduced.
 
 
-## M62 — cloth and volumetric deformables (combined review candidate)
+## M62 — cloth and volumetric deformables (accepted)
 
 RuntimeWorld owns CPU-authoritative deformable instances. Shared immutable
 `.judasdeform` assets separate simulation nodes/topology/rest data, boundary contact
@@ -9077,7 +9202,7 @@ volumetric tetrahedral strain/volume constraints use XPBD at the ordinary fixed
 cadence with bounded substeps/iterations. Optional bounded isochoric plastic rest
 flow belongs to each instance. Nodes are not Entities or RigidBodies.
 
-PhysicsWorld supplies primitive geometry/tree candidates and finite rigid-body
+PhysicsWorld supplies authoritative geometry/tree candidates and finite rigid-body
 reaction at one coupling boundary; it is not advanced a second time. Surface
 vertex/face and edge/edge contact use accelerated candidates and explicit topology
 exclusions. Bone pins consume the existing final resolved authoritative pose after
@@ -9091,7 +9216,9 @@ JudasJS exposes a safe Deformable facade, not raw native nodes or a project solv
 M61 includes required conditional deformation state; M59 retains independent region
 state once and pins cross-region targets while attachments use them. GPU/contact
 caches rebuild. The ordinary Deformable Lab is content, not native dispatch.
-Current limits include sampled primitive contact, discrete EE contact, approximate
+The original M62 contact envelope was sampled primitives; M64 extends that same
+sampled seam to cooked meshes/hulls and oriented compound children. Current
+limits still include sampled rigid contact, discrete EE contact, approximate
 cloth bending/materials, bounded non-inverted solids and unit owner scale. No
 terrain/general mesh collision expansion, CharacterMotor/event expansion, cloth
 wetting, fluid change, IK, fracture/tearing or M63 work was introduced.
@@ -9099,7 +9226,7 @@ wetting, fluid change, IK, fracture/tearing or M63 work was introduced.
 See [M62 implementation/limits](M62_DEFORMABLES.md),
 [JudasJS contract](judasjs/deformables.md) and [combined evidence](evidence/m62/RESULTS.md).
 
-## M63 — structural fracture and physical fragments (review candidate)
+## M63 — structural fracture and physical fragments (accepted)
 
 An optional bounded material partition extends M62 `.judasdeform` assets. One
 RuntimeWorld family graph owns irreversible interfaces, connected components and
@@ -9116,9 +9243,9 @@ pins and ordinary adoption/tombstones. Navigation remains an advisory consumer o
 project-updated obstacles. Liquid-bearing fracture is explicitly unsupported. No
 fluid solver, general mesh-collision system or second destruction solver was added.
 See [M63 contracts, authoring and limitations](M63_FRACTURE.md),
-[Fracture JS API](judasjs/fracture.md), and [candidate evidence](evidence/m63/RESULTS.md).
+[Fracture JS API](judasjs/fracture.md), and [checkpoint evidence](evidence/m63/RESULTS.md).
 
-### M64 — cooked collision geometry and geometric inspection
+## M64 — cooked collision geometry and geometric inspection (accepted)
 
 Immutable `.judascollision` CPU resources add static concave triangle surfaces and
 static/dynamic convex hulls to the existing PhysicsWorld. Local BVHs select mesh

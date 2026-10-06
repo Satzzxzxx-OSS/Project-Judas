@@ -12,7 +12,8 @@ once per world's VM; module globals are shared between instances in that world.
 A new scene/reload/Play creates a fresh VM, not a retained module heap.
 
 Default-export a constructible class. Each enabled authored slot creates its own
-instance with `{entity, properties}`. Slot IDs are stable identities, distinct
+instance with `{entity, properties, restored}`. `restored` is true for modern
+save restoration. Slot IDs are stable identities, distinct
 from order. The constructor runs before restored `state` is installed. Do not
 make constructor side effects depend on saved state.
 
@@ -28,7 +29,8 @@ export default class {
     this.props = properties;
     this.state = {count: 0};
   }
-  start(dt) {} // restored state is already available here
+  start(dt) {} // new-game or legacy-delta startup
+  restore(dt) {} // modern slot load; saved state is already installed
   fixedUpdate(dt) { if (this.props.active) this.state.count += this.props.rate * dt; }
 }
 ```
@@ -52,6 +54,7 @@ Promise. No async callback/top-level-await scheduler exists.
 | Callback | Actual boundary and argument |
 |---|---|
 | `start(dt)` | Once before the first UI/frame/fixed callback that reaches this slot; not guaranteed to begin in fixed mode. |
+| `restore(dt)` | Replaces `start` for a modern loaded slot, after saved `state` is installed; reacquire handles/UI here. No implicit fallback to `start` if absent. |
 | `uiUpdate(dt)` | Each interactive outer frame, including while a modal UI pauses gameplay. |
 | `onUI(event)` | UI input events, before gameplay input; broadcast to live scripts. |
 | `update(dt)` | Active gameplay frame, before that frame's fixed-step catch-up. |
@@ -59,11 +62,12 @@ Promise. No async callback/top-level-await scheduler exists.
 | `fixedUpdate(dt)` | Before ordinary fixed-step force/physics advance; zero or several calls per rendered frame. |
 | `onCollisionEnter/Stay/Exit(event)` | Fixed-step authoritative contact delivery after physics/motor/pose publication. |
 | `onTriggerEnter/Stay/Exit(event)` | Same event boundary; sensors generate no physical response. |
+| `onFracture(event)` | Logical owner's scripts after fixed-step fracture topology publication, outside solver loops; see [event data](fracture.md#onfractureevent). |
 | `destroy(dt)` | Slot removal/disable or ending the VM; last callback delta is passed, not a teardown timestep. Faulted instances skip this callback. |
 
 Order within normal callback phases is ascending entity ID, then authored slot
-vector order. `start` precedes the first phase reaching an instance, not a global
-start-all-before-any-update barrier. Callback lists are snapshots: destroying an
+vector order. `start` (or modern-load `restore`) precedes the first phase reaching
+an instance, not a global start-all-before-any-update barrier. Callback lists are snapshots: destroying an
 entity invalidates its wrappers immediately; synchronization later retires its
 slot and calls `destroy` if not faulted. Spawned script instances enter at the next
 synchronization boundary, which can be another fixed step in the same outer frame.
@@ -76,8 +80,8 @@ advance the normal world once, then publish motors/poses and dispatch contacts.
 Transitions are requested during callbacks and applied only after the outer
 application frame returns. No world teardown occurs inside `scenes.load()`.
 
-`time.fixed` is true in fixed callbacks and contact delivery; false in frame/UI
-callbacks, including presentation. Character velocity/acceleration setters enforce fixed mode (contact
+`time.fixed` is true in fixed callbacks, contact and fracture delivery; false in
+frame/UI callbacks, including presentation. Character velocity/acceleration setters enforce fixed mode (contact
 callbacks technically qualify too). Prefer submitting intent in `fixedUpdate`;
 contact intent applies after the current motor step. Forces are not phase-guarded,
 but use fixed callbacks to avoid frame-rate-dependent repeated force accumulation.
@@ -105,7 +109,9 @@ that is their desired menu policy.
 
 First module/constructor/callback failure records entity/slot/asset/phase/stack
 and faults that instance until its VM is restarted. Other slots continue. A
-faulted slot is omitted from state capture and does not receive `destroy`.
+faulted slot does not receive `destroy`. Legacy delta capture omits faulted slots;
+modern M61 capture rejects missing required script records rather than silently
+saving an incomplete world.
 Module globals are still shared; error isolation is not independent VMs per slot.
 
 The VM has 64 MiB managed memory, 512 KiB stack and a default 10,000 interrupt-poll

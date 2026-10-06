@@ -48,7 +48,13 @@ teleported supports aren't continuous motion. Skeleton/animation is independent.
 Disabling/removing scripts does not inherently disable their motor; last velocity
 and gravity remain until explicitly changed/disabled. No fluid solver is owned.
 
-Use `world.fluidSample` to implement buoyancy/drag/propulsion in project JS. Existing
+Ordinary reload/Stop reconstructs authored motor state. Explicit [M61 slots](saves.md)
+preserve velocity/orientation, support state and its supporting identity, then
+reconstruct generation-safe handles. Do not retain a support wrapper across Load.
+
+Use [conserved `liquid.sample`](liquid.md) for M54/M55 water, or
+[`world.fluidSample`](effects-camera.md#worldfluidsample) for the separate legacy
+PBF field, to implement buoyancy/drag/propulsion in project JS. Existing
 coarse production liquid limitations still apply; do not turn the motor into a
 hardcoded swim mode. Copyable [motor example](examples/character.js), current full
 project [character demo](../../projects/character_demo/character_demo.judasproj).
