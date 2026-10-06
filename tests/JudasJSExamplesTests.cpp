@@ -85,7 +85,7 @@ export default class extends Base {
    n=="impulse-point"?yes("angular")&&yes("rejectsInvalid")&&yes("linear")&&yes("unchanged"):
    n=="physical-control"?yes("capture")&&state.find("\"mass\":40")!=std::string::npos:
    n=="minimal"?state.find("\"started\":1")!=std::string::npos&&state.find("\"steps\":100")!=std::string::npos:
-   n=="input-motion"?yes("moved"):n=="spawn"?yes("spawned"):n=="queries"?yes("ray")&&yes("shape"):
+   n=="input-motion"?yes("moved"):n=="spawn"?yes("spawned"):n=="queries"?yes("ray")&&yes("shape")&&yes("closest")&&yes("collider"):
    n=="contacts"||n=="trigger"?state.find("\"enters\":1")!=std::string::npos&&state.find("\"exits\":1")!=std::string::npos&&state.find("\"stays\":0")==std::string::npos:
    n=="audio"?yes("requested")&&yes("stopped")&&yes("settings")&&yes("seek")&&yes("oneShot")&&yes("group")&&yes("pausedDrop"):n=="particles"?yes("configured")&&yes("burst"):
    n=="ui"?yes("clicked"):n=="scene-session"?yes("queued")&&session->Pending()&&session->Get("example_visits")=="1":

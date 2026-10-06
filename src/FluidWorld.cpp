@@ -139,6 +139,7 @@ BodyTransform InterpolatePose(const FluidBoxCollider& box, float alpha) {
     if (!box.resolvedMotion.empty()) {
         BodyTransform pose=ResolvedPose(box.resolvedMotion,box.motionDuration,alpha);
         pose.position+=pose.rotation*box.localCenter;
+        pose.rotation=glm::normalize(pose.rotation*box.localRotation);
         return pose;
     }
     BodyTransform pose;

@@ -6,6 +6,14 @@ Judas answers geometric questions; project JavaScript gives the answers meaning.
 These are **read-only queries of resolved colliders**, separate from M42 events,
 player locomotion sweeps and the impact solver.
 
+## Current extension through M64
+
+M64 extends these existing queries to actual cooked hulls, static triangle surfaces
+and oriented compound children. It adds `physics.closestPoint` and read-only
+`Entity.collider` metadata. See [current geometry contracts](M64_COLLISION.md) and
+[JudasJS physics](judasjs/physics.md) for surface/containment, sidedness, feature keys
+and bounded convergence. The M44 sections below retain their milestone context.
+
 ## API
 
 C++ `PhysicsWorld` exposes `Raycast`, `SphereCast`, `CapsuleCast`, `BoxCast`.

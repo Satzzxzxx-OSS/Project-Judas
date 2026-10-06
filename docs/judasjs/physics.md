@@ -15,6 +15,7 @@ to maximum distance. No all-hits binding exists.
 | `sphereCast` | `(origin, radius, direction, maximum, filter={}) → CastHit|null` |
 | `capsuleCast` | `({position,rotation?}, radius, halfHeight, direction, maximum, filter={}) → CastHit|null` |
 | `boxCast` | `({position,rotation?}, halfExtents, direction, maximum, filter={}) → CastHit|null` |
+| `closestPoint` | `(point, maximum, filter={}) → ClosestPointHit|null`; bounded nearest **surface** search |
 | `joint` | `(ownerEntity) → Joint|null`; owner is the entity authoring the joint component, not automatically a connected body. |
 
 Pose-local Y is the capsule core axis, not universal world up. Capsule full height
@@ -24,9 +25,9 @@ motion prediction. Invalid input throws TypeError; zero maximum can test initial
 overlap. Hits choose nearest distance, then body/primitive identities for ties.
 
 `CastHit`: `{entity,entityId,bodyId,point,normal,distance,fraction,primitiveIndex,
-initialOverlap,shape}`. Target surface point and outward normal; deep initial
+initialOverlap,shape,childKey,feature}`. Target surface point and outward normal; deep initial
 overlap has a deterministic feature normal, not unique physical penetration data.
-`shape` is `sphere`, `box` or `terrain`; compounds return child primitive index.
+`shape` is `sphere`, `box`, `terrain`, `hull` or `triangle-mesh`; compounds return child primitive index and authored stable `childKey`. Single shapes use key 0. `feature` identifies a cooked triangle where meaningful, otherwise null; recooking can change feature keys.
 `bodyId` is an opaque generation-bearing number, not a controllable JS Body.
 `entity` can be null for unassociated geometry; otherwise it may later become
 invalid. Retained hit data does not update with the world.
@@ -53,6 +54,31 @@ rigid query targets. No concurrent worker-query API. [Geometry limits](../PHYSIC
 All vectors/poses use local float simulation coordinates around a fixed double
 absolute origin. No JS absolute-coordinate/rebasing API is exposed. No universal
 world-up: supply directions/orientations from local state, support and gravity.
+
+## physics.closestPoint
+
+Nearest **surface**, even when the point is inside a closed shape. Maximum radius
+is required, finite and nonnegative; missing/filtered/beyond-radius geometry returns
+null. Uses ordinary QueryFilter, body broadphase and local cooked BVH. Result:
+`{entity,entityId,bodyId,point,normal,distance,contains,primitiveIndex,childKey,feature,shape}`.
+`contains` is true/false for closed primitives/hulls, null for an open mesh;
+unsigned distance is not an invented mesh interior. `normal` is null when tied
+surface features lack a unique normal. Surface coordinates and units match casts.
+Terrain inherits approximate radial projection. Stale retained entity wrappers
+follow ordinary Entity rules; detached results do not update with simulation.
+
+```js
+const nearest = physics.closestPoint(character.transform.position, 2, {
+  ignored: [character], includeLayers: ['Default']
+});
+if (nearest) { marker.transform = {position: nearest.point}; }
+```
+
+Static cooked meshes use explicit one/two-sided contact/cast policy; closest-point
+inspection sees either side. Hulls are closed convex volumes. Sphere/capsule/fixed
+box casts against cooked surfaces use a bounded 256-advance policy per candidate,
+1e-5 metre convergence tolerance, throwing on exhaustion instead of a clean miss.
+No rotational sweep / general high-speed CCD claim. [Cooking and pair coverage](../M64_COLLISION.md).
 
 ## Joint
 

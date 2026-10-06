@@ -8,7 +8,7 @@ void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool wa
  for(auto& input:inputs){auto& s=input.state->settings;auto& a=*input.a;auto& b=*input.b;if(!impact){input.state->motorImpulse=0;input.state->reactionImpulse={0,0,0};input.state->reactionAngularImpulse={0,0,0};}
   for(auto* body:{&a,&b})if(std::find(m_bodies.begin(),m_bodies.end(),body)==m_bodies.end())m_bodies.push_back(body);
   glm::quat qa=glm::normalize(a.orientation),qb=glm::normalize(b.orientation),fa=qa*glm::normalize(s.frameA),fb=qb*glm::normalize(s.frameB);
-  auto basis=glm::mat3_cast(fa);auto ra=qa*s.anchorA,rb=qb*s.anchorB,delta=(b.position-a.position)+rb-ra;
+  auto basis=glm::mat3_cast(fa);auto ra=qa*(s.anchorA-input.pivotOffsetA),rb=qb*(s.anchorB-input.pivotOffsetB),delta=(b.position-a.position)+rb-ra;
   auto ia=a.InverseInertiaWorld(),ib=b.InverseInertiaWorld();int index=0;
   auto row=[&](glm::vec3 la,glm::vec3 lb,glm::vec3 aa,glm::vec3 ab,float error,float low=-std::numeric_limits<float>::infinity(),float high=std::numeric_limits<float>::infinity(),bool soft=false,bool motor=false){
    float gamma=0,bias=impact?0:.2f*error/dt;

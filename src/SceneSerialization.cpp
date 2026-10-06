@@ -1,3 +1,4 @@
+#include <set>
 #include <charconv>
 #include "SceneSerialization.h"
 #include "Prefab.h"
@@ -60,6 +61,8 @@ const char* ShapeName(SceneShape s) {
         case SceneShape::Compound: return "compound";
         case SceneShape::Mesh: return "mesh";
         case SceneShape::Terrain: return "terrain";
+        case SceneShape::ConvexHull: return "hull";
+        case SceneShape::TriangleMesh: return "triangle-mesh";
     }
     return "box";
 }
@@ -215,6 +218,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("body.half-extents", V(b.halfExtents));
         w.Line("body.radius", F(b.radius));
         w.Line("body.terrain", Quote(b.terrainSurface));
+        if(!b.collisionAsset.empty())w.Line("body.collision-asset",Quote(b.collisionAsset));
         w.Line("body.mass", F(b.mass));
         w.Line("body.friction", F(b.friction));
         w.Line("body.restitution", F(b.restitution));
@@ -223,7 +227,9 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("body.managed", b.managed ? "true" : "false");
         w.Line("body.compound-count", std::to_string(b.compoundBoxes.size()));
         for (const CompoundBox& box : b.compoundBoxes) {
-            w.Line("body.compound-box", V(box.localCenter) + " " + V(box.halfExtents));
+            std::string value=V(box.localCenter)+" "+V(box.halfExtents);
+            if(box.rotation!=glm::quat(1,0,0,0)||box.type!=ShapeType::Box||box.key||!box.assetId.empty())value+=" "+Q(box.rotation)+" "+std::to_string(int(box.type))+" "+F(box.radius)+" "+Quote(box.assetId)+" "+std::to_string(box.key?box.key:uint32_t(&box-b.compoundBoxes.data()+1));
+            w.Line("body.compound-box",value);
         }
         w.Line("body.fluid-cavity-count", std::to_string(b.fluidCavities.size()));
         for (const SceneFluidCavity& cavity : b.fluidCavities) {
@@ -427,6 +433,8 @@ bool ParseShape(const Token& t, SceneShape& out) {
     else if (t.text == "compound") out = SceneShape::Compound;
     else if (t.text == "mesh") out = SceneShape::Mesh;
     else if (t.text == "terrain") out = SceneShape::Terrain;
+    else if(t.text=="hull")out=SceneShape::ConvexHull;
+    else if(t.text=="triangle-mesh")out=SceneShape::TriangleMesh;
     else return false;
     return true;
 }
@@ -809,6 +817,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         if (!p.Vec3("body.half-extents", b.halfExtents)) return false;
         if (!p.Float("body.radius", b.radius)) return false;
         if (!p.String("body.terrain", b.terrainSurface)) return false;
+        if(p.Has("body.collision-asset")&&!p.String("body.collision-asset",b.collisionAsset))return false;
         if (!p.Float("body.mass", b.mass)) return false;
         if (!p.Float("body.friction", b.friction)) return false;
         if (!p.Float("body.restitution", b.restitution)) return false;
@@ -822,11 +831,14 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         }
         for (const std::vector<Token>& t : p.CompoundBoxes()) {
             CompoundBox box;
-            if (t.size() != 6 || !ParseFloat(t[0], box.localCenter.x) || !ParseFloat(t[1], box.localCenter.y) ||
+            if ((t.size() != 6&&t.size()!=14) || !ParseFloat(t[0], box.localCenter.x) || !ParseFloat(t[1], box.localCenter.y) ||
                 !ParseFloat(t[2], box.localCenter.z) || !ParseFloat(t[3], box.halfExtents.x) ||
                 !ParseFloat(t[4], box.halfExtents.y) || !ParseFloat(t[5], box.halfExtents.z)) {
                 return reader.Fail("body.compound-box expects six finite numbers");
             }
+            box.key=uint32_t(b.compoundBoxes.size()+1);
+            if(t.size()==14){long long type=0,key=0;if(!ParseFloat(t[6],box.rotation.w)||!ParseFloat(t[7],box.rotation.x)||!ParseFloat(t[8],box.rotation.y)||!ParseFloat(t[9],box.rotation.z)||!ParseInt(t[10],type)||!ParseFloat(t[11],box.radius)||!ParseInt(t[13],key)||key<=0||key>UINT32_MAX||glm::dot(box.rotation,box.rotation)<1e-12f||(type!=int(ShapeType::Box)&&type!=int(ShapeType::Sphere)&&type!=int(ShapeType::ConvexHull)))return reader.Fail("invalid compound child rotation/type/key");box.rotation=glm::normalize(box.rotation);box.type=ShapeType(type);box.assetId=t[12].text;box.key=uint32_t(key);}
+            else box.key=0; // legacy vector-position identity is preserved
             b.compoundBoxes.push_back(box);
         }
         int cavityCount = 0;
@@ -845,6 +857,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
             }
             b.fluidCavities.push_back(cavity);
         }
+        if(b.compoundBoxes.size()>64)return reader.Fail("compound limit is 64 children");
+        std::set<uint32_t> childKeys;for(size_t i=0;i<b.compoundBoxes.size();++i)if(!childKeys.insert(b.compoundBoxes[i].key?b.compoundBoxes[i].key:uint32_t(i+1)).second)return reader.Fail("duplicate compound child key");
         if (b.shape == SceneShape::Compound && b.compoundBoxes.empty()) {
             return reader.Fail("a compound body needs at least one body.compound-box");
         }
@@ -857,6 +871,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
         if (b.motion == SceneBodyMotion::Dynamic && b.shape == SceneShape::Terrain) {
             return reader.Fail("terrain bodies must be static");
         }
+        if((b.shape==SceneShape::ConvexHull||b.shape==SceneShape::TriangleMesh)&&b.collisionAsset.empty())return reader.Fail("cooked body requires body.collision-asset");
+        if(b.shape==SceneShape::TriangleMesh&&(b.motion==SceneBodyMotion::Dynamic||b.sensor))return reader.Fail("triangle mesh is static surface, not dynamic body or volume sensor");
         o.body = b;
     } else if (p.Has("body.compound-count") || !p.CompoundBoxes().empty() ||
                p.Has("body.fluid-cavity-count") || !p.FluidCavities().empty()) {

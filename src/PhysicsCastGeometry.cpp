@@ -1,4 +1,6 @@
 #include "PhysicsCastGeometry.h"
+#include "CollisionGeometry.h"
+#include "CollisionAsset.h"
 #include "RadialTerrain.h"
 #include <algorithm>
 #include <array>
@@ -45,8 +47,8 @@ PrimitiveCastHit MakeHit(double t,const Distance& d,bool overlap) {
 
 PrimitiveCastHit CastAgainstPrimitive(const Shape& cast,const BodyTransform& pose,
     const glm::vec3& direction,double maximum,const PrimitivePose& target) {
-    const auto targetR=ContactRotation(target.parentOrientation);
-    const glm::dvec3 targetCenter=glm::dvec3(target.parentPosition)+targetR*glm::dvec3(target.parentLocalCenter);
+    const auto targetR=PrimitiveRotation(target);
+    const glm::dvec3 targetCenter=PrimitiveCenter(target);
     const auto queryR=ContactRotation(pose.rotation);
     const glm::dvec3 origin=glm::dvec3(pose.position)-targetCenter,dir=glm::normalize(glm::dvec3(direction));
     auto distance=[&](double t) {
@@ -67,7 +69,7 @@ PrimitiveCastHit CastAgainstPrimitive(const Shape& cast,const BodyTransform& pos
             // Existing robust SAT/contact geometry supplies a separating plane
             // (a lower bound on distance) and real target-local surface witness.
             ContactPose aPose{glm::vec3(center),pose.rotation,{0,0,0}};
-            ContactPose bPose{{0,0,0},target.parentOrientation,target.parentLocalCenter};
+            ContactPose bPose{{0,0,0},glm::normalize(target.parentOrientation*target.childRotation),glm::conjugate(target.childRotation)*target.parentLocalCenter};
             // Use parent-relative centres without world float rounding.
             aPose.position=glm::vec3(glm::dvec3(pose.position)+dir*t-glm::dvec3(target.parentPosition));
             auto manifold=PrimitiveContacts(cast,aPose,target.shape,bPose,std::numeric_limits<float>::max());
@@ -77,6 +79,61 @@ PrimitiveCastHit CastAgainstPrimitive(const Shape& cast,const BodyTransform& pos
         }
         d.point+=targetCenter;return d;
     };
+    if(target.shape.asset) {
+        auto sample=[&](double t,uint32_t feature=UINT32_MAX){const glm::dvec3 center=glm::dvec3(pose.position)+dir*t;
+            if(cast.type==ShapeType::Box){RigidBody body;body.position=glm::vec3(center);body.orientation=pose.rotation;return PolyGeometry(PrimitiveAt(cast,body,0),target,maximum-t+1e-5,feature);}
+            double half=cast.type==ShapeType::Capsule?cast.halfHeight:0;return SegmentGeometry(center-queryR[1]*half,center+queryR[1]*half,cast.radius,target,maximum-t+1e-5,false,feature);
+        };
+        auto result=[&](double t,const GeometryDistance& d,bool overlap){PrimitiveCastHit hit{true,overlap,t,glm::vec3(d.point),glm::vec3(d.normal)};hit.feature=d.feature;return hit;};
+        if(target.shape.asset->convex){auto first=sample(0);if(first.valid&&first.gap<=0)return result(0,first,true);}
+        if(cast.type==ShapeType::Sphere&&cast.radius==0) {
+            // A ray originating exactly on a mesh surface is already touching,
+            // including zero distance or a direction tangent to that surface.
+            if(!target.shape.asset->convex){const auto p=glm::dvec3(pose.position);
+                auto first=SegmentGeometry(p,p,0,target,0);
+                if(first.valid&&first.gap<=0)return result(0,first,true);
+            }
+            // Triangle intersections have exact geometric sidedness; hulls are
+            // closed, while a one-sided open mesh only accepts front-facing rays.
+            auto local=glm::transpose(targetR)*origin,velocity=glm::transpose(targetR)*dir;
+            glm::dvec3 end=local+velocity*maximum;std::vector<uint32_t> candidates;uint64_t visited=0;target.shape.asset->Candidates(glm::min(local,end),glm::max(local,end),candidates,&visited);CountCollisionQuery(visited,candidates.size());
+            PrimitiveCastHit nearest;double best=maximum;
+            for(auto i:candidates){const auto& f=target.shape.asset->faces[i];const auto a=target.shape.asset->vertices[f.vertices[0]],b=target.shape.asset->vertices[f.vertices[1]],c=target.shape.asset->vertices[f.vertices[2]];
+                const auto e=b-a,g=c-a,p=glm::cross(velocity,g);double det=glm::dot(e,p);if((!target.shape.asset->convex&&!target.shape.asset->twoSided&&det<=1e-12)||std::abs(det)<=1e-12)continue;
+                const auto v=local-a;double u=glm::dot(v,p)/det;if(u< -1e-10||u>1+1e-10)continue;auto q=glm::cross(v,e);double w=glm::dot(velocity,q)/det;if(w< -1e-10||u+w>1+1e-10)continue;double t=glm::dot(g,q)/det;if(t<0||t>best)continue;
+                if(nearest.hit&&t==best&&i>nearest.feature)continue;
+                best=t;nearest={true,false,t,glm::vec3(targetCenter+targetR*(local+velocity*t)),glm::vec3(targetR*(det>0?f.normal:-f.normal)),i};
+            }return nearest;
+        }
+        auto advance=[&](uint32_t feature,double bound){
+            double t=0;
+            for(unsigned iteration=0;iteration<256;++iteration){
+                auto d=sample(t,feature);if(!d.valid)return PrimitiveCastHit{};
+                if(d.gap<=tolerance)return result(t,d,t==0&&d.gap<=0);
+                double closing=-glm::dot(dir,d.normal);if(closing<=0)return PrimitiveCastHit{};
+                double next=t+d.gap/closing;if(next>bound+tolerance)return PrimitiveCastHit{};
+                t=std::min(next,bound);
+            }
+            throw std::runtime_error("cooked shape cast exceeded bounded 256-iteration policy");
+        };
+        if(target.shape.asset->convex)return advance(UINT32_MAX,maximum);
+        // A concave mesh is a UNION of bounded physical patches. A separating
+        // plane of its closest patch is not a separating plane of the union.
+        // Traverse the swept volume once and advance each candidate independently.
+        const auto inverse=glm::transpose(targetR);
+        glm::dvec3 lo(INFINITY),hi(-INFINITY);
+        glm::dvec3 half=cast.type==ShapeType::Box?glm::dvec3(cast.halfExtents):glm::dvec3(cast.radius,cast.radius+cast.halfHeight,cast.radius);
+        for(double t:{0.,maximum})for(int x:{-1,1})for(int y:{-1,1})for(int z:{-1,1}){
+            auto p=inverse*(origin+dir*t+queryR*(half*glm::dvec3(x,y,z)));
+            lo=glm::min(lo,p);hi=glm::max(hi,p);
+        }
+        std::vector<uint32_t> candidates;uint64_t visited=0;
+        target.shape.asset->Candidates(lo-glm::dvec3(tolerance),hi+glm::dvec3(tolerance),candidates,&visited);
+        CountCollisionQuery(visited,0);
+        PrimitiveCastHit nearest;double bound=maximum;
+        for(auto feature:candidates){auto hit=advance(feature,bound);if(hit.hit&&(!nearest.hit||hit.distance<nearest.distance||(hit.distance==nearest.distance&&hit.feature<nearest.feature))){nearest=hit;bound=hit.distance;}}
+        return nearest;
+    }
     if(target.shape.type==ShapeType::Terrain) {
         if(cast.type==ShapeType::Box)throw std::invalid_argument("box casts against radial terrain are unsupported; use sphere/capsule casts");
         // Same authoritative radial surface and nine core samples as the player

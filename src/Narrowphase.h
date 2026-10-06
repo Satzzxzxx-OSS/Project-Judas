@@ -26,6 +26,8 @@ struct PrimitivePose {
     glm::vec3 parentPosition{0.0f};
     glm::quat parentOrientation{1.0f,0.0f,0.0f,0.0f};
     glm::vec3 parentLocalCenter{0.0f};
+    glm::quat childRotation{1,0,0,0};
+    uint32_t childKey=0;
 };
 PrimitivePose PrimitiveAt(const Shape& shape, const RigidBody& parent, int index,
                           const ContactPreparedOrientation* prepared = nullptr);

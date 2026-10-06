@@ -1,5 +1,6 @@
 #include "FluidHydrostatics.h"
 #include "GravityField.h"
+#include "Narrowphase.h"
 
 #include <algorithm>
 #include <array>
@@ -60,9 +61,10 @@ public:
        m_center(solid.pose.position),m_radius(solid.volume.solidSphereRadius) {
         if(m_radius>0)return;
         const glm::dquat rotation(solid.pose.rotation);
-        const glm::dvec3 bodyAxes[3]={rotation*glm::dvec3(1,0,0),rotation*glm::dvec3(0,1,0),rotation*glm::dvec3(0,0,1)};
+
         m_boxes.reserve(solid.volume.solidBoxes.size());
         for(const auto& box:solid.volume.solidBoxes) {
+            const auto childRotation=rotation*glm::dquat(box.rotation);const glm::dvec3 bodyAxes[3]={childRotation*glm::dvec3(1,0,0),childRotation*glm::dvec3(0,1,0),childRotation*glm::dvec3(0,0,1)};
             BoxIntervals prepared;prepared.center=glm::dvec3(solid.pose.position)+rotation*glm::dvec3(box.localCenter);
             int axis=0;for(int i=0;i<3;++i){prepared.axes[axis++]=m_axes[i];prepared.axes[axis++]=bodyAxes[i];}
             for(int i=0;i<3;++i)for(int j=0;j<3;++j)prepared.axes[axis++]=glm::cross(m_axes[i],bodyAxes[j]);
@@ -119,6 +121,13 @@ FluidVolumeQuadrature MakeSphereFluidVolume(float radius, unsigned layers, unsig
 }
 FluidVolumeQuadrature MakeCompoundFluidVolume(const std::vector<CompoundBox>& boxes, unsigned n) {
     if (!n) throw std::invalid_argument("fluid volume sample count is zero");
+    bool oriented=false;for(const auto& box:boxes){if(box.type!=ShapeType::Box)throw std::invalid_argument("fluid displacement requires box children");oriented|=box.rotation!=glm::quat(1,0,0,0);}
+    if(oriented){
+        // Existing axis-aligned union remains unchanged. Rotated children require
+        // disjoint interiors; reject overlap instead of inventing an AABB union.
+        for(size_t i=0;i<boxes.size();++i)for(size_t j=0;j<i;++j){RigidBody a,b;a.position=boxes[i].localCenter;a.orientation=boxes[i].rotation;b.position=boxes[j].localCenter;b.orientation=boxes[j].rotation;auto contacts=ComputeContacts(Shape::Box(boxes[i].halfExtents),a,Shape::Box(boxes[j].halfExtents),b,0);for(int k=0;k<contacts.count;++k)if(contacts.points[k].penetration>1e-6)throw std::invalid_argument("rotated fluid displacement children must have disjoint interiors");}
+        FluidVolumeQuadrature out;for(auto& box:boxes){RequireSize(box.halfExtents);FluidVolumeQuadrature child;AppendBox(child,{},box.halfExtents,n);for(auto sample:child.samples){sample.localPosition=box.localCenter+box.rotation*sample.localPosition;sample.localRotation=box.rotation;out.samples.push_back(sample);}out.solidBoxes.push_back(box);out.totalVolume+=child.totalVolume;out.boundRadius=std::max(out.boundRadius,glm::length(box.localCenter)+glm::length(box.halfExtents));}return out;
+    }
     std::vector<Box> partition;
     for (const auto& box:boxes) {
         RequireSize(box.halfExtents);
@@ -313,7 +322,7 @@ FluidHydrostaticResult EvaluateFluidHydrostatics(const FluidHydrostaticField& fi
         const glm::vec3 offset=pose.rotation*sample.localPosition, point=pose.position+offset, g=gravity.Sample(point);
         const glm::vec3 up=glm::dot(g,g)>0 ? -glm::normalize(g) : pose.rotation*glm::vec3(0,1,0);
         const glm::vec3 localUp=glm::conjugate(pose.rotation)*up;
-        const float height=glm::dot(glm::abs(localUp),sample.localHalfExtents)+sample.localRadius;
+        const float height=glm::dot(glm::abs(glm::conjugate(sample.localRotation)*localUp),sample.localHalfExtents)+sample.localRadius;
         glm::vec3 tangent(0);float best=-1;
         for (int axis=0;axis<3;++axis) {
             glm::vec3 localAxis(0);localAxis[axis]=1;

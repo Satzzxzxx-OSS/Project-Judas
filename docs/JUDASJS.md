@@ -98,3 +98,5 @@ independent one-shots, authored groups/fades and approximate spatial effects.
 ## M61 save/load
 
 [Project slots, durable references and restore lifecycle](judasjs/saves.md) | [Subsystem participation and storage](M61_SAVES.md).
+
+M64 adds [collider snapshots / closest surface queries](M64_COLLISION.md) through the existing physics/entity APIs.

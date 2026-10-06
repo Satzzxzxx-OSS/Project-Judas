@@ -31,6 +31,12 @@ struct PhysicsCastHit {
     float distance=0, fraction=0;
     int primitiveIndex=0;
     ShapeType shape=ShapeType::Sphere;
+    uint32_t childKey=0,feature=UINT32_MAX;
+};
+struct PhysicsClosestPoint {
+    bool hit=false,contains=false,containmentKnown=false,normalUnique=true;
+    BodyHandle body;glm::vec3 point{0},normal{0};float distance=0;
+    uint32_t childKey=0,feature=UINT32_MAX;int primitiveIndex=0;ShapeType shape=ShapeType::Sphere;
 };
 struct PhysicsCastStats { unsigned broadphaseCandidates=0, filteredCandidates=0, primitivesTested=0; };
 
@@ -99,6 +105,11 @@ public:
 
     bool Init();
     void Shutdown();
+
+    PhysicsClosestPoint ClosestPoint(const glm::vec3& point,float maximum,const PhysicsQueryFilter& filter={}) const;
+
+    // Generic authored-pivot factory. Concave mesh is static-only.
+    BodyHandle CreateShape(const Shape&,const BodyTransform&,bool dynamic,float mass,float friction,float restitution);
 
     BodyHandle CreateStaticBox(const glm::vec3& position, const glm::vec3& halfExtents,
                                 float friction, float restitution);
@@ -410,6 +421,7 @@ public:
         BodyTransform start, endPose;
         glm::vec3 linearVelocity{0}, angularVelocity{0};
         bool movable = false;
+        glm::vec3 pivotOffset{0}; // COM-relative authored pivot, value owned
     };
     std::vector<BodyMotionSegment> GetBodyMotionSegments(BodyHandle handle) const;
     // Uses the authoritative anchored position integrator, never restarts

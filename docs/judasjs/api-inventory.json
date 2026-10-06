@@ -1,5 +1,5 @@
 {
-  "checkpoint": "29845bbdb911d2129a2d2b995fed22a1448594e7",
+  "checkpoint": "b5676438ed12d9cb3d05c634eaf5f578d7216ada",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -644,6 +644,17 @@
         "classification"
       ],
       "type": "docs/judas.d.ts:Entity.classification",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.collider",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "colliderInfo"
+      ],
+      "type": "docs/judas.d.ts:Entity.collider",
       "reference": "docs/judasjs/entities.md"
     },
     {
@@ -2266,6 +2277,17 @@
       "reference": "docs/judasjs/physics.md"
     },
     {
+      "symbol": "physics.closestPoint",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "closestPoint"
+      ],
+      "type": "docs/judas.d.ts:physics.closestPoint",
+      "reference": "docs/judasjs/physics.md"
+    },
+    {
       "symbol": "physics.joint",
       "kinds": [
         "call"
@@ -2961,7 +2983,9 @@
     "children",
     "classification",
     "clearView",
+    "closestPoint",
     "colliderEnabled",
+    "colliderInfo",
     "deformableAttach",
     "deformableEnabled",
     "deformableExists",

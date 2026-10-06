@@ -9117,3 +9117,26 @@ project-updated obstacles. Liquid-bearing fracture is explicitly unsupported. No
 fluid solver, general mesh-collision system or second destruction solver was added.
 See [M63 contracts, authoring and limitations](M63_FRACTURE.md),
 [Fracture JS API](judasjs/fracture.md), and [candidate evidence](evidence/m63/RESULTS.md).
+
+### M64 — cooked collision geometry and geometric inspection
+
+Immutable `.judascollision` CPU resources add static concave triangle surfaces and
+static/dynamic convex hulls to the existing PhysicsWorld. Local BVHs select mesh
+features; normal contact/manifold/impact/joint solvers own response. Physical edge
+adjacency distinguishes internal joins from actual boundaries. Compound children
+have independent local rotations/positions and stable keys within one body.
+Hull volume/COM/inertia use closed geometry; authored pivots and joint frames remain
+explicitly distinct from simulated COM. Dynamic concavity and mesh volume sensors
+are rejected. Positive source scale can be cooked; extended rigid instances require
+unit scale. No automatic decomposition or new universal CCD guarantee.
+
+Casts, CharacterMotor, navigation extraction, audio obstruction and sampled M62
+contacts consume the same physical geometry. `Entity.collider` provides bounded
+value metadata; `physics.closestPoint` returns nearest surface with separate
+containment and safe entity/feature data. Cooking/assignment/preview use normal
+editor/assets/resources; streaming, cold saves and export retain cooked identities.
+Canonical scene fingerprint schema remains 5 with conditional collision content.
+M54/M55 cavity authority and liquid algorithms remain unchanged; unsupported
+hull/mixed/open-mesh fluid loading is rejected, not replaced with AABB buoyancy.
+See [M64 coverage, workflow and limitations](M64_COLLISION.md) and
+[JudasJS geometry queries](judasjs/physics.md).

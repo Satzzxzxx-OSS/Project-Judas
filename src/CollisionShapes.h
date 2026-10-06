@@ -5,24 +5,30 @@
 #include <memory>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <string>
 
-// The small, closed set of collision primitives Judas's own physics needs
-// for Project Judas's purpose (large spheres, flat connectors, simple
-// dynamic test bodies, a capsule-shaped player query surface) — not a
-// general shape system. A shape carries no position/orientation of its
-// own; those live on the RigidBody (or, for the player, the caller-
-// supplied pose passed to a sweep query) that references it.
+// Immutable asset geometry is shared; instance pose and motion belong to PhysicsWorld.
 class RadialTerrain;
+struct CollisionAsset;
 
-enum class ShapeType { Sphere, Box, Capsule, CompoundBoxes, Terrain };
+enum class ShapeType { Sphere, Box, Capsule, CompoundBoxes, Terrain, ConvexHull, TriangleMesh };
 
 // A box fixed in a rigid body's own frame. Several of these can make one
 // non-convex solid (for example, an open container) while retaining one
 // ordinary mass, velocity, and orientation. The caller places the boxes
 // relative to the body's centre of mass.
 struct CompoundBox {
+    CompoundBox()=default;
+    CompoundBox(glm::vec3 center,glm::vec3 half):localCenter(center),halfExtents(half){}
     glm::vec3 localCenter{0.0f};
     glm::vec3 halfExtents{0.0f};
+    glm::quat rotation{1,0,0,0};
+    ShapeType type=ShapeType::Box;
+    float radius=0;
+    std::shared_ptr<const CollisionAsset> asset;
+    std::string assetId;
+    uint32_t key=0;
 };
 
 struct Shape {
@@ -38,6 +44,10 @@ struct Shape {
     // immutable ownership lets the same surface serve rendering, rigid
     // contacts, player queries, and fluid contacts without copied state.
     std::shared_ptr<const RadialTerrain> terrain;
+    std::shared_ptr<const CollisionAsset> asset;
+    std::string assetId;
+    glm::vec3 pivotOffset{0}; // authored pivot -> COM, only new generic dynamic shapes
+    static Shape Cooked(std::shared_ptr<const CollisionAsset> asset, std::string id);
 
     static Shape Sphere(float r) {
         Shape s;

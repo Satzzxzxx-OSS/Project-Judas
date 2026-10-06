@@ -417,7 +417,7 @@ std::string EditorApplication::WorldStatePathFor(const std::string& scenePath) c
 }
 
 bool EditorApplication::OpenScene(const std::string& path, std::string& outError) {
-    m_panels.liquidPreview.Clear();m_panels.deformablePreview.Clear();
+    m_panels.liquidPreview.Clear();m_panels.deformablePreview.Clear();m_panels.collisionPreview.Clear();
     const std::string resolved = ResolveScenePath(path);
     Scene authored, resolvedPrefabs;
     if(!LoadSceneFromFile(resolved,authored,outError)||!ResolvePrefabs(authored,&m_host->Assets(),resolvedPrefabs,outError))return false;
@@ -770,7 +770,7 @@ void EditorApplication::DrawEditOverlay(Renderer& renderer, const Scene& scene) 
     m_debugLines.Clear();
     BuildAuthoredDebugLines(scene, m_panels.debug, m_debugLines);
     if(m_panels.debug.navigation)m_debugLines.Append(m_panels.navigationPreview);
-    m_debugLines.Append(m_panels.liquidPreview);m_debugLines.Append(m_panels.deformablePreview);
+    m_debugLines.Append(m_panels.liquidPreview);m_debugLines.Append(m_panels.deformablePreview);m_debugLines.Append(m_panels.collisionPreview);
     if (const SceneObject* selected = scene.Find(m_document.Selected())) BuildSelectionLines(*selected, m_debugLines);
     renderer.DrawDebugLines(m_debugLines.Lines(), /*depthTest=*/true);
     renderer.DrawDebugLines(m_gizmoLines.Lines(), /*depthTest=*/false);
@@ -1026,6 +1026,11 @@ int EditorApplication::Run(int argc, char** argv) {
         m_panels.deformableDestination="deformables/editor-fracture-soft.judasdeform";bool soft=BakeEditorDeformable(m_document,200,m_panels,4);
         m_panels.deformableDestination="deformables/editor-fracture-import.judasdeform";m_panels.deformableSource="deformables/L-partition.source";bool imported=BakeEditorDeformable(m_document,450,m_panels,6);
         std::fprintf(stderr,"[editor autotest] fracture rigid/soft/partition authoring: %s / %s / %s: %s\n",rigid?"PASS":"FAIL",soft?"PASS":"FAIL",imported?"PASS":"FAIL",m_panels.status.c_str());
+    }
+    if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_COLLISION")){
+        auto* object=m_document.GetScene().Find(100);auto source=object&&object->render?object->render->meshAsset:AssetId{};
+        CollisionCookSettings settings;bool ok=BakeEditorCollision(m_document,100,m_panels,source,settings,"collision/editor-check.judascollision");
+        std::fprintf(stderr,"[editor autotest] shared collision cook/assign: %s: %s\n",ok?"PASS":"FAIL",m_panels.status.c_str());
     }
     if (autotest) SaveSceneToString(m_document.GetScene(), autotestBaseline);
     const auto screenshot = [&](const std::string& path) {

@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include "ProductionFluidCoupling.h"
 #include <algorithm>
 #include <chrono>
@@ -60,7 +61,7 @@ struct ProductionFluidCoupling::Impl {
             FluidVolumeQuadrature volume;
             if(definition.shape==SceneShape::Box) volume=MakeBoxFluidVolume(definition.halfExtents);
             else if(definition.shape==SceneShape::Sphere) volume=MakeSphereFluidVolume(definition.radius);
-            else if(definition.shape==SceneShape::Compound) volume=MakeCompoundFluidVolume(definition.compoundBoxes);
+            else if(definition.shape==SceneShape::Compound){bool unsupported=false;for(auto& c:definition.compoundBoxes)unsupported|=c.type!=ShapeType::Box;if(unsupported&&world.Fluid().Particles().empty())continue;volume=MakeCompoundFluidVolume(definition.compoundBoxes);}
             else continue;
             bodies.push_back({handle,std::move(volume),definition.fluidCavities,{}});
         }
@@ -190,10 +191,11 @@ void ProductionFluidCoupling::AdvanceResolvedLiquid(RuntimeWorld& world,float dt
                 if(hasMotion) {collider.resolvedMotion=history;collider.motionDuration=motionDuration;}
                 boxes.push_back(std::move(collider));
             } else if(shape.type==ShapeType::CompoundBoxes)for(const auto& b:shape.boxes) {
-                FluidBoxCollider collider{handle,{begin.position+begin.rotation*b.localCenter,begin.rotation},
-                    {end.position+end.rotation*b.localCenter,end.rotation},b.halfExtents};
+                if(b.type!=ShapeType::Box)throw std::invalid_argument("particle-fluid coupling supports primitive box children only");
+                FluidBoxCollider collider{handle,{begin.position+begin.rotation*b.localCenter,begin.rotation*b.rotation},
+                    {end.position+end.rotation*b.localCenter,end.rotation*b.rotation},b.halfExtents};
                 if(hasMotion) {collider.resolvedMotion=history;collider.motionDuration=motionDuration;}
-                collider.localCenter=b.localCenter;
+                collider.localCenter=b.localCenter;collider.localRotation=b.rotation;
                 boxes.push_back(std::move(collider));
             } else if(shape.type==ShapeType::Terrain) {
                 FluidTerrainCollider collider{handle,begin,end,shape.terrain.get()};

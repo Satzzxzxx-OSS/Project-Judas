@@ -1,0 +1,2 @@
+configure: exit=0, 4.573s
+build: exit=TIMEOUT, 1200.007s

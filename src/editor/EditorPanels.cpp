@@ -1,3 +1,4 @@
+#include "CollisionAsset.h"
 #include "WorldStreaming.h"
 #include "SceneSession.h"
 #include "ProfilerView.h"
@@ -455,6 +456,34 @@ void DrawUILayoutEditor(const AssetRecord& record,EditorPanelState& state){
     if(!source.Validate(error))ImGui::TextWrapped("Cannot save: %s",error.c_str());
 }
 }
+bool BakeEditorCollision(EditorDocument& doc,SceneObjectId target,EditorPanelState& state,
+                         const AssetId& sourceId,const CollisionCookSettings& settings,
+                         const std::string& output){
+    auto fail=[&](const std::string& error){state.status=error;return false;};
+    if(!state.assets||state.mode!=EditorMode::Edit)return fail("Collision cooking requires an edit project");
+    auto* object=doc.GetScene().Find(target);
+    if(!object||!object->body)return fail("Select an object with a Body to assign collision");
+    if(!settings.convex&&(object->body->motion==SceneBodyMotion::Dynamic||object->body->sensor))return fail("Triangle surfaces require a static non-sensor body");
+    if(object->transform.scale!=glm::vec3(1))return fail("Bake scale into source; rigid instance scale must be one");
+    const auto* source=state.assets->Find(sourceId);
+    if(!source||source->missing||source->type!=AssetType::Mesh)return fail("Select a registered source model");
+    auto relative=std::filesystem::path(output).lexically_normal();
+    if(relative.empty()||relative.is_absolute()||relative.extension()!=".judascollision")return fail("Output must be an assets-relative .judascollision path");
+    for(auto& part:relative)if(part=="..")return fail("Output cannot escape project assets");
+    auto destination=std::filesystem::path(state.assets->AssetsDir())/relative;
+    std::error_code ec;std::filesystem::create_directories(destination.parent_path(),ec);
+    if(ec)return fail(ec.message());
+    CollisionAsset asset;std::string error;
+    if(!CookCollisionFile(source->path,sourceId,settings,destination.string(),asset,error))return fail(error);
+    AssetRecord record;auto* existing=state.assets->FindByRelativePath(std::filesystem::relative(destination,state.project->RootDir()).generic_string());
+    if(existing)record=*existing;else if(!state.assets->Track(destination.string(),record,error))return fail(error);
+    if(state.resources)state.resources->Invalidate(record.id);
+    doc.BeginEdit();object->body->shape=settings.convex?SceneShape::ConvexHull:SceneShape::TriangleMesh;
+    object->body->collisionAsset=record.id;doc.CommitEdit();
+    state.status="Cooked and assigned physical geometry (undo restores authored Body)";
+    return true;
+}
+
 void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorRequests& requests) {
     (void)doc;
     if (!state.showAssetBrowser) return;
@@ -471,6 +500,18 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
     if(state.mode==EditorMode::Edit&&ImGui::Button("Create material")){auto directory=std::filesystem::path(db.AssetsDir())/"materials";std::filesystem::create_directories(directory);auto path=directory/"material.judasmat";unsigned n=2;while(std::filesystem::exists(path))path=directory/("material"+std::to_string(n++)+".judasmat");std::string error;if(SaveMaterial(path.string(),MaterialDefinition{},error))requests.trackAssetPath=path.string();else state.status=error;}
     if(state.mode==EditorMode::Edit&&ImGui::Button("Create reverb settings")){auto directory=std::filesystem::path(db.AssetsDir())/"audio";std::filesystem::create_directories(directory);auto path=directory/"environment.judasreverb";unsigned n=2;while(std::filesystem::exists(path))path=directory/("environment"+std::to_string(n++)+".judasreverb");std::ofstream f(path);f<<SerializeAudioEnvironment({});if(f)requests.trackAssetPath=path.string();else state.status="Cannot write reverb settings";}
     if(state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Bake HDR environment")){static char source[1024]{};static int width=128,samples=128;ImGui::InputText("Radiance .hdr source",source,sizeof(source));ImGui::InputInt("Bake width (power of two)",&width);ImGui::InputInt("Bake samples",&samples);ImGui::TextWrapped("Offline bake; may briefly block editor. Derived data is exported, never regenerated during play.");if(ImGui::Button("Bake and register environment")){auto directory=std::filesystem::path(db.AssetsDir())/"environments";std::filesystem::create_directories(directory);auto path=directory/(std::filesystem::path(source).stem().string()+".judasenv");unsigned n=2;while(std::filesystem::exists(path))path=directory/(std::filesystem::path(source).stem().string()+std::to_string(n++)+".judasenv");EnvironmentData data;std::string error;if(BakeEnvironment(source,unsigned(width),unsigned(samples),data,error)&&SaveEnvironment(path.string(),data,error))requests.trackAssetPath=path.string();else state.status=error;}}
+
+    if(state.mode==EditorMode::Edit&&ImGui::CollapsingHeader("Cook physical collider")){
+        static std::string sourceId;static char output[256]="collision/physical.judascollision";static int primitive=0,kind=0;static bool twoSided=false;static glm::vec3 scale(1),offset(0),angles(0);
+        const auto selected=db.Find(sourceId);if(ImGui::BeginCombo("Registered source",selected?selected->relativePath.c_str():"Select OBJ/glTF/GLB")){for(auto& [id,a]:db.Records())if(a.type==AssetType::Mesh&&ImGui::Selectable(a.relativePath.c_str(),id==sourceId))sourceId=id;ImGui::EndCombo();}
+        ImGui::InputInt("Object/group or node/primitive ordinal",&primitive);const char* kinds[]={"Static triangle surface","Convex hull (fills recesses)"};ImGui::Combo("Cook kind",&kind,kinds,2);ImGui::Checkbox("Two-sided triangle surface",&twoSided);ImGui::DragFloat3("Baked positive scale",&scale.x,.01f);ImGui::DragFloat3("Baked translation",&offset.x,.01f);ImGui::DragFloat3("Baked rotation degrees",&angles.x,.5f);ImGui::InputText("Output relative to assets",output,sizeof(output));
+        ImGui::TextWrapped("Explicit single source selection; glTF node transform is included. Failed cooks preserve the previous file. Use a low-detail physical model where appropriate. Convex mass sums child volumes, including overlaps.");
+        if(ImGui::Button("Cook / replace and register")){std::string error;CollisionAsset asset;CollisionCookSettings settings;settings.convex=kind==1;settings.twoSided=twoSided;settings.primitive=unsigned(std::max(primitive,0));settings.transform=glm::translate(glm::dmat4(1),glm::dvec3(offset))*glm::mat4_cast(glm::dquat(glm::radians(glm::dvec3(angles))))*glm::scale(glm::dmat4(1),glm::dvec3(scale));auto relative=std::filesystem::path(output).lexically_normal();bool valid=!relative.empty()&&!relative.is_absolute();for(auto& part:relative)if(part=="..")valid=false;auto destination=std::filesystem::path(db.AssetsDir())/relative;
+            if(!selected||selected->missing)error="select an available registered model";else if(!valid||relative.extension()!=".judascollision")error="destination must be an assets-relative .judascollision path";else{std::error_code ec;std::filesystem::create_directories(destination.parent_path(),ec);if(ec)error=ec.message();else if(CookCollisionFile(selected->path,sourceId,settings,destination.string(),asset,error)){requests.trackAssetPath=destination.string();for(auto& [id,a]:db.Records())if(a.path==destination.string()&&state.resources)state.resources->Invalidate(id);}}
+            state.status=error.empty()?"Cooked collision; assign it in Body / Cooked geometry":error;
+        }
+        if(ImGui::Button("Cook and assign selected Body")){CollisionCookSettings settings;settings.convex=kind==1;settings.twoSided=twoSided;settings.primitive=unsigned(std::max(primitive,0));settings.transform=glm::translate(glm::dmat4(1),glm::dvec3(offset))*glm::mat4_cast(glm::dquat(glm::radians(glm::dvec3(angles))))*glm::scale(glm::dmat4(1),glm::dvec3(scale));BakeEditorCollision(doc,doc.Selected(),state,sourceId,settings,output);}
+    }
 
     if(state.mode==EditorMode::Edit&&ImGui::Button("Create UI document")){
         UIDocument d;UIElement root;root.id="canvas";root.kind=UIKind::Canvas;d.elements.push_back(root);UIElement panel;panel.id="panel";panel.parent="canvas";panel.background={.1f,.12f,.18f,.95f};d.elements.push_back(panel);
@@ -563,6 +604,7 @@ void DrawAssetBrowserPanel(EditorDocument& doc, EditorPanelState& state, EditorR
         if (const AssetRecord* record = db.Find(state.browserSelection)) {
             ImGui::Separator();
             ImGui::Text("Selected: %s", record->relativePath.c_str());
+            if(record->type==AssetType::Collision&&state.mode==EditorMode::Edit){CollisionAsset asset;std::string error;if(LoadCollisionAsset(record->path,asset,error)){ImGui::Text("Physical %s: %zu vertices / %zu faces",asset.convex?"hull":"triangle surface",asset.vertices.size(),asset.faces.size());auto source=db.Find(asset.sourceAsset);bool stale=!source||source->missing||CollisionAssetStale(asset,source->path,error);ImGui::TextWrapped("%s",stale?error.c_str():"Source/settings fingerprint current");if(ImGui::Button("Rebake saved source/settings")&&source){CollisionCookSettings settings;settings.convex=asset.convex;settings.twoSided=asset.twoSided;settings.primitive=asset.selectedPrimitive;settings.transform=asset.sourceTransform;if(CookCollisionFile(source->path,source->id,settings,record->path,asset,error)){if(state.resources)state.resources->Invalidate(record->id);state.status="Rebaked physical collider";}else state.status=error;}for(auto& warning:asset.warnings)ImGui::TextWrapped("%s",warning.c_str());}else ImGui::TextWrapped("%s",error.c_str());}
             if(record->type==AssetType::Material&&state.mode==EditorMode::Edit){
                 static std::string selected,error;static MaterialDefinition draft;if(selected!=record->id){selected=record->id;LoadMaterial(record->path,draft,error);}
                 if(ImGui::CollapsingHeader("Edit SHARED material source",ImGuiTreeNodeFlags_DefaultOpen)){int model=int(draft.model),alpha=int(draft.alpha);const char* models[]={"Legacy","PBR metallic / roughness","Unlit"};const char* modes[]={"Opaque","Alpha cutout","Alpha blend"};if(ImGui::Combo("Model",&model,models,3))draft.model=MaterialModel(model);if(ImGui::Combo("Alpha mode",&alpha,modes,3))draft.alpha=MaterialAlpha(alpha);ImGui::ColorEdit4("Base colour factor (linear)",&draft.baseColor.x);ImGui::SliderFloat("Metallic",&draft.metallic,0,1);ImGui::SliderFloat("Roughness",&draft.roughness,0,1);ImGui::ColorEdit3("Emission (linear)",&draft.emissive.x);ImGui::DragFloat("Emission intensity",&draft.emissiveIntensity,.05f,0,100000);ImGui::SliderFloat("Normal strength",&draft.normalStrength,0,8);ImGui::SliderFloat("Occlusion strength",&draft.occlusionStrength,0,1);ImGui::SliderFloat("Alpha cutoff",&draft.alphaCutoff,0,1);ImGui::Checkbox("Double sided",&draft.doubleSided);ImGui::Checkbox("Flip texture V",&draft.flipV);ImGui::DragFloat2("UV tiling",&draft.uvScale.x,.01f);ImGui::DragFloat2("UV offset",&draft.uvOffset.x,.01f);

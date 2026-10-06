@@ -205,17 +205,17 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){
   for(auto& o:world.ScriptObjects())if(o.body){
    auto body=world.RuntimeBody(o.id);if(!body.IsValid()||!world.Physics().IsBodyEnabled(body)||world.Physics().IsBodySensor(body))continue;
    auto pose=world.Physics().GetTransform(body);
-   auto box=[&](glm::vec3 center,glm::vec3 half){
+   auto box=[&](glm::vec3 center,glm::vec3 half,glm::quat child=glm::quat(1,0,0,0)){
     V lower(1e30),upper(-1e30);
-    for(unsigned corner=0;corner<8;++corner){V p=V(center)+V(corner&1?half.x:-half.x,corner&2?half.y:-half.y,corner&4?half.z:-half.z);p=local(s.pose,V(pose.position)+glm::dquat(pose.rotation)*p);lower=glm::min(lower,p);upper=glm::max(upper,p);}
+    for(unsigned corner=0;corner<8;++corner){V p=V(center)+glm::dquat(child)*V(corner&1?half.x:-half.x,corner&2?half.y:-half.y,corner&4?half.z:-half.z);p=local(s.pose,V(pose.position)+glm::dquat(pose.rotation)*p);lower=glm::min(lower,p);upper=glm::max(upper,p);}
     if(glm::any(glm::lessThanEqual(upper,s.minimum))||glm::any(glm::greaterThanEqual(lower,s.maximum)))return;
     std::vector<glm::dvec4> planes;
-    for(unsigned axis=0;axis<3;++axis)for(double sign:{-1.,1.}){V normal(0);normal[axis]=sign;normal=glm::inverse(glm::dquat(s.pose.rotation))*glm::dquat(pose.rotation)*normal;
+    for(unsigned axis=0;axis<3;++axis)for(double sign:{-1.,1.}){V normal(0);normal[axis]=sign;normal=glm::inverse(glm::dquat(s.pose.rotation))*glm::dquat(pose.rotation)*glm::dquat(child)*normal;
      V middle=local(s.pose,V(pose.position)+glm::dquat(pose.rotation)*V(center));planes.push_back({normal,glm::dot(normal,middle)+half[axis]});
     }(world.Physics().IsDynamicBody(body)?dynamicSolids:solids).push_back(std::move(planes));
    };
    if(o.body->shape==SceneShape::Box)box({},o.body->halfExtents);
-   else if(o.body->shape==SceneShape::Compound)for(auto& b:o.body->compoundBoxes)box(b.localCenter,b.halfExtents);
+   else if(o.body->shape==SceneShape::Compound)for(auto& b:o.body->compoundBoxes)if(b.type==ShapeType::Box)box(b.localCenter,b.halfExtents,b.rotation);
   }
   const unsigned staticCount=unsigned(solids.size());solids.insert(solids.end(),dynamicSolids.begin(),dynamicSolids.end());
   // Exclude the actual owned wet cavity, not a hollow bucket's bounding hull.
@@ -272,7 +272,7 @@ void LiquidSystem::Update(RuntimeWorld& world,double dt){
 
  surfaceScope.End(); ProfileScope loadScope(loadLabel);
  m_stepTimes.surface=elapsed();
- for(auto& o:world.ScriptObjects())if(o.liquidInteraction&&o.liquidInteraction->enabled){auto h=world.RuntimeBody(o.id);if(!world.Physics().IsDynamicBody(h)||!world.Physics().IsBodyEnabled(h)||world.Physics().IsBodySensor(h)||world.Physics().GetMass(h)<=0)continue;auto pose=world.Physics().GetTransform(h);LiquidGeometry body;if(o.body->shape==SceneShape::Box)body=LiquidBox(-V(o.body->halfExtents),V(o.body->halfExtents));else if(o.body->shape==SceneShape::Compound)for(auto b:o.body->compoundBoxes){auto g=LiquidBox(V(b.localCenter-b.halfExtents),V(b.localCenter+b.halfExtents));body.cells.insert(body.cells.end(),g.cells.begin(),g.cells.end());}else continue;for(auto& t:body.cells)for(V& p:t)p=V(pose.position)+glm::dquat(pose.rotation)*p;auto submerged=Submerged(body);if(submerged.volume>0){world.Physics().ApplyForce(h,submerged.buoyancy);world.Physics().ApplyTorque(h,glm::cross(submerged.center-pose.position,submerged.buoyancy));auto v=world.Physics().GetLinearVelocity(h)-submerged.velocity;double coefficient=std::min(o.liquidInteraction->drag*submerged.displacedMass,world.Physics().GetMass(h)/dt*.5);world.Physics().ApplyForce(h,-v*float(coefficient));}}
+ for(auto& o:world.ScriptObjects())if(o.liquidInteraction&&o.liquidInteraction->enabled){auto h=world.RuntimeBody(o.id);if(!world.Physics().IsDynamicBody(h)||!world.Physics().IsBodyEnabled(h)||world.Physics().IsBodySensor(h)||world.Physics().GetMass(h)<=0)continue;auto pose=world.Physics().GetTransform(h);LiquidGeometry body;if(o.body->shape==SceneShape::Box)body=LiquidBox(-V(o.body->halfExtents),V(o.body->halfExtents));else if(o.body->shape==SceneShape::Compound)for(auto b:o.body->compoundBoxes){auto g=LiquidBox(-V(b.halfExtents),V(b.halfExtents));for(auto& cell:g.cells)for(auto& p:cell)p=V(b.localCenter)+glm::dquat(b.rotation)*p;body.cells.insert(body.cells.end(),g.cells.begin(),g.cells.end());}else continue;for(auto& t:body.cells)for(V& p:t)p=V(pose.position)+glm::dquat(pose.rotation)*p;auto submerged=Submerged(body);if(submerged.volume>0){world.Physics().ApplyForce(h,submerged.buoyancy);world.Physics().ApplyTorque(h,glm::cross(submerged.center-pose.position,submerged.buoyancy));auto v=world.Physics().GetLinearVelocity(h)-submerged.velocity;double coefficient=std::min(o.liquidInteraction->drag*submerged.displacedMass,world.Physics().GetMass(h)/dt*.5);world.Physics().ApplyForce(h,-v*float(coefficient));}}
 
  m_stepTimes.loading=elapsed();m_stepTimes.total=std::chrono::duration<double>(phase-begin).count();
 }

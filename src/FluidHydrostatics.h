@@ -19,6 +19,7 @@ struct FluidVolumeSample {
     glm::vec3 localHalfExtents{0};
     float localRadius = 0; // isotropic sample footprint (sphere quadrature)
     float volume = 0;
+    glm::quat localRotation{1,0,0,0};
 };
 struct FluidVolumeQuadrature {
     std::vector<FluidVolumeSample> samples;

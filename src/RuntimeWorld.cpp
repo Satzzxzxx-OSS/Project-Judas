@@ -1,6 +1,7 @@
 #include "SceneSession.h"
 #include "PerformanceProfiler.h"
 #include "RuntimeWorld.h"
+#include "CollisionAuthoring.h"
 #include <fstream>
 #include <sstream>
 #include "Prefab.h"
@@ -104,6 +105,7 @@ bool RuntimeWorld::InstantiateEntityBody(EntityRecord& record, const EntityPhysi
     const SceneObject& o = record.definition;
     const SceneBodyComponent& b = *o.body;
     BodyHandle handle;
+    try {
     switch (b.shape) {
         case SceneShape::Box:
             handle = m_physics.CreateDynamicBox(state.position, b.halfExtents, b.mass, b.friction, b.restitution);
@@ -111,7 +113,13 @@ bool RuntimeWorld::InstantiateEntityBody(EntityRecord& record, const EntityPhysi
         case SceneShape::Sphere:
             handle = m_physics.CreateDynamicSphere(state.position, b.radius, b.mass, b.friction, b.restitution);
             break;
+        case SceneShape::ConvexHull: {
+            Shape shape;std::string error;if(!ResolveBodyCollision(b,m_assets,shape,error)){if(outError)*outError=error;return false;}
+            handle=m_physics.CreateShape(shape,{state.position,state.rotation},true,b.mass,b.friction,b.restitution);break;
+        }
+        case SceneShape::TriangleMesh:break;
         case SceneShape::Compound:
+            if(ExtendedCompound(b)){Shape shape;std::string error;if(!ResolveBodyCollision(b,m_assets,shape,error)){if(outError)*outError=error;return false;}handle=m_physics.CreateShape(shape,{state.position,state.rotation},true,b.mass,b.friction,b.restitution);break;}
             handle = m_physics.CreateDynamicCompoundBoxes(state.position, b.compoundBoxes, b.mass, b.friction,
                                                           b.restitution);
             break;
@@ -119,6 +127,7 @@ bool RuntimeWorld::InstantiateEntityBody(EntityRecord& record, const EntityPhysi
         case SceneShape::Mesh:
             break;
     }
+    }catch(const std::exception& e){if(outError)*outError=e.what();return false;}
     if (!handle.IsValid()) {
         if (outError) *outError = "the body could not be created";
         return false;
@@ -234,6 +243,10 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     }
     std::string fingerprint;
     if (!ComputeSceneFingerprint(scene, fingerprint, outError)) return false;
+    if(resources&&resources->Assets()){
+        std::set<std::string> collisionIds;for(const auto& o:scene.Objects())if(o.body){if(!o.body->collisionAsset.empty())collisionIds.insert(o.body->collisionAsset);for(auto& c:o.body->compoundBoxes)if(!c.assetId.empty())collisionIds.insert(c.assetId);}
+        if(!collisionIds.empty()){std::string content="Judas.CollisionSources.1:"+fingerprint;for(auto& id:collisionIds){auto* a=resources->Assets()->Find(id);std::string hash;if(!a||a->missing||a->type!=AssetType::Collision||!SceneFingerprintSha256File(a->path,hash,outError)){outError="missing collision asset "+id+": "+outError;return false;}content+=id+hash;}fingerprint=SceneFingerprintSha256(content);}
+    }
     bool appearanceDependencies=scene.Settings().linearRendering||!scene.Settings().environmentAsset.empty();
     for(const auto& o:scene.Objects())appearanceDependencies|=o.render&&!o.render->materials.empty();
     if(resources&&resources->Assets()){
@@ -349,11 +362,14 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
         return false;
     };
 
+    const bool particleWater=!m_fluidVolumes.empty()||std::any_of(scene.Objects().begin(),scene.Objects().end(),[](const auto& o){return bool(o.fluidVolume);});
     for (const SceneObject& o : scene.Objects()) {
+        if(!ValidateCollisionFluid(o,particleWater,outError))return fail(o,outError);
         if(o.ui&&o.ui->enabled){std::string uiError;if(!UI().Load(o.ui->asset,o.ui->name,o.id,uiError))return fail(o,uiError);}
         m_hasScripts|=!o.scripts.empty();
         if(o.deformable){if(o.body||o.animation||o.ragdoll||o.characterMotor||o.transform.scale!=glm::vec3(1))return fail(o,"deformable owns node motion; owner cannot have another motion producer or nonunit scale");std::string error;if(!ValidDeformableSettings(*o.deformable,error)||!ValidateVisualAssets(o,error))return fail(o,error);if(m_assets){m_assets->AddRef(o.deformable->asset);m_referencedAssets.push_back(o.deformable->asset);m_assets->RequestDeformable(o.deformable->asset);}}
         m_hasLiquid|=!LiquidProperties(o).empty();
+        if(o.body&&m_assets){std::vector<std::string> ids;if(!o.body->collisionAsset.empty())ids.push_back(o.body->collisionAsset);for(auto& c:o.body->compoundBoxes)if(!c.assetId.empty())ids.push_back(c.assetId);for(auto& id:ids){m_assets->AddRef(id);m_referencedAssets.push_back(id);m_assets->RequestCollision(id,JobPriority::High);}}
         if((o.liquidBasin||o.liquidContainer)&&m_assets){std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){m_assets->AddRef(id);m_referencedAssets.push_back(id);m_assets->RequestLiquid(id);}}
         m_hasNavigation|=o.navigationSurface.has_value()||o.navigationAgent.has_value()||o.navigationObstacle.has_value()||o.navigationLink.has_value()||o.navigationModifier.has_value();
         m_scriptDefinitions[o.id]=o;
@@ -394,7 +410,11 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
                         break;
                     }
                     case SceneShape::Compound:
-                        return fail(o, "static compound bodies are not supported");
+                    case SceneShape::ConvexHull:
+                    case SceneShape::TriangleMesh:{
+                        Shape shape;std::string error;if(!ResolveBodyCollision(b,m_assets,shape,error))return fail(o,error);
+                        try{bodyHandle=m_physics.CreateShape(shape,{position,rotation},false,0,b.friction,b.restitution);}catch(const std::exception& e){return fail(o,e.what());}break;
+                    }
                     case SceneShape::Mesh:
                         return fail(o, "a body cannot use the mesh shape");
                 }
@@ -1028,7 +1048,6 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
     std::istringstream in(block);std::string line;while(std::getline(in,line))lines.push_back(line);
     size_t index=0;SceneObject parsed;if(!ParseSceneObjectBlock(lines,index,parsed,error))return false;
     if (!definition.body) return true;
-    if(definition.body->motion==SceneBodyMotion::Static&&definition.body->shape==SceneShape::Compound){error="static compound creation is unsupported";return false;}
     const auto positive = [](const glm::vec3& v) { return v.x > 0 && v.y > 0 && v.z > 0; };
     const auto& b = *definition.body;
     const float norm = glm::dot(definition.transform.rotation, definition.transform.rotation);
@@ -1041,7 +1060,7 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
         return false;
     }
     for (const auto& box : b.compoundBoxes) {
-        if (!positive(box.halfExtents)) { error = "compound half-extents must be positive"; return false; }
+        if (box.type==ShapeType::Box&&!positive(box.halfExtents)) { error = "compound half-extents must be positive"; return false; }
     }
     if (definition.render && (definition.render->shape == SceneShape::Terrain ||
         (definition.render->shape == SceneShape::Compound && b.shape != SceneShape::Compound))) {
@@ -1053,6 +1072,7 @@ bool RuntimeWorld::ValidateEntityDefinition(const SceneObject& definition, std::
 
 bool RuntimeWorld::ValidateEntityCreation(const SceneObject& definition, std::string& error) const {
     if (!m_built) { error = "no world"; return false; }
+    if(!ValidateCollisionFluid(definition,!m_fluidVolumes.empty(),error))return false;
     if(definition.ui&&definition.ui->enabled){
         const auto* db=m_assets?m_assets->Assets():nullptr;const auto* asset=db?db->Find(definition.ui->asset):nullptr;UIDocument doc;
         if(!asset||asset->missing||asset->type!=AssetType::UI){error="missing UI document asset";return false;}
@@ -1129,7 +1149,7 @@ EntityId RuntimeWorld::SpawnPrefab(const AssetId& asset,const SceneTransform& pl
     // ordinary data; runtime state and saved creations never depend on a live source.
     for(auto& o:flat.Objects()){
         o.prefabAsset.clear();o.prefabRoot=o.prefabSource=0;o.prefabIds.clear();o.prefabOverrides.clear();
-        if(!ValidateEntityDefinition(o,error)||!ValidateVisualAssets(o,error))return 0;
+        if(!ValidateCollisionFluid(o,!m_fluidVolumes.empty(),error)||!ValidateEntityDefinition(o,error)||!ValidateVisualAssets(o,error))return 0;
     }
     for(const auto& o:instance.Objects())if(o.joint){m_jointParticipants.insert(o.joint->bodyA);if(o.joint->bodyB)m_jointParticipants.insert(o.joint->bodyB);}
     std::vector<EntityId> created;

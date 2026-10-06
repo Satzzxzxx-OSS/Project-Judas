@@ -11,6 +11,7 @@
 
 #include "AssetDatabase.h"
 #include "Deformable.h"
+#include "CollisionAsset.h"
 #include "AudioSystem.h"
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
@@ -118,6 +119,11 @@ public:
     std::shared_ptr<const TextFont> TryGetFont(const AssetId&);
     ResourceState RequestCatalog(const AssetId&,JobPriority priority=JobPriority::Normal);
     std::shared_ptr<const Catalog> TryGetCatalog(const AssetId&);
+    ResourceState RequestCollision(const AssetId&,JobPriority priority=JobPriority::Normal);
+    std::shared_ptr<const CollisionAsset> GetCollision(const AssetId&,std::string& error);
+    // Required physical geometry boundary: join its CPU job before installing a body.
+    // Streaming has already prepared these resources, so this does not wait there.
+    std::shared_ptr<const CollisionAsset> RequireCollision(const AssetId&,std::string& error);
     ResourceState RequestDeformable(const AssetId&,JobPriority priority=JobPriority::Normal);
     std::shared_ptr<const DeformableAsset> GetDeformable(const AssetId&,std::string& error);
     ResourceState RequestLiquid(const AssetId&,JobPriority priority=JobPriority::Normal);
@@ -139,6 +145,8 @@ public:
     TextureHandle GetTexture(const AssetId& id, std::string& outError, JobPriority priority = JobPriority::Normal);
     // Pure lookups: a valid handle only if Ready; never start a load.
     MeshHandle TryGetMesh(const AssetId& id);
+    MeshHandle TryGetCollisionMesh(const AssetId& id); // optional Renderer-owned physical preview
+
     std::shared_ptr<const SkeletalAsset> TryGetSkeletal(const AssetId& id) const;
     TextureHandle TryGetTexture(const AssetId& id);
 
@@ -225,6 +233,7 @@ private:
         std::shared_ptr<NavigationData> navigation;
         std::shared_ptr<LiquidResource> liquid;
         std::shared_ptr<DeformableAsset> deformable;
+        std::shared_ptr<CollisionAsset> collision;
         std::shared_ptr<MaterialDefinition> material;EnvironmentData environment;
         std::map<std::string,std::string> texturePaths;
         std::thread::id decodeThread;
@@ -244,6 +253,7 @@ private:
         std::shared_ptr<const NavigationData> navigation;
         std::shared_ptr<const LiquidResource> liquid;
         std::shared_ptr<const DeformableAsset> deformable;
+        std::shared_ptr<const CollisionAsset> collision;
         std::vector<MaterialDefinition> meshMaterials;std::vector<MeshPrimitive> meshPrimitives;
         std::shared_ptr<const MaterialDefinition> materialDefinition;MaterialHandle material;EnvironmentHandle environment;
         std::string error;

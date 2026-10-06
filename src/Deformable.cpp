@@ -1,4 +1,6 @@
 #include "Deformable.h"
+#include "CollisionGeometry.h"
+#include "Narrowphase.h"
 #include "SaveArchive.h"
 #include "PerformanceProfiler.h"
 #include <algorithm>
@@ -290,10 +292,12 @@ void DeformableInstance::RigidContacts(double h,double fraction,PhysicsWorld& ph
         for(int k=0;k<3;++k){p+=positions[nodes[k]]*weights[k];
             old+=start[nodes[k]]*weights[k];
             }
-        auto contact=[&](V center,glm::dquat q,V half,double radius){V normal,point;
+        auto contact=[&](V center,glm::dquat q,V half,double radius,const PrimitivePose* geometry=nullptr){V normal,point;
             double depth=0;
-            V local=glm::inverse(q)*(p-center);
-            if(radius>0){double len=glm::length(local);
+            V local(0);
+            if(!geometry)local=glm::inverse(q)*(p-center);
+            if(geometry){auto result=SegmentGeometry(p,p,thickness,*geometry,thickness);if(!result.valid||result.gap>=0)return;normal=result.normal;point=result.point;depth=-result.gap;}
+            else if(radius>0){double len=glm::length(local);
                 if(len>=radius+thickness)return;
                 normal=len>1e-10?q*(local/len):q*V(1,0,0);
                 point=center+normal*radius;
@@ -336,7 +340,9 @@ void DeformableInstance::RigidContacts(double h,double fraction,PhysicsWorld& ph
         };
         if(shape.type==ShapeType::Sphere)contact(V(pose.position),glm::dquat(pose.rotation),V(0),shape.radius);
         else if(shape.type==ShapeType::Box)contact(V(pose.position),glm::dquat(pose.rotation),V(shape.halfExtents),0);
-        else if(shape.type==ShapeType::CompoundBoxes)for(auto& box:shape.boxes)contact(V(pose.position+pose.rotation*box.localCenter),glm::dquat(pose.rotation),V(box.halfExtents),0);
+        else if(shape.type==ShapeType::CompoundBoxes||shape.asset){RigidBody parent;parent.position=pose.position;parent.orientation=pose.rotation;
+            for(int i=0;i<PrimitiveCount(shape);++i){auto primitive=PrimitiveAt(shape,parent,i);if(primitive.shape.asset)contact({}, {}, {},0,&primitive);else contact(PrimitiveCenter(primitive),glm::dquat(primitive.body.orientation),V(primitive.shape.halfExtents),primitive.shape.type==ShapeType::Sphere?primitive.shape.radius:0);}
+        }
     };
     for(auto body:rigidCandidates){unsigned layer;
         CategoryMask mask;
@@ -345,6 +351,7 @@ void DeformableInstance::RigidContacts(double h,double fraction,PhysicsWorld& ph
         BodyTransform pose;
         if(!physics.GetBodyShape(body,shape,pose))continue;
         auto prev=physics.GetPreviousTransform(body);
+        prev.position+=prev.rotation*shape.pivotOffset;
         pose.position=glm::mix(prev.position,pose.position,float(fraction));
         pose.rotation=glm::slerp(prev.rotation,pose.rotation,float(fraction));
         for(unsigned n=0;n<positions.size();++n)sample(glm::uvec3(n),V(1,0,0),body,shape,pose);

@@ -89,3 +89,25 @@ normal asynchronous resource publishes. Absent/loading returns null; failed or
 stale source bakes throw a diagnostic TypeError. Mutable nodes remain native engine
 state. Force/impulse/attachment/material/reset mutations belong in fixedUpdate.
 Deformable-local picking queries the current surface, separate from rigid M44 casts.
+
+## Entity.collider
+
+M64 read-only detached snapshot, or null without a living physics body. Stale
+Entity reads throw `ReferenceError`. Fields: `type`, `key`, `position`,
+`rotation`, `halfExtents` (box, otherwise null), `radius` (sphere, otherwise
+null), `asset` (cooked asset ID or null), `vertexCount`, `triangleCount`,
+`twoSided`, `centerOfMassOffset`, `enabled`, `sensor`, and `children`. Child
+metadata uses the same geometry fields plus stable authored key and local pose;
+maximum 64 children, no full mesh/native pointers. Root local pose is identity;
+COM offset is in authored pivot-local metres, distinct from a child position.
+
+```js
+const collider = rail.collider;
+for (const child of collider?.children ?? []) {
+  if (child.type === 'box') {
+    const length = 2 * child.halfExtents.x; // No duplicate game-side rail dimensions.
+  }
+}
+```
+
+See [queries](physics.md#physicsclosestpoint) and [collision assets](../M64_COLLISION.md).

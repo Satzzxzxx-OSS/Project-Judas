@@ -54,7 +54,7 @@ struct SceneTransform {
     glm::vec3 scale{1.0f};
 };
 
-enum class SceneShape { Box, Sphere, Compound, Mesh, Terrain };
+enum class SceneShape { Box, Sphere, Compound, Mesh, Terrain, ConvexHull, TriangleMesh };
 
 // What Renderer draws for the object. Compound and Terrain reuse the body
 // component's geometry (there is nothing sensible to draw otherwise);
@@ -99,6 +99,7 @@ struct SceneBodyComponent {
     SceneShape shape = SceneShape::Box;  // Box, Sphere, Compound or Terrain
     glm::vec3 halfExtents{0.5f};
     float radius = 0.5f;
+    std::string collisionAsset;
     std::vector<CompoundBox> compoundBoxes;
     std::vector<SceneFluidCavity> fluidCavities;
     // Terrain: identifier of a surface the engine can construct (see

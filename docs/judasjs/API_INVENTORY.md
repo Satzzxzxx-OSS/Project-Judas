@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M63 review of the registered virtual module based on starting checkpoint `29845bbdb911d2129a2d2b995fed22a1448594e7`.
+M64 review of the registered virtual module based on starting checkpoint `b5676438ed12d9cb3d05c634eaf5f578d7216ada`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -68,6 +68,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.character` | `characterExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.children` | `children` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.classification` | `classification` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.collider` | `colliderInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.deformable` | `deformableExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.destroy` | `destroy` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -220,6 +221,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `physics` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.boxCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.capsuleCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.closestPoint` | `closestPoint` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.joint` | `joint` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.raycast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.sphereCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |

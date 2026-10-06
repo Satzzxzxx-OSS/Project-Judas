@@ -3,6 +3,7 @@
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
 #include "AssetDatabase.h"
+#include "CollisionAsset.h"
 #include "Material.h"
 #include "Environment.h"
 #include "Prefab.h"
@@ -90,6 +91,7 @@ bool CanCreateMetadata(const std::string& metaPath, std::string& outError) {
 
 const char* AssetTypeName(AssetType type) {
     switch (type) {
+        case AssetType::Collision:return "collision";
         case AssetType::Deformable:return "deformable";
         case AssetType::AudioEffect:return "audio-effect";
         case AssetType::Material:return "material";
@@ -111,6 +113,7 @@ const char* AssetTypeName(AssetType type) {
 
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
+    if(e==".judascollision"){outType=AssetType::Collision;return true;}
     if(e==".judasdeform"){outType=AssetType::Deformable;return true;}
     if(e==".judasreverb"){outType=AssetType::AudioEffect;return true;}
     if(e==".judasmat"){outType=AssetType::Material;return true;}
@@ -166,6 +169,7 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
             TextureData data;
             return LoadTextureFromFile(path, data, outError);
         }
+        case AssetType::Collision: {CollisionAsset a;return LoadCollisionAsset(path,a,outError);}
         case AssetType::Deformable: {std::ifstream s(path,std::ios::binary);std::vector<unsigned char> bytes{std::istreambuf_iterator<char>(s),{}};DeformableAsset a;return DecodeDeformableAsset(bytes,a,outError);}
         case AssetType::Liquid: {std::ifstream s(path,std::ios::binary);std::vector<unsigned char> bytes{std::istreambuf_iterator<char>(s),{}};LiquidResource r;return DecodeLiquidResource(bytes,r,outError);}
         case AssetType::Navigation: {NavigationData d;return LoadNavigation(path,d,outError);}
@@ -229,6 +233,7 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
             else if (tokens[1].first == "font") outType = AssetType::Font;
             else if (tokens[1].first == "audio") outType = AssetType::Audio;
             else if (tokens[1].first == "script") outType = AssetType::Script;
+            else if(tokens[1].first=="collision")outType=AssetType::Collision;
             else if(tokens[1].first=="deformable")outType=AssetType::Deformable;
             else if(tokens[1].first=="liquid")outType=AssetType::Liquid;
             else if(tokens[1].first=="navigation")outType=AssetType::Navigation;

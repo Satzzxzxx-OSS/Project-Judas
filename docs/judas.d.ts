@@ -1,5 +1,5 @@
-/** Current JudasJS through M61; reviewed against ScriptSystem.cpp based on M60
- * a9c6cd780b8c93db6355b791c6fdb34afec7cf53. Tooling only, no TS runtime.
+/** Current JudasJS through M64; reviewed against ScriptSystem.cpp based on M63
+ * b5676438ed12d9cb3d05c634eaf5f578d7216ada. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
@@ -44,7 +44,8 @@ declare module "judas" {
   export interface CastHit {
     entity: Entity | null; entityId: EntityId; bodyId: number;
     point: Vec3; normal: Vec3; distance: number; fraction: number;
-    primitiveIndex: number; initialOverlap: boolean; shape: "sphere" | "box" | "terrain";
+    primitiveIndex: number; initialOverlap: boolean; shape: "sphere" | "box" | "terrain" | "hull" | "triangle-mesh";
+    childKey:number;feature:number|null;
   }
   export interface LegacySweepHit { hit: boolean; distance: number; normal: Vec3; entityId: EntityId }
   export interface FluidSample { immersion: number; density: number; velocity: Vec3; acceleration: Vec3 }
@@ -60,7 +61,21 @@ declare module "judas" {
     set(parameters:MaterialParameters):boolean;
     clearOverrides():boolean;
   }
+  export interface ColliderShapeInfo {
+    type:"box"|"sphere"|"compound"|"hull"|"triangle-mesh"|"terrain";
+    key:number;position:Vec3;rotation:Quat;halfExtents:Vec3|null;radius:number|null;
+    asset:AssetId|null;vertexCount:number;triangleCount:number;twoSided:boolean;
+  }
+  export interface ColliderInfo extends ColliderShapeInfo {
+    centerOfMassOffset:Vec3;enabled:boolean;sensor:boolean;children:ColliderShapeInfo[];
+  }
+  export interface ClosestPointHit {
+    entity:Entity|null;entityId:EntityId;bodyId:number;point:Vec3;
+    normal:Vec3|null;distance:number;contains:boolean|null;
+    primitiveIndex:number;childKey:number;feature:number|null;
+  }
   export class Entity {
+    readonly collider:ColliderInfo|null;
     material(slot?:number):Material;
     readonly liquid:LiquidVolume|null;
     constructor(id: string | number | bigint);
@@ -284,6 +299,7 @@ declare module "judas" {
     setSpring(rest: number, stiffness: number, damping: number, spring?: boolean): boolean;
   }
   export const physics: {
+    closestPoint(point:Vec3,maximum:number,filter?:QueryFilter):ClosestPointHit|null;
     joint(owner: Entity): Joint | null;
     raycast(origin: Vec3, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
     sphereCast(origin: Vec3, radius: number, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;

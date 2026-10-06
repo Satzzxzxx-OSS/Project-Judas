@@ -22,6 +22,8 @@ add_library(judas_app_icon STATIC src/AppIcon.cpp src/TextureLoader.cpp)
 target_include_directories(judas_app_icon PUBLIC src PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(judas_app_icon PUBLIC SDL2::SDL2)
 target_compile_options(judas_app_icon PRIVATE -Wall -Wextra)
+include_directories(SYSTEM third_party/quickhull)
+set_source_files_properties(third_party/quickhull/QuickHull.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter")
 find_package(glm REQUIRED)
 include(cmake/JudasTextDependencies.cmake)
 
@@ -50,6 +52,9 @@ endif()
 # dependency.
 
 set(JUDAS_PHYSICS_SOURCES
+    src/CollisionAsset.cpp
+    src/CollisionGeometry.cpp
+    third_party/quickhull/QuickHull.cpp
     src/JointSolver.cpp
     src/PhysicsCastGeometry.cpp
     src/ImpactSolver.cpp
@@ -146,6 +151,8 @@ add_library(judas_engine STATIC
     src/PilotAttachment.cpp
     src/PilotControl.cpp
     src/ReferenceFrame.cpp
+    src/CollisionAuthoring.cpp
+    src/CollisionSource.cpp
     src/ModelLoader.cpp
     src/FontLoader.cpp
     src/UIWidgets.cpp
@@ -1251,3 +1258,12 @@ target_link_libraries(judas_fracture_performance_tests PRIVATE judas_engine)
 foreach(target judas_fracture_tests judas_fracture_application_tests judas_fracture_performance_tests)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
+
+add_executable(judas_collision_geometry_tests tests/CollisionGeometryTests.cpp)
+target_link_libraries(judas_collision_geometry_tests PRIVATE judas_engine)
+
+add_executable(judas_collision_cook tools/CollisionCook.cpp)
+target_link_libraries(judas_collision_cook PRIVATE judas_engine)
+
+add_executable(judas_collision_application_tests tests/CollisionApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_collision_application_tests PRIVATE judas_engine)

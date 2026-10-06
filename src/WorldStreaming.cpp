@@ -72,13 +72,14 @@ bool PrepareWorldRegion(const WorldRegion& region,const Project& project,const A
         }
         for(auto& slot:o.scripts){const auto* a=assets.Find(slot.asset);if(!a||a->missing||a->type!=AssetType::Script){error="missing region script "+slot.asset;return false;}}
         if(o.navigationSurface&&o.navigationSurface->enabled){const auto* a=assets.Find(o.navigationSurface->asset);auto data=std::make_shared<NavigationData>();NavigationGeometry geometry;
-            if(!a||a->type!=AssetType::Navigation||!LoadNavigation(a->path,*data,error)||!CollectNavigationGeometry(flat,o,project.Settings().navigation,geometry,error)||geometry.fingerprint!=data->fingerprint){error="stale/missing region navigation bake: "+error;return false;}
+            if(!a||a->type!=AssetType::Navigation||!LoadNavigation(a->path,*data,error)||!CollectNavigationGeometry(flat,o,project.Settings().navigation,geometry,error,&assets)||geometry.fingerprint!=data->fingerprint){error="stale/missing region navigation bake: "+error;return false;}
             if(data->layers.size()>128){error="region surface exceeds 128 indivisible native tiles; split it";return false;}
             for(auto& l:data->layers)result.bytes+=l.size()*4;
             result.navigation[o.id]=data;
         }
         if(o.particleEmitter)result.bytes+=size_t(o.particleEmitter->maxParticles)*(sizeof(VisualParticle)+sizeof(ParticleBillboard));
         if(o.ragdoll){if(!o.render||o.render->meshAsset.empty()||!assets.Find(o.render->meshAsset)||assets.Find(o.render->meshAsset)->type!=AssetType::Mesh){error="ragdoll region requires an imported skeletal mesh";return false;}result.requiredGeometry.push_back(o.render->meshAsset);}
+        if(o.body){if(!o.body->collisionAsset.empty())result.requiredGeometry.push_back(o.body->collisionAsset);for(auto& c:o.body->compoundBoxes)if(!c.assetId.empty())result.requiredGeometry.push_back(c.assetId);}
         if(o.deformable)result.requiredGeometry.push_back(o.deformable->asset);
         if(o.liquidBasin)for(auto id:{o.liquidBasin->geometry,o.liquidBasin->asset})result.requiredGeometry.push_back(id);
         if(o.liquidContainer)result.requiredGeometry.push_back(o.liquidContainer->geometry);
@@ -86,7 +87,7 @@ bool PrepareWorldRegion(const WorldRegion& region,const Project& project,const A
             if(!a||!read(a->path,bytes,error,128*1024*1024)||!DecodeLiquidResource({bytes.begin(),bytes.end()},resource,error)||!resource.basin||resource.basin->fingerprint!=LiquidSourceFingerprint(flat,o,assets,error)){error="stale/missing region liquid bake: "+error;return false;}
         }
     }
-    for(auto& id:result.requiredGeometry){auto* asset=assets.Find(id);if(!asset||asset->missing||(asset->type!=AssetType::Mesh&&asset->type!=AssetType::Deformable&&asset->type!=AssetType::Liquid)){error="missing/incompatible required region geometry "+id;return false;}}
+    for(auto& id:result.requiredGeometry){auto* asset=assets.Find(id);if(!asset||asset->missing||(asset->type!=AssetType::Mesh&&asset->type!=AssetType::Deformable&&asset->type!=AssetType::Collision&&asset->type!=AssetType::Liquid)){error="missing/incompatible required region geometry "+id;return false;}}
     std::sort(result.requiredGeometry.begin(),result.requiredGeometry.end());result.requiredGeometry.erase(std::unique(result.requiredGeometry.begin(),result.requiredGeometry.end()),result.requiredGeometry.end());
     out=std::move(result);return true;
 }
@@ -237,7 +238,7 @@ void WorldStreaming::Advance(bool paused){
         if(s.state=="prepared"&&needed.count(id)){
             if(m->baselineJob.IsValid()){s.error="waiting for authored baseline";continue;}if(!m->baselineError.empty()){s.state="failed";s.error=m->baselineError;m->clearPrepared(r);s.bytes=0;continue;}
             auto& required=r.product->data.requiredGeometry;
-            while(budget()&&r.resourceNext<required.size()){auto id=required[r.resourceNext++];unit([&]{m->resources.AddRef(id);r.handoffRefs.push_back(id);if(m->resources.Assets()->Find(id)->type==AssetType::Mesh)m->resources.RequestMesh(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Deformable)m->resources.RequestDeformable(id);else m->resources.RequestLiquid(id);},r);}
+            while(budget()&&r.resourceNext<required.size()){auto id=required[r.resourceNext++];unit([&]{m->resources.AddRef(id);r.handoffRefs.push_back(id);if(m->resources.Assets()->Find(id)->type==AssetType::Mesh)m->resources.RequestMesh(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Collision)m->resources.RequestCollision(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Deformable)m->resources.RequestDeformable(id);else m->resources.RequestLiquid(id);},r);}
             bool loading=r.resourceNext<required.size();for(auto& asset:required){auto state=m->resources.StateOf(asset);if(state==ResourceState::Failed){s.state="failed";s.error="required geometry resource: "+m->resources.ErrorOf(asset);break;}if(state!=ResourceState::Ready)loading=true;else if(m->resources.Assets()->Find(asset)->type==AssetType::Mesh&&!m->resources.TryGetSkeletal(asset)){s.state="failed";s.error="required ragdoll mesh has no skeleton";break;}}
             if(s.state=="failed"){m->clearPrepared(r);s.bytes=0;continue;}if(loading){s.error="waiting for required geometry";continue;}
         }

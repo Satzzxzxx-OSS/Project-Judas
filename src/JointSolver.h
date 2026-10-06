@@ -3,7 +3,7 @@
 #include "RigidBody.h"
 #include <array>
 #include <vector>
-struct JointInput {RigidBody* a;RigidBody* b;JointState* state;std::array<float,10>* warm;};
+struct JointInput {RigidBody* a;RigidBody* b;JointState* state;std::array<float,10>* warm;glm::vec3 pivotOffsetA{0},pivotOffsetB{0};};
 // Rows use the same sequential accumulated-impulse method as contacts. No pose
 // teleportation: velocity bias stabilizes drift; soft rows are implicit springs.
 class JointSolver {

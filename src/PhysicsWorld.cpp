@@ -1,5 +1,7 @@
 #include "PerformanceProfiler.h"
 #include "PhysicsWorld.h"
+#include "CollisionAsset.h"
+#include "CollisionGeometry.h"
 #include "SaveArchive.h"
 #include "PhysicsCastGeometry.h"
 
@@ -91,8 +93,9 @@ std::vector<BodyBox> BoxesAt(const Shape& shape, const glm::vec3& position,
     } else if (shape.type == ShapeType::CompoundBoxes) {
         boxes.reserve(shape.boxes.size());
         for (const CompoundBox& child : shape.boxes) {
-            boxes.push_back({position + orientation * child.localCenter,
-                             orientation, child.halfExtents});
+            if(child.type!=ShapeType::Box)continue;
+            boxes.push_back({position + orientation * (child.localCenter-shape.pivotOffset),
+                             glm::normalize(orientation*child.rotation), child.halfExtents});
         }
     }
     return boxes;
@@ -113,9 +116,9 @@ glm::mat3 CompoundInverseInertia(float mass, const std::vector<CompoundBox>& box
         const float childMass = mass *
             (8.0f * box.halfExtents.x * box.halfExtents.y * box.halfExtents.z / totalVolume);
         const glm::vec3 h = box.halfExtents;
-        inertia[0][0] += childMass * (h.y * h.y + h.z * h.z) / 3.0f;
-        inertia[1][1] += childMass * (h.x * h.x + h.z * h.z) / 3.0f;
-        inertia[2][2] += childMass * (h.x * h.x + h.y * h.y) / 3.0f;
+        glm::mat3 tensor(0);tensor[0][0]=childMass*(h.y*h.y+h.z*h.z)/3;
+        tensor[1][1]=childMass*(h.x*h.x+h.z*h.z)/3;tensor[2][2]=childMass*(h.x*h.x+h.y*h.y)/3;
+        const glm::mat3 rotation(ContactRotation(box.rotation));inertia+=rotation*tensor*glm::transpose(rotation);
         const glm::vec3& r = box.localCenter;
         inertia += childMass * (glm::dot(r, r) * glm::mat3(1.0f) - glm::outerProduct(r, r));
     }
@@ -244,7 +247,7 @@ struct PhysicsWorld::Impl {
             auto* a=Get(joint.state.settings.bodyA);auto* b=Get(joint.state.settings.bodyB);
             if(included&&!(*included)[joint.state.settings.bodyA.id&kSlotMask]&&
                (!b||!(*included)[joint.state.settings.bodyB.id&kSlotMask]))continue;
-            result.push_back({&a->rigidBody,b?&b->rigidBody:&worldAnchor,&joint.state,&joint.warm});
+            result.push_back({&a->rigidBody,b?&b->rigidBody:&worldAnchor,&joint.state,&joint.warm,a->shape.pivotOffset,b?b->shape.pivotOffset:glm::vec3(0)});
         }
         return result;
     }
@@ -297,11 +300,11 @@ struct PhysicsWorld::Impl {
     // Evaluate ALL support vertices, including those not currently extremal.
     double PlaneDrift(unsigned a,unsigned b,int pa,int pb,double time,const glm::dvec3& n) const {
         struct Vertex {glm::dvec3 r,velocity;double curvature;};
-        struct Support {std::array<Vertex,8> vertices;int count=0;double radius=0;};
+        struct Support {std::array<Vertex,128> vertices;int count=0;double radius=0;};
         auto support=[&](unsigned slot,int part) {
             Support result;const auto& body=bodies[slot];const auto pose=PoseAt(slot,time);
             const auto child=PrimitiveAt(body.shape,pose,part);
-            if(child.shape.type!=ShapeType::Box && child.shape.type!=ShapeType::Sphere) return result;
+            if(child.shape.type!=ShapeType::Box && child.shape.type!=ShapeType::Sphere&&child.shape.type!=ShapeType::ConvexHull) return result;
             const auto rotation=ContactRotation(pose.orientation);
             const glm::dvec3 omega(body.rigidBody.IsStatic()?glm::vec3(0):body.rigidBody.angularVelocity);
             const double w2=glm::dot(omega,omega);
@@ -314,7 +317,8 @@ struct PhysicsWorld::Impl {
                                                   w2*glm::length(perpendicular)};
             };
             if(child.shape.type==ShapeType::Sphere) {vertex(glm::dvec3(child.parentLocalCenter));result.radius=child.shape.radius;}
-            else for(int k=0;k<8;++k) vertex(glm::dvec3(child.parentLocalCenter)+glm::dvec3(child.shape.halfExtents)*
+            else if(child.shape.type==ShapeType::ConvexHull){const auto r=ContactRotation(child.childRotation);for(auto p:child.shape.asset->vertices)vertex(glm::dvec3(child.parentLocalCenter)+r*p);}
+            else for(int k=0;k<8;++k) vertex(glm::dvec3(child.parentLocalCenter)+ContactRotation(child.childRotation)*glm::dvec3(child.shape.halfExtents)*
                 glm::dvec3(k&1?1:-1,k&2?1:-1,k&4?1:-1));
             return result;
         };
@@ -412,7 +416,9 @@ struct PhysicsWorld::Impl {
         if(!(remaining>0)) return finish+1;
         auto primitiveFeature=[&](unsigned slot,int part) {
             const Shape& shape=bodies[slot].shape;
-            if(shape.type==ShapeType::Sphere) return double(shape.radius);
+            auto primitive=PrimitiveAt(shape,bodies[slot].rigidBody,part);
+            if(primitive.shape.type==ShapeType::Sphere) return double(primitive.shape.radius);
+            if(primitive.shape.type==ShapeType::ConvexHull){auto extent=primitive.shape.asset->maximum-primitive.shape.asset->minimum;return std::min({extent.x,extent.y,extent.z})*.5;}
             const glm::vec3 half=shape.type==ShapeType::CompoundBoxes
                 ? shape.boxes[std::size_t(part)].halfExtents : shape.halfExtents;
             if(shape.type==ShapeType::Box || shape.type==ShapeType::CompoundBoxes)
@@ -902,9 +908,11 @@ struct PhysicsWorld::Impl {
                                                             primitive.body.position,
                                                             primitive.body.orientation,
                                                             primitive.shape.halfExtents);
-                } else {
-                    continue;
-                }
+                } else if(primitive.shape.asset) {
+                    const auto d=SegmentGeometry(glm::dvec3(segA),glm::dvec3(segB),capsuleRadius,primitive);
+                    if(!d.valid)continue;
+                    capsuleDistance={float(d.gap),glm::vec3(d.normal),glm::vec3(d.point)};
+                } else {continue;}
                 if (capsuleDistance.distance < result.distance) {
                     result.distance = capsuleDistance.distance;
                     result.normal = capsuleDistance.normal;
@@ -998,6 +1006,23 @@ PhysicsWorld::~PhysicsWorld() { Shutdown(); }
 void PhysicsWorld::Shutdown() {
     delete m_impl;
     m_impl = nullptr;
+}
+
+BodyHandle PhysicsWorld::CreateShape(const Shape& input,const BodyTransform& pose,bool dynamic,float mass,float friction,float restitution) {
+    Shape shape=input;
+    auto positive=[](glm::vec3 h){return std::isfinite(h.x)&&std::isfinite(h.y)&&std::isfinite(h.z)&&h.x>0&&h.y>0&&h.z>0;};
+    auto valid=[&](const Shape& s){if(s.type==ShapeType::Box&&!positive(s.halfExtents))throw std::invalid_argument("box dimensions must be finite positive");if(s.type==ShapeType::Sphere&&(!std::isfinite(s.radius)||s.radius<=0))throw std::invalid_argument("sphere radius must be finite positive");if((s.type==ShapeType::ConvexHull||s.type==ShapeType::TriangleMesh)&&(!s.asset||s.asset->convex!=(s.type==ShapeType::ConvexHull)))throw std::invalid_argument("cooked shape kind/asset mismatch");};valid(shape);
+    if(!std::isfinite(pose.position.x)||!std::isfinite(pose.position.y)||!std::isfinite(pose.position.z)||!std::isfinite(friction)||friction<0||!std::isfinite(restitution)||restitution<0||restitution>1)throw std::invalid_argument("invalid body pose/material");
+    if(shape.type==ShapeType::TriangleMesh&&dynamic)throw std::invalid_argument("concave triangle collision is static-only; use convex/compound");
+    if(shape.type==ShapeType::TriangleMesh&&!shape.asset)throw std::invalid_argument("missing cooked mesh");
+    if(shape.type==ShapeType::CompoundBoxes){if(shape.boxes.empty()||shape.boxes.size()>64)throw std::invalid_argument("compound limit: 1..64 children");std::set<uint32_t> keys;for(auto& c:shape.boxes){if(!c.key)c.key=uint32_t(&c-shape.boxes.data()+1);if(!keys.insert(c.key).second)throw std::invalid_argument("duplicate compound child key");if(c.type!=ShapeType::Box&&c.type!=ShapeType::Sphere&&c.type!=ShapeType::ConvexHull)throw std::invalid_argument("unsupported compound child shape");ContactRotation(c.rotation);if(!std::isfinite(c.localCenter.x)||!std::isfinite(c.localCenter.y)||!std::isfinite(c.localCenter.z))throw std::invalid_argument("nonfinite child position");valid(c.type==ShapeType::Box?Shape::Box(c.halfExtents):c.type==ShapeType::Sphere?Shape::Sphere(c.radius):Shape::Cooked(c.asset,c.assetId));}}
+    ContactRotation(pose.rotation);
+    CollisionMassProperties properties;
+    if(dynamic){if(!(mass>0)||!std::isfinite(mass))throw std::invalid_argument("dynamic mass must be positive");properties=ShapeMassProperties(shape);shape.pivotOffset=glm::vec3(properties.center);}
+    const auto center=pose.position+pose.rotation*shape.pivotOffset;
+    auto handle=m_impl->AddBody(shape,center,pose.rotation,dynamic,mass,friction,restitution);
+    if(dynamic)m_impl->Get(handle)->rigidBody.inverseInertiaLocal=glm::mat3(glm::inverse(properties.inertia*(double(mass)/properties.volume)));
+    return handle;
 }
 
 BodyHandle PhysicsWorld::CreateStaticBox(const glm::vec3& position, const glm::vec3& halfExtents,
@@ -1539,6 +1564,15 @@ float PhysicsWorld::GetBodySupportDistance(BodyHandle handle, const glm::vec3& w
             const glm::vec3 localDirection =
                 glm::conjugate(glm::normalize(primitive.body.orientation)) * direction;
             extent = glm::dot(glm::abs(localDirection), primitive.shape.halfExtents);
+        } else if (primitive.shape.asset) {
+            // Directional support uses the physical vertices about the body's COM.
+            // Child offsets and rotations have already been composed in PrimitiveAt.
+            const auto r = PrimitiveRotation(primitive);
+            const auto c = PrimitiveCenter(primitive);
+            for (const auto& vertex : primitive.shape.asset->vertices)
+                maximum = std::max(maximum, static_cast<float>(glm::dot(
+                    c + r * vertex - glm::dvec3(body->rigidBody.position), glm::dvec3(direction))));
+            continue;
         } else if (primitive.shape.type == ShapeType::Terrain && primitive.shape.terrain) {
             // Exact directional support of an arbitrary radial height
             // function would require global optimization. Its immutable
@@ -1857,7 +1891,7 @@ BodyTransform PhysicsWorld::GetTransform(BodyHandle handle) const {
     BodyTransform result;
     const Impl::Body* body = m_impl->Get(handle);
     if (!body) return result;
-    result.position = body->rigidBody.position;
+    result.position = body->rigidBody.position-body->rigidBody.orientation*body->shape.pivotOffset;
     result.rotation = body->rigidBody.orientation;
     return result;
 }
@@ -1867,10 +1901,10 @@ BodyTransform PhysicsWorld::GetPreviousTransform(BodyHandle handle) const {
     const Impl::Body* body = m_impl->Get(handle);
     if (!body) return result;
     if (body->isDynamic) {
-        result.position = body->previousPosition;
+        result.position = body->previousPosition-body->previousOrientation*body->shape.pivotOffset;
         result.rotation = body->previousOrientation;
     } else {
-        result.position = body->rigidBody.position;
+        result.position = body->rigidBody.position-body->rigidBody.orientation*body->shape.pivotOffset;
         result.rotation = body->rigidBody.orientation;
     }
     return result;
@@ -1884,10 +1918,10 @@ std::vector<PhysicsWorld::BodyMotionSegment> PhysicsWorld::GetBodyMotionSegments
     for (const auto& source : body->motion.Segments()) {
         if (source.owner != handle.id) return {};
         result.push_back({source.begin, source.end,
-            {source.position, source.orientation}, {source.endPosition, source.endOrientation},
-            source.linearVelocity, source.angularVelocity, source.inverseMass > 0});
+            {source.position-source.orientation*body->shape.pivotOffset, source.orientation}, {source.endPosition-source.endOrientation*body->shape.pivotOffset, source.endOrientation},
+            source.linearVelocity, source.angularVelocity, source.inverseMass > 0,body->shape.pivotOffset});
     }
-    if (!result.empty()) result.back().endPose = {body->rigidBody.position, body->rigidBody.orientation};
+    if (!result.empty()) result.back().endPose = {body->rigidBody.position-body->rigidBody.orientation*body->shape.pivotOffset, body->rigidBody.orientation};
     return result;
 }
 
@@ -1895,13 +1929,13 @@ BodyTransform PhysicsWorld::EvaluateBodyMotionSegment(const BodyMotionSegment& s
     if (!std::isfinite(time) || time < segment.begin || time > segment.end)
         throw std::out_of_range("body motion segment time");
     RigidBody body;
-    body.position = segment.start.position;
+    body.position = segment.start.position+segment.start.rotation*segment.pivotOffset;
     body.orientation = segment.start.rotation;
     body.linearVelocity = segment.linearVelocity;
     body.angularVelocity = segment.angularVelocity;
     body.inverseMass = segment.movable ? 1.0f : 0.0f;
     IntegrateRigidBodyPosition(body, static_cast<float>(time - segment.begin));
-    return {body.position, body.orientation};
+    return {body.position-body.orientation*segment.pivotOffset, body.orientation};
 }
 
 std::vector<BodyBox> PhysicsWorld::GetBodyBoxes(BodyHandle handle) const {
@@ -1923,9 +1957,9 @@ void PhysicsWorld::ResetBody(BodyHandle handle, const glm::vec3& position,
     Impl::Body* body = m_impl->Get(handle);
     if (!body) return;
     for(auto& j:m_impl->joints)if(j.state.settings.bodyA.id==handle.id||j.state.settings.bodyB.id==handle.id)j.warm.fill(0);
-    body->rigidBody.position = position;
+    body->rigidBody.position = position+rotation*body->shape.pivotOffset;
     body->rigidBody.orientation = rotation;
-    body->previousPosition = position;
+    body->previousPosition = body->rigidBody.position;
     body->motion.Clear();
     body->previousOrientation = rotation;
     body->rigidBody.linearVelocity = glm::vec3(0.0f);
@@ -2074,7 +2108,7 @@ bool PhysicsWorld::SetBodyTags(BodyHandle handle,CategoryMask tags){auto* b=m_im
 void PhysicsWorld::SetPlayerCollisionFilter(unsigned layer,CategoryMask mask){if(layer<64){m_impl->playerCollisionLayer=layer;m_impl->playerCollisionMask=mask;}}
 
 const std::vector<PhysicsWorld::TouchEvent>& PhysicsWorld::LastStepTouchEvents() const {return m_impl->touchEvents;}
-bool PhysicsWorld::SetBodySensor(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->sensor=value;return true;}
+bool PhysicsWorld::SetBodySensor(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b|| (value&&b->shape.type==ShapeType::TriangleMesh))return false;b->sensor=value;return true;}
 bool PhysicsWorld::IsBodySensor(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->sensor;}
 bool PhysicsWorld::SetBodyEnabled(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->enabled=value;for(auto& j:m_impl->joints)if(j.state.settings.bodyA.id==h.id||j.state.settings.bodyB.id==h.id)j.warm.fill(0);return true;}
 bool PhysicsWorld::IsBodyEnabled(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->enabled;}
@@ -2111,11 +2145,23 @@ PhysicsCastHit PhysicsWorld::Cast(const Shape& shape,const BodyTransform& pose,c
             if(hit.hit&&(!result.hit||hit.distance<nearest||(hit.distance==nearest&&handle.id<result.body.id))){
                 nearest=hit.distance;result.hit=true;result.initialOverlap=hit.initialOverlap;result.body=handle;
                 result.point=hit.point;result.normal=hit.normal;result.distance=static_cast<float>(hit.distance);
-                result.fraction=maximum>0?result.distance/maximum:0;result.primitiveIndex=part;result.shape=primitive.shape.type;
+                result.fraction=maximum>0?result.distance/maximum:0;result.primitiveIndex=part;result.shape=primitive.shape.type;result.childKey=primitive.childKey;result.feature=hit.feature;
             }
         }
     }
     return result;
+}
+PhysicsClosestPoint PhysicsWorld::ClosestPoint(const glm::vec3& point,float maximum,const PhysicsQueryFilter& filter) const {
+    for(int k=0;k<3;++k)if(!std::isfinite(point[k]))throw std::invalid_argument("closestPoint requires finite point");
+    if(!std::isfinite(maximum)||maximum<0)throw std::invalid_argument("closestPoint requires finite nonnegative maximum radius");
+    PhysicsClosestPoint out;if(!m_impl)return out;double nearest=maximum;
+    for(auto slot:m_impl->QuerySlots({point-glm::vec3(maximum),point+glm::vec3(maximum)})){
+        if(!m_impl->MatchesQuery(slot,filter))continue;
+        const auto& body=m_impl->bodies[slot];
+        for(int part=0;part<PrimitiveCount(body.shape);++part){auto primitive=PrimitiveAt(body.shape,body.rigidBody,part);auto result=PointGeometry(glm::dvec3(point),primitive,nearest);if(!result.valid)continue;
+            auto handle=m_impl->MakeHandle(slot);if(!out.hit||result.gap<nearest||(result.gap==nearest&&std::tie(handle.id,part)<std::tie(out.body.id,out.primitiveIndex))){nearest=result.gap;out.hit=true;out.body=handle;out.point=glm::vec3(result.point);out.normal=glm::vec3(result.normal);out.distance=nearest;out.contains=result.contains;out.normalUnique=result.normalUnique;out.containmentKnown=primitive.shape.type!=ShapeType::TriangleMesh;out.primitiveIndex=part;out.childKey=primitive.childKey;out.feature=result.feature;out.shape=primitive.shape.type;}
+        }
+    }return out;
 }
 PhysicsCastHit PhysicsWorld::Raycast(const glm::vec3& o,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Sphere(0),{o,{1,0,0,0}},d,m,f,s);}
 PhysicsCastHit PhysicsWorld::SphereCast(const glm::vec3& o,float r,const glm::vec3& d,float m,const PhysicsQueryFilter& f,PhysicsCastStats* s)const{return Cast(Shape::Sphere(r),{o,{1,0,0,0}},d,m,f,s);}

@@ -64,6 +64,13 @@ void DrawMeshOrPlaceholder(Renderer& r, ResourceManager* resources, const SceneR
     r.DrawBox(position, rotation, scale * 0.5f, failed ? kFailedPlaceholderColor : kLoadingPlaceholderColor, alpha);
 }
 
+void DrawCompoundChild(Renderer& renderer,ResourceManager* resources,const CompoundBox& child,glm::vec3 position,glm::quat rotation,glm::vec3 color,float alpha=1){
+ position+=rotation*child.localCenter;rotation=glm::normalize(rotation*child.rotation);
+ if(child.type==ShapeType::Box)renderer.DrawBox(position,rotation,child.halfExtents,color,alpha);
+ else if(child.type==ShapeType::Sphere)renderer.DrawSphereTransformed(position,rotation,glm::vec3(1),child.radius,color,alpha,TextureHandle{});
+ else if(child.type==ShapeType::ConvexHull&&resources){auto mesh=resources->TryGetCollisionMesh(child.assetId);if(mesh.IsValid())renderer.DrawMesh(mesh,position,rotation,glm::vec3(1),TextureHandle{},color,alpha);}
+}
+
 void DrawRenderable(Renderer& r, ResourceManager* resources, const SceneRenderComponent& render,
                     const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale, float alpha, TextureHandle generated = {},const std::vector<glm::mat4>* skin = nullptr) {
     std::vector<MaterialBinding> slots;for(const auto& slot:render.materials){if(resources)resources->RequestMaterial(slot.asset);slots.push_back({resources?resources->TryGetMaterial(slot.asset):MaterialHandle{},slot.overrides,!slot.asset.empty(),resources&&resources->StateOf(slot.asset)==ResourceState::Failed});}r.SetMaterialBindings(slots);
@@ -79,6 +86,8 @@ void DrawRenderable(Renderer& r, ResourceManager* resources, const SceneRenderCo
             break;
         case SceneShape::Compound:
         case SceneShape::Terrain:
+        case SceneShape::ConvexHull:
+        case SceneShape::TriangleMesh:
             break;  // handled by their owners
     }
 }
@@ -143,8 +152,7 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
             for (std::size_t part = 0; part < v.compoundBoxes.size(); ++part) {
                 if (part != 0 && !r.IsShadowPass()) continue;
                 const CompoundBox& box = v.compoundBoxes[part];
-                r.DrawBox(position + rotation * box.localCenter, rotation, box.halfExtents,
-                          part == 0 ? v.render.color : v.render.secondaryColor);
+                DrawCompoundChild(r,world.Resources(),box,position,rotation,part==0?v.render.color:v.render.secondaryColor);
             }
             continue;
         }
@@ -192,8 +200,7 @@ void DrawWorldTransparents(Renderer& r, const RuntimeWorld& world, const GameSes
             const glm::quat rotation = bodies[i].GetPresentedOrientation(alpha);
             for (std::size_t part = 1; part < v.compoundBoxes.size(); ++part) {
                 const CompoundBox& box = v.compoundBoxes[part];
-                r.DrawBox(position + rotation * box.localCenter, rotation, box.halfExtents,
-                          v.render.secondaryColor, v.render.secondaryAlpha);
+                DrawCompoundChild(r,world.Resources(),box,position,rotation,v.render.secondaryColor,v.render.secondaryAlpha);
             }
         }
         r.EndTransparentPass();
@@ -490,8 +497,7 @@ void DrawAuthoredScene(Renderer& r, const Scene& scene, ResourceManager& assets)
             } else if (render.shape == SceneShape::Compound && o.body) {
                 for (std::size_t part = 0; part < o.body->compoundBoxes.size(); ++part) {
                     const CompoundBox& box = o.body->compoundBoxes[part];
-                    r.DrawBox(position + rotation * box.localCenter, rotation, box.halfExtents,
-                              part == 0 ? render.color : render.secondaryColor);
+                    DrawCompoundChild(r,&assets,box,position,rotation,part==0?render.color:render.secondaryColor);
                 }
             } else if (render.shape == SceneShape::Terrain && o.body) {
                 const std::shared_ptr<const RadialTerrain> surface = CreateTerrainSurface(o.body->terrainSurface);

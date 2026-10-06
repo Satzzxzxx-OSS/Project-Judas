@@ -100,6 +100,7 @@ struct EditorPanelState {
     DebugLineList navigationPreview;
     DebugLineList liquidPreview;
     DebugLineList deformablePreview;
+    DebugLineList collisionPreview;
     std::string deformableDestination="deformable.judasdeform",deformableSource,deformableGroup="selection",fractureInterface;
     glm::vec3 deformableSelectionMin{-1,-1,-1},deformableSelectionMax{1,1,1};
     int deformableColumns=12,deformableRows=16,deformableSubdivision=2;
@@ -162,3 +163,6 @@ SceneObjectId CreateObjectOfKind(EditorDocument& doc, const std::string& kind, c
 SceneObjectId DuplicateObject(EditorDocument& doc, SceneObjectId id);
 
 void DrawStreamingPanel(EditorDocument&,EditorPanelState&,EditorRequests&);
+
+struct CollisionCookSettings;
+bool BakeEditorCollision(EditorDocument&,SceneObjectId,EditorPanelState&,const AssetId&,const CollisionCookSettings&,const std::string&);

@@ -1,3 +1,4 @@
+#include "CollisionAsset.h"
 #include "NavigationAsset.h"
 #include "Prefab.h"
 #include "RuntimeWorld.h"
@@ -16,11 +17,12 @@
 #include "AssetDatabase.h"
 #include "Project.h"
 #include "EditorPanels.h"
+#include "CollisionAsset.h"
 #include "EditorWidgets.h"
 
 namespace {
-const char* const kShapeNames[] = {"box", "sphere", "compound", "mesh", "terrain"};
-const char* const kBodyShapeNames[] = {"box", "sphere", "compound", "(mesh: not a body shape)", "terrain"};
+const char* const kShapeNames[] = {"box", "sphere", "compound", "mesh", "terrain", "convex hull", "static triangle mesh"};
+const char* const kBodyShapeNames[] = {"box", "sphere", "compound", "(mesh: not a body shape)", "terrain", "convex hull", "static triangle mesh"};
 const char* const kMotionNames[] = {"static", "dynamic"};
 const char* const kGravityKindNames[] = {"radial", "uniform"};
 const char* const kRegionNames[] = {"sphere", "box"};
@@ -298,21 +300,37 @@ void DrawBody(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     Checkbox(doc,"Collider enabled",b.enabled);
     if(state.project){DrawCategoryLayer(doc,"Collision layer",b.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",b.collisionMask,state.project->Settings().classification.collision);}
     Combo(doc, "Motion", b.motion, kMotionNames, 2);
-    Combo(doc, "Collider", b.shape, kBodyShapeNames, 5);
+    Combo(doc, "Collider", b.shape, kBodyShapeNames, 7);
+    if(b.shape==SceneShape::ConvexHull||b.shape==SceneShape::TriangleMesh){
+        AssetField(doc,"Cooked geometry",b.collisionAsset,AssetType::Collision,false,state);
+        ImGui::TextWrapped("Cook physical geometry in Assets. Rigid instances require unit scale. Triangle meshes are static surfaces and cannot be sensors.");
+        if(state.assets){auto record=state.assets->Find(b.collisionAsset);CollisionAsset asset;std::string error;if(record&&LoadCollisionAsset(record->path,asset,error)){
+            ImGui::Text("%zu vertices, %zu faces, %zu BVH nodes",asset.vertices.size(),asset.faces.size(),asset.nodes.size());
+            if(ImGui::Button("Preview collision wireframe / normals / bounds")){state.collisionPreview.Clear();auto point=[&](glm::dvec3 p){return o.transform.position+o.transform.rotation*glm::vec3(p);};for(auto& face:asset.faces){for(unsigned k=0;k<3;++k)state.collisionPreview.Line(point(asset.vertices[face.vertices[k]]),point(asset.vertices[face.vertices[(k+1)%3]]),face.active[k]?glm::vec3(1,.5f,.2f):glm::vec3(.2f,.8f,1));auto center=(asset.vertices[face.vertices[0]]+asset.vertices[face.vertices[1]]+asset.vertices[face.vertices[2]])/3.;state.collisionPreview.Line(point(center),point(center+face.normal*.15),{.4f,1,.4f});}state.collisionPreview.Box(point((asset.minimum+asset.maximum)*.5),o.transform.rotation,glm::vec3((asset.maximum-asset.minimum)*.5),{1,1,.1f});}
+            if(ImGui::Button("Clear collision preview"))state.collisionPreview.Clear();
+        }}
+    }
     if (b.shape == SceneShape::Box) DragVec3(doc, "Half extents##body", b.halfExtents, 0.01f);
     if (b.shape == SceneShape::Sphere) DragScalar(doc, "Radius##body", b.radius, 0.01f, 0.001f, 100000.0f);
     if (b.shape == SceneShape::Terrain) StringCombo(doc, "Surface", b.terrainSurface, state.terrainSurfaces, false);
     if (b.shape == SceneShape::Compound) {
-        ImGui::Text("%zu child boxes", b.compoundBoxes.size());
+        ImGui::Text("%zu children (one body; summed mass volumes)", b.compoundBoxes.size());
         for (std::size_t i = 0; i < b.compoundBoxes.size(); ++i) {
             ImGui::PushID(static_cast<int>(i));
             DragVec3(doc, "Center", b.compoundBoxes[i].localCenter, 0.005f);
-            DragVec3(doc, "Half extents", b.compoundBoxes[i].halfExtents, 0.005f);
+            auto& child=b.compoundBoxes[i];int kind=child.type==ShapeType::Sphere?1:child.type==ShapeType::ConvexHull?2:0;const char* kinds[]={"Box","Sphere","Convex hull"};if(ImGui::Combo("Child type",&kind,kinds,3)){doc.BeginEdit();child.type=kind==1?ShapeType::Sphere:kind==2?ShapeType::ConvexHull:ShapeType::Box;if(kind==1&&child.radius<=0)child.radius=.1f;doc.CommitEdit();}
+            glm::vec3 angles=glm::degrees(glm::eulerAngles(child.rotation));if(ImGui::DragFloat3("Local rotation (degrees)",&angles.x,.5f)){doc.BeginEdit();child.rotation=glm::normalize(glm::quat(glm::radians(angles)));doc.CommitEdit();}
+            ImGui::Text("Child key: %u",child.key?child.key:unsigned(i+1));
+            if(child.type==ShapeType::Box)DragVec3(doc, "Half extents", child.halfExtents, 0.005f);
+            else if(child.type==ShapeType::Sphere)DragScalar(doc,"Radius",child.radius,.005f,.001f,100000.f);
+            else AssetField(doc,"Hull geometry",child.assetId,AssetType::Collision,false,state);
+            bool remove=ImGui::SmallButton("Remove child");
+            if(remove){doc.BeginEdit();b.compoundBoxes.erase(b.compoundBoxes.begin()+i);doc.CommitEdit();ImGui::PopID();break;}
             ImGui::PopID();
         }
         if (ImGui::SmallButton("Add child box")) {
             doc.BeginEdit();
-            b.compoundBoxes.push_back(CompoundBox{glm::vec3(0.0f), glm::vec3(0.1f)});
+            CompoundBox child{glm::vec3(0),glm::vec3(.1f)};child.key=1;for(size_t i=0;i<b.compoundBoxes.size();++i)child.key=std::max(child.key,(b.compoundBoxes[i].key?b.compoundBoxes[i].key:unsigned(i+1))+1);b.compoundBoxes.push_back(child);
             doc.CommitEdit();
         }
     }
@@ -539,7 +557,7 @@ void DrawLiquidInteraction(EditorDocument& doc,SceneObject& o,EditorPanelState&)
 
 void NavProfile(EditorDocument& doc,unsigned& profile,EditorPanelState& state){if(!state.project)return;CategoryRegistry registry;registry.names.clear();for(auto [id,p]:state.project->Settings().navigation.profiles)registry.names[id]=p.name;DrawCategoryLayer(doc,"Agent profile",profile,registry);}
 void DrawNavSurface(EditorDocument& doc,SceneObject& o,EditorPanelState& state){auto& n=*o.navigationSurface;Checkbox(doc,"Enabled",n.enabled);NavProfile(doc,n.profile,state);Checkbox(doc,"Include dynamic bake sources",n.includeDynamic);if(state.project)DrawCategoryMask(doc,"Physical source layers",n.sources,state.project->Settings().classification.collision);DragVec3(doc,"Local bounds half extents",n.halfExtents);DragScalar(doc,"Cell size",n.cellSize,.01f,.02f,2);DragScalar(doc,"Cell height",n.cellHeight,.01f,.01f,1);DragInt(doc,"Tile size (cells)",n.tileSize,16,128);DragInt(doc,"Minimum region (cells)",n.minRegion,0,100);DragScalar(doc,"Simplification",n.simplification,.1f,.1f,10);AssetField(doc,"Baked navigation",n.asset,AssetType::Navigation,true,state);ImGui::TextWrapped("Object rotation defines the navigation frame; local +Y is its traversal up. Gravity is independent.");
- if(state.mode==EditorMode::Edit&&state.project&&state.assets){Scene resolved,flat;std::string error;NavigationGeometry geometry;const bool sources=ResolvePrefabs(doc.GetScene(),state.assets,resolved,error)&&FlattenHierarchy(resolved,flat,error);const SceneObject* surface=sources?flat.Find(o.id):nullptr;if(surface&&!n.asset.empty()){auto* record=state.assets->Find(n.asset);NavigationData data;if(record&&LoadNavigation(record->path,data,error)&&CollectNavigationGeometry(flat,*surface,state.project->Settings().navigation,geometry,error))ImGui::Text("Bake: %s | %zu tile layers",data.fingerprint==geometry.fingerprint?"current":"STALE",data.layers.size());else ImGui::TextWrapped("Bake error: %s",error.c_str());}
+ if(state.mode==EditorMode::Edit&&state.project&&state.assets){Scene resolved,flat;std::string error;NavigationGeometry geometry;const bool sources=ResolvePrefabs(doc.GetScene(),state.assets,resolved,error)&&FlattenHierarchy(resolved,flat,error);const SceneObject* surface=sources?flat.Find(o.id):nullptr;if(surface&&!n.asset.empty()){auto* record=state.assets->Find(n.asset);NavigationData data;if(record&&LoadNavigation(record->path,data,error)&&CollectNavigationGeometry(flat,*surface,state.project->Settings().navigation,geometry,error,state.assets))ImGui::Text("Bake: %s | %zu tile layers",data.fingerprint==geometry.fingerprint?"current":"STALE",data.layers.size());else ImGui::TextWrapped("Bake error: %s",error.c_str());}
  if(ImGui::Button("Bake selected surface"))BakeEditorNavigation(doc,o.id,state);
  if(ImGui::Button("Preview baked polygons")){auto* record=state.assets->Find(n.asset);NavigationData data;if(record&&surface&&LoadNavigation(record->path,data,error)){NavigationSystem preview(state.project->Settings().navigation);if(preview.LoadSurface(o.id,surface->transform,std::make_shared<NavigationData>(data),error)){state.navigationPreview.Clear();preview.Debug(state.navigationPreview);state.debug.navigation=true;state.status="Baked polygons displayed (preview snapshot).";}}if(!error.empty())state.status=error;}
  if(ImGui::Button("Clear baked reference")){doc.BeginEdit();n.asset.clear();doc.CommitEdit();state.status="Navigation reference cleared; asset retained for other users.";}}
@@ -655,7 +673,7 @@ bool BakeEditorNavigation(EditorDocument& doc,SceneObjectId id,EditorPanelState&
     Scene resolved,flat;std::string error;NavigationData data;
     if(!ResolvePrefabs(doc.GetScene(),state.assets,resolved,error)||!FlattenHierarchy(resolved,flat,error)){state.status=error;return false;}
     auto* surface=flat.Find(id);if(!surface||!surface->navigationSurface){state.status="Selected entity has no navigation surface";return false;}
-    if(!BakeNavigation(flat,*surface,state.project->Settings().navigation,data,error)){state.status=error;return false;}
+    if(!BakeNavigation(flat,*surface,state.project->Settings().navigation,data,error,state.assets)){state.status=error;return false;}
     auto path=std::filesystem::path(state.project->AssetsDir())/"navigation"/("surface-"+std::to_string(id)+".judasnav");
     std::error_code ec;std::filesystem::create_directories(path.parent_path(),ec);if(ec){state.status=ec.message();return false;}
     if(!SaveNavigation(path.string(),data,error)){state.status=error;return false;}

@@ -8,6 +8,7 @@ struct PrimitiveCastHit {
     bool hit=false, initialOverlap=false;
     double distance=0;
     glm::vec3 point{0}, normal{0};
+    uint32_t feature=UINT32_MAX;
 };
 PrimitiveCastHit CastAgainstPrimitive(const Shape& cast, const BodyTransform& pose,
     const glm::vec3& unitDirection, double maxDistance, const PrimitivePose& target);

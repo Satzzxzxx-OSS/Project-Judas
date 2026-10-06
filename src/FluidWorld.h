@@ -49,6 +49,7 @@ struct FluidBoxCollider {
     std::vector<PhysicsWorld::BodyMotionSegment> resolvedMotion{};
     double motionDuration = 0;
     glm::vec3 localCenter{0}; // compound child offset on the parent path
+    glm::quat localRotation{1,0,0,0};
 };
 
 // Ordinary solid sphere geometry (for example a planet or dynamic ball).

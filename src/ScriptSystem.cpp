@@ -3,6 +3,7 @@
 #include "PerformanceProfiler.h"
 #include <array>
 #include "ScriptSystem.h"
+#include "CollisionAsset.h"
 #include "AssetDatabase.h"
 #include "InputSystem.h"
 #include "SceneFingerprint.h"
@@ -44,6 +45,7 @@ export class Entity {
  hasTag(tag){return call('hasTag',this.id,tag)}
  addTag(tag){return call('addTag',this.id,tag)}
  removeTag(tag){return call('removeTag',this.id,tag)}
+ get collider(){return call('colliderInfo',this.id)}
  get classification(){return call('classification',this.id)}
  get animation(){return call('animationExists',this.id)?new Animation(this.id):null}
  get liquid(){const h=call("liquidOwner",this.id);return h?new LiquidVolume(h):null}
@@ -212,6 +214,7 @@ export class Joint {
  setSpring(rest,stiffness,damping,spring=true){return call('jointSet',this.id,{rest,stiffness,damping,spring})}
 }
 export const physics={
+ closestPoint:(point,maximum,filter={})=>{const hit=call('closestPoint',point,{x:0,y:0,z:0},filter,{maximum});return hit?{...hit,entity:entity(hit.entityId)}:null},
  joint:owner=>{const id=call('joint',owner.id);return id?new Joint(id):null},
  raycast:(origin,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'ray'}),
  sphereCast:(origin,radius,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'sphere',radius}),
@@ -480,7 +483,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     }
     if(op=="liquidSample"||op=="liquidPresentedSample"){glm::vec3 p;if(!ReadVec(c,arg(1),p))return JS_ThrowTypeError(c,"finite point required");auto sample=world.Liquids().Sample(p,{},op=="liquidPresentedSample"&&s->inPresentation?s->presentationAlpha:1);if(!sample)return JS_NULL;auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"entityId",JS_NewString(c,std::to_string(sample->entity).c_str()));JS_SetPropertyStr(c,v,"material",JS_NewString(c,sample->material.id.c_str()));JS_SetPropertyStr(c,v,"density",JS_NewFloat64(c,sample->material.density));JS_SetPropertyStr(c,v,"depth",JS_NewFloat64(c,sample->depth));JS_SetPropertyStr(c,v,"coordinate",JS_NewFloat64(c,sample->coordinate));JS_SetPropertyStr(c,v,"surfacePoint",Vec(c,sample->surfacePoint));JS_SetPropertyStr(c,v,"normal",Vec(c,sample->normal));JS_SetPropertyStr(c,v,"up",Vec(c,sample->up));JS_SetPropertyStr(c,v,"velocity",Vec(c,sample->velocity));return v;}
     if(op=="liquidErrors"||op=="liquidConnections"){auto v=JS_NewArray(c);uint32_t i=0;if(op=="liquidErrors")for(auto [id,error]:world.Liquids().Errors()){auto e=JS_NewObject(c);JS_SetPropertyStr(c,e,"entityId",JS_NewString(c,std::to_string(id).c_str()));JS_SetPropertyStr(c,e,"message",JS_NewString(c,error.c_str()));JS_SetPropertyUint32(c,v,i++,e);}else for(auto [id,active]:world.Liquids().Connections()){auto e=JS_NewObject(c);JS_SetPropertyStr(c,e,"entityId",JS_NewString(c,std::to_string(id).c_str()));JS_SetPropertyStr(c,e,"active",JS_NewBool(c,active));JS_SetPropertyUint32(c,v,i++,e);}return v;}
-    if(op=="liquidSubmerged"){EntityId id=0;try{id=std::stoull(String(c,arg(1)));}catch(...){return JS_ThrowReferenceError(c,"invalid entity");}auto* o=world.RuntimeDefinition(id);if(!o||!o->body)return JS_ThrowReferenceError(c,"missing collider");auto h=world.RuntimeBody(id);if(!h.IsValid())return JS_ThrowReferenceError(c,"stale collider");if(!world.Physics().IsBodyEnabled(h)){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"volume",JS_NewFloat64(c,0));JS_SetPropertyStr(c,v,"center",Vec(c,glm::vec3(0)));JS_SetPropertyStr(c,v,"buoyancy",Vec(c,glm::vec3(0)));return v;}auto pose=world.Physics().GetTransform(h);LiquidGeometry geometry;if(o->body->shape==SceneShape::Box)geometry=LiquidBox(-glm::dvec3(o->body->halfExtents),glm::dvec3(o->body->halfExtents));else if(o->body->shape==SceneShape::Compound)for(auto box:o->body->compoundBoxes){auto g=LiquidBox(glm::dvec3(box.localCenter-box.halfExtents),glm::dvec3(box.localCenter+box.halfExtents));geometry.cells.insert(geometry.cells.end(),g.cells.begin(),g.cells.end());}else return JS_ThrowTypeError(c,"submerged supports box/compound colliders");for(auto& t:geometry.cells)for(auto& p:t)p=glm::dvec3(pose.position)+glm::dquat(pose.rotation)*p;auto a=world.Liquids().Submerged(geometry);auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"volume",JS_NewFloat64(c,a.volume));JS_SetPropertyStr(c,v,"center",Vec(c,a.center));JS_SetPropertyStr(c,v,"buoyancy",Vec(c,a.buoyancy));return v;}
+    if(op=="liquidSubmerged"){EntityId id=0;try{id=std::stoull(String(c,arg(1)));}catch(...){return JS_ThrowReferenceError(c,"invalid entity");}auto* o=world.RuntimeDefinition(id);if(!o||!o->body)return JS_ThrowReferenceError(c,"missing collider");auto h=world.RuntimeBody(id);if(!h.IsValid())return JS_ThrowReferenceError(c,"stale collider");if(!world.Physics().IsBodyEnabled(h)){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"volume",JS_NewFloat64(c,0));JS_SetPropertyStr(c,v,"center",Vec(c,glm::vec3(0)));JS_SetPropertyStr(c,v,"buoyancy",Vec(c,glm::vec3(0)));return v;}auto pose=world.Physics().GetTransform(h);LiquidGeometry geometry;if(o->body->shape==SceneShape::Box)geometry=LiquidBox(-glm::dvec3(o->body->halfExtents),glm::dvec3(o->body->halfExtents));else if(o->body->shape==SceneShape::Compound)for(auto box:o->body->compoundBoxes){if(box.type!=ShapeType::Box)return JS_ThrowTypeError(c,"submerged requires box children; no hull volume proxy");auto g=LiquidBox(-glm::dvec3(box.halfExtents),glm::dvec3(box.halfExtents));for(auto& cell:g.cells)for(auto& p:cell)p=glm::dvec3(box.localCenter)+glm::dquat(box.rotation)*p;geometry.cells.insert(geometry.cells.end(),g.cells.begin(),g.cells.end());}else return JS_ThrowTypeError(c,"submerged supports box/compound colliders");for(auto& t:geometry.cells)for(auto& p:t)p=glm::dvec3(pose.position)+glm::dquat(pose.rotation)*p;auto a=world.Liquids().Submerged(geometry);auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"volume",JS_NewFloat64(c,a.volume));JS_SetPropertyStr(c,v,"center",Vec(c,a.center));JS_SetPropertyStr(c,v,"buoyancy",Vec(c,a.buoyancy));return v;}
     auto navPath=[&](const NavigationPath& path){auto v=JS_NewObject(c);const char* status=path.status==NavigationPath::Status::Complete?"complete":path.status==NavigationPath::Status::Partial?"partial":"failed";JS_SetPropertyStr(c,v,"status",JS_NewString(c,status));JS_SetPropertyStr(c,v,"distance",JS_NewFloat64(c,path.distance));JS_SetPropertyStr(c,v,"revision",JS_NewUint32(c,path.revision));auto corners=JS_NewArray(c);uint32_t i=0;for(auto p:path.corners){auto corner=JS_NewObject(c);JS_SetPropertyStr(c,corner,"position",Vec(c,p.position));JS_SetPropertyStr(c,corner,"linkId",JS_NewString(c,std::to_string(p.link).c_str()));JS_SetPropertyStr(c,corner,"linkEnd",Vec(c,p.linkEnd));JS_SetPropertyUint32(c,corners,i++,corner);}JS_SetPropertyStr(c,v,"corners",corners);auto areas=JS_NewArray(c);i=0;for(auto id:path.areas)JS_SetPropertyUint32(c,areas,i++,JS_NewUint32(c,id));JS_SetPropertyStr(c,v,"areas",areas);return v;};
     auto navFilter=[&](JSValueConst options,NavigationFilter& f){const auto& config=world.Navigation().Configuration();auto p=JS_GetPropertyStr(c,options,"profile");if(!JS_IsUndefined(p)){if(JS_IsString(p)){auto name=String(c,p);bool found=false;for(auto [id,profile]:config.profiles)if(profile.name==name){f.profile=id;found=true;}if(!found){JS_FreeValue(c,p);return false;}}else if(JS_ToUint32(c,&f.profile,p)!=0){JS_FreeValue(c,p);return false;}}JS_FreeValue(c,p);if(!config.profiles.count(f.profile))return false;
         for(auto entry:{std::pair<const char*,CategoryMask*>{"includeAreas",&f.include},{"excludeAreas",&f.exclude}}){auto list=JS_GetPropertyStr(c,options,entry.first);if(!JS_IsUndefined(list)){if(!JS_IsArray(list)){JS_FreeValue(c,list);return false;}auto len=JS_GetPropertyStr(c,list,"length");uint32_t n=0;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);*entry.second=0;if(n>62){JS_FreeValue(c,list);return false;}for(uint32_t i=0;i<n;++i){auto v=JS_GetPropertyUint32(c,list,i);int id=config.areas.Find(String(c,v));JS_FreeValue(c,v);if(id<0){JS_FreeValue(c,list);return false;}*entry.second|=CategoryBit(id);}}JS_FreeValue(c,list);}
@@ -699,7 +702,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     if(op=="queryTags"){CategoryMask required,excluded;if(!tagMask(arg(1),required)||!tagMask(arg(2),excluded))return JS_ThrowTypeError(c,"unknown tag");return ids(world.QueryEntities(required,excluded));}
     if(op=="spawn"){SceneTransform t;if(!readTransform(arg(2),t))return JS_ThrowTypeError(c,"invalid transform");std::string error;auto id=world.SpawnPrefab(String(c,arg(1)),t,error);if(!id)return JS_ThrowTypeError(c,"spawn: %s",error.c_str());return JS_NewString(c,std::to_string(id).c_str());}
     if(op=="viewRay"){if(!s->hasView)return JS_NULL;auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"origin",Vec(c,s->viewOrigin));JS_SetPropertyStr(c,o,"direction",Vec(c,s->viewDirection));return o;}
-    if(op=="overlap"||op=="sweep"||op=="cast"){
+    if(op=="overlap"||op=="sweep"||op=="cast"||op=="closestPoint"){
         glm::vec3 min,max;if(!ReadVec(c,arg(1),min)||!ReadVec(c,arg(2),max))return JS_ThrowTypeError(c,"invalid bounds");PhysicsQueryFilter filter;
         auto include=JS_GetPropertyStr(c,arg(3),"includeLayers");auto exclude=JS_GetPropertyStr(c,arg(3),"excludeLayers");
         auto layerMask=[&](JSValueConst a,CategoryMask& mask){if(JS_IsUndefined(a))return true;if(!JS_IsArray(a))return false;auto len=JS_GetPropertyStr(c,a,"length");uint32_t n=0;JS_ToUint32(c,&n,len);JS_FreeValue(c,len);if(n>64)return false;mask=0;
@@ -712,6 +715,15 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
             for(uint32_t i=0;tagsOk&&i<n;++i){auto v=JS_GetPropertyUint32(c,ignored,i);auto idv=JS_GetPropertyStr(c,v,"id");try{auto body=world.RuntimeBody(std::stoull(String(c,idv)));if(body.IsValid())filter.ignoredBodies.push_back(body);}catch(...){tagsOk=false;}JS_FreeValue(c,idv);JS_FreeValue(c,v);}}
         JS_FreeValue(c,ignored);
         bool ok=tagsOk&&layerMask(include,filter.includeLayers)&&layerMask(exclude,filter.excludeLayers);JS_FreeValue(c,include);JS_FreeValue(c,exclude);if(!ok)return JS_ThrowTypeError(c,"unknown collision layer");
+        if(op=="closestPoint"){
+            float maximum=0;if(!Number(c,arg(4),"maximum",maximum))return JS_ThrowTypeError(c,"invalid closestPoint maximum");
+            PhysicsClosestPoint hit;try{hit=world.Physics().ClosestPoint(min,maximum,filter);}catch(const std::exception& e){return JS_ThrowTypeError(c,"closestPoint: %s",e.what());}
+            if(!hit.hit)return JS_NULL;
+            auto o=JS_NewObject(c);
+            JS_SetPropertyStr(c,o,"entityId",JS_NewString(c,std::to_string(world.EntityIdOfBody(hit.body)).c_str()));
+            JS_SetPropertyStr(c,o,"bodyId",JS_NewUint32(c,hit.body.id));JS_SetPropertyStr(c,o,"point",Vec(c,hit.point));JS_SetPropertyStr(c,o,"normal",hit.normalUnique?Vec(c,hit.normal):JS_NULL);JS_SetPropertyStr(c,o,"distance",JS_NewFloat64(c,hit.distance));
+            JS_SetPropertyStr(c,o,"contains",hit.containmentKnown?JS_NewBool(c,hit.contains):JS_NULL);JS_SetPropertyStr(c,o,"primitiveIndex",JS_NewInt32(c,hit.primitiveIndex));JS_SetPropertyStr(c,o,"childKey",JS_NewUint32(c,hit.childKey));JS_SetPropertyStr(c,o,"feature",hit.feature==UINT32_MAX?JS_NULL:JS_NewUint32(c,hit.feature));return o;
+        }
         if(op=="cast") {
             auto spec=arg(4);float maximum=0,radius=0,halfHeight=0;BodyTransform pose;pose.position=min;
             auto kindValue=JS_GetPropertyStr(c,spec,"kind");auto kind=String(c,kindValue);JS_FreeValue(c,kindValue);
@@ -738,8 +750,9 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
             JS_SetPropertyStr(c,o,"point",Vec(c,hit.point));JS_SetPropertyStr(c,o,"normal",Vec(c,hit.normal));
             JS_SetPropertyStr(c,o,"distance",JS_NewFloat64(c,hit.distance));JS_SetPropertyStr(c,o,"fraction",JS_NewFloat64(c,hit.fraction));
             JS_SetPropertyStr(c,o,"primitiveIndex",JS_NewInt32(c,hit.primitiveIndex));
+            JS_SetPropertyStr(c,o,"childKey",JS_NewUint32(c,hit.childKey));JS_SetPropertyStr(c,o,"feature",hit.feature==UINT32_MAX?JS_NULL:JS_NewUint32(c,hit.feature));
             JS_SetPropertyStr(c,o,"initialOverlap",JS_NewBool(c,hit.initialOverlap));
-            JS_SetPropertyStr(c,o,"shape",JS_NewString(c,hit.shape==ShapeType::Sphere?"sphere":hit.shape==ShapeType::Terrain?"terrain":"box"));
+            JS_SetPropertyStr(c,o,"shape",JS_NewString(c,hit.shape==ShapeType::Sphere?"sphere":hit.shape==ShapeType::Terrain?"terrain":hit.shape==ShapeType::ConvexHull?"hull":hit.shape==ShapeType::TriangleMesh?"triangle-mesh":"box"));
             return o;
         }
         if(op=="sweep"){glm::quat rotation;auto r=arg(4);
@@ -843,6 +856,15 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         else if(op=="animationSeek"){double seconds;if(JS_ToFloat64(c,&seconds,arg(2))!=0||!std::isfinite(seconds)||seconds<0||seconds>1e20)return JS_ThrowTypeError(c,"invalid animation seek");player.Seek(*instance->asset,float(seconds));}
         else return JS_ThrowTypeError(c,"unknown animation operation");
         world.ResolveAnimationPose(*instance,0);return JS_TRUE;
+    }
+    if(op=="colliderInfo"){
+        const auto handle=world.RuntimeBody(id);Shape shape;BodyTransform pose;if(!world.Physics().GetBodyShape(handle,shape,pose))return JS_NULL;
+        auto metadata=[&](const Shape& value,glm::vec3 center,glm::quat rotation,uint32_t key){auto o=JS_NewObject(c);const char* type=value.type==ShapeType::Sphere?"sphere":value.type==ShapeType::Box?"box":value.type==ShapeType::ConvexHull?"hull":value.type==ShapeType::TriangleMesh?"triangle-mesh":value.type==ShapeType::CompoundBoxes?"compound":"terrain";
+            JS_SetPropertyStr(c,o,"type",JS_NewString(c,type));JS_SetPropertyStr(c,o,"key",JS_NewUint32(c,key));JS_SetPropertyStr(c,o,"position",Vec(c,center));auto q=Vec(c,{rotation.x,rotation.y,rotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,rotation.w));JS_SetPropertyStr(c,o,"rotation",q);
+            JS_SetPropertyStr(c,o,"halfExtents",value.type==ShapeType::Box?Vec(c,value.halfExtents):JS_NULL);JS_SetPropertyStr(c,o,"radius",value.type==ShapeType::Sphere?JS_NewFloat64(c,value.radius):JS_NULL);JS_SetPropertyStr(c,o,"asset",value.asset?JS_NewString(c,value.assetId.c_str()):JS_NULL);
+            JS_SetPropertyStr(c,o,"vertexCount",JS_NewUint32(c,value.asset?value.asset->vertices.size():0));JS_SetPropertyStr(c,o,"triangleCount",JS_NewUint32(c,value.asset?value.asset->faces.size():0));JS_SetPropertyStr(c,o,"twoSided",JS_NewBool(c,value.asset&&value.asset->twoSided));return o;};
+        auto result=metadata(shape,{0,0,0},{1,0,0,0},0);JS_SetPropertyStr(c,result,"centerOfMassOffset",Vec(c,shape.pivotOffset));JS_SetPropertyStr(c,result,"enabled",JS_NewBool(c,world.Physics().IsBodyEnabled(handle)));JS_SetPropertyStr(c,result,"sensor",JS_NewBool(c,world.Physics().IsBodySensor(handle)));
+        auto children=JS_NewArray(c);for(unsigned i=0;i<shape.boxes.size();++i){const auto& child=shape.boxes[i];Shape primitive=child.type==ShapeType::Sphere?Shape::Sphere(child.radius):child.type==ShapeType::ConvexHull?Shape::Cooked(child.asset,child.assetId):Shape::Box(child.halfExtents);JS_SetPropertyUint32(c,children,i,metadata(primitive,child.localCenter,child.rotation,child.key?child.key:i+1));}JS_SetPropertyStr(c,result,"children",children);return result;
     }
     if(op=="colliderEnabled"){if(!JS_IsBool(arg(2)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.SetColliderEnabled(id,JS_ToBool(c,arg(2))));}
     if(op=="scriptState"){auto slot=String(c,arg(2));uint64_t slotId=0;try{slotId=std::stoull(slot);}catch(...){return JS_ThrowTypeError(c,"invalid slot");}

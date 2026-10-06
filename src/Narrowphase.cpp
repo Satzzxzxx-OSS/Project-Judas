@@ -1,4 +1,6 @@
 #include "Narrowphase.h"
+#include "CollisionAsset.h"
+#include "CollisionGeometry.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -11,13 +13,15 @@ int PrimitiveCount(const Shape& shape) {
 
 PrimitivePose PrimitiveAt(const Shape& shape, const RigidBody& parent, int index,
                           const ContactPreparedOrientation* prepared) {
-    if (shape.type != ShapeType::CompoundBoxes) return {shape, parent, parent.position, parent.orientation, glm::vec3(0.0f)};
+    if (shape.type != ShapeType::CompoundBoxes) return {shape, parent, parent.position, parent.orientation, -shape.pivotOffset};
     const CompoundBox& child = shape.boxes[static_cast<std::size_t>(index)];
     RigidBody childPose = parent;
     const glm::dmat3 rotation = prepared && prepared->Matches(parent.orientation)
         ? prepared->rotation : ContactRotation(parent.orientation);
-    childPose.position = glm::vec3(glm::dvec3(parent.position) + rotation * glm::dvec3(child.localCenter));
-    return {Shape::Box(child.halfExtents), childPose, parent.position, parent.orientation, child.localCenter};
+    childPose.position = glm::vec3(glm::dvec3(parent.position) + rotation * glm::dvec3(child.localCenter-shape.pivotOffset));
+    if(child.rotation!=glm::quat(1,0,0,0))childPose.orientation=glm::normalize(parent.orientation*child.rotation);
+    Shape primitive=child.type==ShapeType::Sphere?Shape::Sphere(child.radius):child.type==ShapeType::ConvexHull?Shape::Cooked(child.asset,child.assetId):Shape::Box(child.halfExtents);
+    return {primitive, childPose, parent.position, parent.orientation, child.localCenter-shape.pivotOffset,child.rotation,child.key};
 }
 
 TerrainSample SampleTerrainAtWorld(const RadialTerrain& terrain, const RigidBody& body,
@@ -42,6 +46,7 @@ namespace {
         float boundingRadius = 0.0f;
         if (otherShape.type == ShapeType::Sphere) boundingRadius = otherShape.radius;
         else if (otherShape.type == ShapeType::Box) boundingRadius = glm::length(otherShape.halfExtents);
+        else if(otherShape.type==ShapeType::ConvexHull&&otherShape.asset)boundingRadius=float(glm::length(glm::max(glm::abs(otherShape.asset->minimum-glm::dvec3(otherShape.pivotOffset)),glm::abs(otherShape.asset->maximum-glm::dvec3(otherShape.pivotOffset)))));
         else return manifold;
         if (glm::length(otherBody.position - terrainBody.position) >
         terrain.BoundRadius() + boundingRadius + margin) return manifold;
@@ -59,7 +64,7 @@ namespace {
             return manifold;
         }
 
-        std::array<Contact, 14> candidates{};
+        std::vector<Contact> candidates(otherShape.type==ShapeType::ConvexHull?otherShape.asset->vertices.size()+otherShape.asset->polygons.size():14);
         int count = 0;
         const glm::vec3 h = otherShape.halfExtents;
         const auto tryPoint = [&](const glm::vec3& localPoint) {
@@ -74,6 +79,10 @@ namespace {
             candidates[static_cast<std::size_t>(count++)] = contact;
         };
 
+        if(otherShape.type==ShapeType::ConvexHull){
+            for(auto p:otherShape.asset->vertices)tryPoint(glm::vec3(p)-otherShape.pivotOffset);
+            for(auto& face:otherShape.asset->polygons){glm::dvec3 center(0);for(auto v:face.vertices)center+=otherShape.asset->vertices[v];tryPoint(glm::vec3(center/double(face.vertices.size()))-otherShape.pivotOffset);}
+        }else {
         for (int x : {-1, 1})
         for (int y : {-1, 1})
         for (int z : {-1, 1})
@@ -86,6 +95,7 @@ namespace {
             }
         }
 
+        }
         std::sort(candidates.begin(), candidates.begin() + count,
         [](const Contact& a, const Contact& b) {
             return a.penetration > b.penetration;
@@ -113,6 +123,7 @@ const RigidBody& bodyB, float margin) {
         return manifold;
     }
 
+    if(shapeA.asset||shapeB.asset)return CookedContacts(PrimitiveAt(shapeA,bodyA,0),PrimitiveAt(shapeB,bodyB,0),margin);
     return PrimitiveContacts(shapeA, {bodyA.position, bodyA.orientation, glm::vec3(0)},
     shapeB, {bodyB.position, bodyB.orientation, glm::vec3(0)}, margin);
 }
@@ -122,8 +133,21 @@ ContactManifold ComputeContacts(const PrimitivePose& a, const PrimitivePose& b, 
                                 const ContactPreparedOrientation* preparedB) {
     if (a.shape.type == ShapeType::Terrain || b.shape.type == ShapeType::Terrain)
     return ComputeContacts(a.shape, a.body, b.shape, b.body, margin);
-    return PrimitiveContacts(a.shape, {a.parentPosition, a.parentOrientation, a.parentLocalCenter},
-    b.shape, {b.parentPosition, b.parentOrientation, b.parentLocalCenter}, margin, preparedA, preparedB);
+    if(a.shape.asset||b.shape.asset)return CookedContacts(a,b,margin);
+    const auto identity=[](glm::quat q){return q==glm::quat(1,0,0,0);};
+    // Preserve the proven primitive/identity-child arithmetic exactly. An extra
+    // float normalization here can perturb an otherwise unimpulsed island member.
+    if(identity(a.childRotation)&&identity(b.childRotation))
+        return PrimitiveContacts(a.shape,{a.parentPosition,a.parentOrientation,a.parentLocalCenter},
+            b.shape,{b.parentPosition,b.parentOrientation,b.parentLocalCenter},margin,preparedA,preparedB);
+    const glm::quat qa=identity(a.childRotation)?a.parentOrientation:glm::normalize(a.parentOrientation*a.childRotation);
+    const glm::quat qb=identity(b.childRotation)?b.parentOrientation:glm::normalize(b.parentOrientation*b.childRotation);
+    auto out=PrimitiveContacts(a.shape, {a.parentPosition, qa, glm::conjugate(a.childRotation)*a.parentLocalCenter},
+        b.shape, {b.parentPosition, qb, glm::conjugate(b.childRotation)*b.parentLocalCenter}, margin,
+        identity(a.childRotation)?preparedA:nullptr,identity(b.childRotation)?preparedB:nullptr);
+    const auto ra=ContactRotation(a.childRotation),rb=ContactRotation(b.childRotation);
+    for(int i=0;i<out.count;++i){auto& c=out.points[i];c.localAnchorA=ra*c.localAnchorA;c.localWitnessA=ra*c.localWitnessA;c.localAnchorB=rb*c.localAnchorB;c.localWitnessB=rb*c.localWitnessB;}
+    return out;
 }
 
 namespace {
@@ -149,7 +173,7 @@ namespace {
     }
 
     Aabb BoxAabb(const glm::vec3& position, const glm::quat& orientation,
-    const glm::vec3& offset, const glm::vec3& half) {
+    const glm::dvec3& offset, const glm::dvec3& half) {
         Rotation<Iv> r(orientation);
         std::array<Iv,3> lo,hi;
         for (int k=0;k<3;++k){
@@ -187,7 +211,9 @@ Aabb ShapeAabb(const Shape& shape, const glm::vec3& position, const glm::quat& o
             Aabb bound{position,position};
             bool first=true;
             for (const auto& child:shape.boxes){
-                const auto b=BoxAabb(position,orientation,child.localCenter,child.halfExtents);
+                Shape primitive=child.type==ShapeType::Sphere?Shape::Sphere(child.radius):child.type==ShapeType::ConvexHull?Shape::Cooked(child.asset,child.assetId):Shape::Box(child.halfExtents);
+                auto local=ShapeAabb(primitive,glm::vec3(0),child.rotation);
+                const auto b=BoxAabb(position,orientation,glm::dvec3(child.localCenter)-glm::dvec3(shape.pivotOffset)+(glm::dvec3(local.min)+glm::dvec3(local.max))*.5,(glm::dvec3(local.max)-glm::dvec3(local.min))*.5);
                 bound=first?b:bound.Union(b);
                 first=false;
             }
@@ -195,6 +221,8 @@ Aabb ShapeAabb(const Shape& shape, const glm::vec3& position, const glm::quat& o
             return bound;
         }
 
+        case ShapeType::ConvexHull:
+        case ShapeType::TriangleMesh:{if(!shape.asset)throw std::invalid_argument("missing cooked collision asset");return BoxAabb(position,orientation,(shape.asset->minimum+shape.asset->maximum)*.5-glm::dvec3(shape.pivotOffset),(shape.asset->maximum-shape.asset->minimum)*.5);}
         case ShapeType::Terrain:return SphereAabb(position,shape.terrain?shape.terrain->BoundRadius():0.0);
         case ShapeType::Capsule:return SphereAabb(position,double(shape.radius)+double(shape.halfHeight));
     }
@@ -234,9 +262,10 @@ void PrepareShapeBounds(const Shape& shape, const ContactPreparedOrientation& or
             break;
         case ShapeType::CompoundBoxes:
             prepared.children.reserve(shape.boxes.size());
-            for (const auto& child:shape.boxes)
-                prepared.children.push_back(prepareBox(child.localCenter,child.halfExtents));
+            for (const auto& child:shape.boxes){Shape primitive=child.type==ShapeType::Sphere?Shape::Sphere(child.radius):child.type==ShapeType::ConvexHull?Shape::Cooked(child.asset,child.assetId):Shape::Box(child.halfExtents);auto local=ShapeAabb(primitive,glm::vec3(0),child.rotation);prepared.children.push_back(prepareBox(glm::dvec3(child.localCenter)-glm::dvec3(shape.pivotOffset)+(glm::dvec3(local.min)+glm::dvec3(local.max))*.5,(glm::dvec3(local.max)-glm::dvec3(local.min))*.5));}
             break;
+        case ShapeType::ConvexHull:
+        case ShapeType::TriangleMesh:prepared.box=prepareBox((shape.asset->minimum+shape.asset->maximum)*.5-glm::dvec3(shape.pivotOffset),(shape.asset->maximum-shape.asset->minimum)*.5);break;
         case ShapeType::Sphere: prepared.radialRadius=shape.radius; break;
         case ShapeType::Terrain: prepared.radialRadius=shape.terrain?shape.terrain->BoundRadius():0.0; break;
         case ShapeType::Capsule: prepared.radialRadius=double(shape.radius)+double(shape.halfHeight); break;
@@ -255,6 +284,8 @@ Aabb ShapeAabb(const PreparedShapeBounds& prepared,const glm::vec3& position) {
         return Bound(lo,hi);
     };
     switch (prepared.type) {
+        case ShapeType::ConvexHull:
+        case ShapeType::TriangleMesh:
         case ShapeType::Box: return translatedBox(prepared.box);
         case ShapeType::CompoundBoxes: {
             Aabb bound{position,position};
@@ -285,12 +316,15 @@ float ShapeBoundingRadius(const Shape& shape) {
         case ShapeType::CompoundBoxes: {
             double r = 0.0;
             for (const CompoundBox& child : shape.boxes) {
-                r = std::max(r, (length(child.localCenter) + length(child.halfExtents)).hi);
+                Shape primitive=child.type==ShapeType::Sphere?Shape::Sphere(child.radius):child.type==ShapeType::ConvexHull?Shape::Cooked(child.asset,child.assetId):Shape::Box(child.halfExtents);
+                r = std::max(r, length(child.localCenter-shape.pivotOffset).hi + ShapeBoundingRadius(primitive));
             }
 
             return UpperFloat(r);
         }
 
+        case ShapeType::ConvexHull:
+        case ShapeType::TriangleMesh:{double r=0;for(auto p:shape.asset->vertices)r=std::max(r,glm::length(p-glm::dvec3(shape.pivotOffset)));return UpperFloat(r);}
         case ShapeType::Terrain: return shape.terrain ? shape.terrain->BoundRadius() : 0.0f;
         case ShapeType::Capsule: return UpperFloat((Iv(double(shape.radius)) + Iv(double(shape.halfHeight))).hi);
     }

@@ -1,4 +1,6 @@
+#include "CollisionAsset.h"
 #include "WorldDebugView.h"
+#include "CollisionGeometry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -53,11 +55,13 @@ void DrawBodyShape(DebugLineList& out, const SceneBodyComponent& body, const glm
             break;
         case SceneShape::Compound:
             for (const CompoundBox& child : body.compoundBoxes) {
-                out.Box(position + rotation * child.localCenter, rotation, child.halfExtents, color);
+                if(child.type==ShapeType::Box)out.Box(position + rotation * child.localCenter, rotation*child.rotation, child.halfExtents, color);else if(child.type==ShapeType::Sphere)out.Sphere(position+rotation*child.localCenter,child.radius,color);
             }
             break;
         case SceneShape::Terrain:
         case SceneShape::Mesh:
+        case SceneShape::ConvexHull:
+        case SceneShape::TriangleMesh:
             break;
     }
 }
@@ -115,6 +119,10 @@ void BuildWorldDebugLines(const RuntimeWorld& world, const GameSession* session,
     };
 
     if (options.collisionShapes) {
+        for(auto& definition:world.ScriptObjects())if(definition.body){Shape shape;BodyTransform pose;if(!world.Physics().GetBodyShape(world.RuntimeBody(definition.id),shape,pose))continue;RigidBody parent;parent.position=pose.position;parent.orientation=pose.rotation;
+            for(int i=0;i<PrimitiveCount(shape);++i){auto primitive=PrimitiveAt(shape,parent,i);if(!primitive.shape.asset)continue;auto& asset=*primitive.shape.asset;auto point=[&](glm::dvec3 p){return glm::vec3(PrimitiveCenter(primitive)+PrimitiveRotation(primitive)*p);};for(auto& face:asset.faces){for(unsigned k=0;k<3;++k)out.Line(point(asset.vertices[face.vertices[k]]),point(asset.vertices[face.vertices[(k+1)%3]]),face.active[k]?kDynamicShapeColor:kStaticShapeColor);auto center=(asset.vertices[face.vertices[0]]+asset.vertices[face.vertices[1]]+asset.vertices[face.vertices[2]])/3.;out.Line(point(center),point(center+face.normal*.12),kNormalColor);}}
+        }
+
         for (const RuntimeWorld::StaticBody& sb : world.StaticBodies()) {
             if (sb.shape == SceneShape::Box) out.Box(sb.position, sb.rotation, sb.halfExtents, kStaticShapeColor);
             else if (sb.shape == SceneShape::Sphere) out.Sphere(sb.position, sb.radius, kStaticShapeColor);
