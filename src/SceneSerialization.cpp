@@ -88,6 +88,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("prefab.ids", Quote(EncodePrefabOverrides(ids)));
         w.Line("prefab.overrides", Quote(EncodePrefabOverrides(o.prefabOverrides)));
     }
+    for(const auto& [key,value]:DeformableProperties(o))w.Line(key,Quote(value));
     for(const auto& [key,value]:LiquidProperties(o))w.Line(key,Quote(value));
     for(const auto& [key,value]:NavigationProperties(o))w.Line(key,Quote(value));
     if(o.characterMotor){const auto& m=*o.characterMotor;
@@ -659,6 +660,9 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if (!p.Quat("rotation", o.transform.rotation)) return false;
     if (!p.Vec3("scale", o.transform.scale)) return false;
 
+    std::map<std::string,std::string> deformFields;
+    for(const auto& [key,tokens]:block.values)if(key.rfind("deformable.",0)==0){std::string value;if(!p.String(key,value))return false;deformFields[key]=value;}
+    std::string deformError;if(!ApplyDeformableProperties(deformFields,o,deformError))return reader.Fail(deformError);
     std::map<std::string,std::string> liquidFields;
     for(const auto& [key,tokens]:block.values)if(key.rfind("liquid.",0)==0){std::string value;if(!p.String(key,value))return false;liquidFields[key]=value;}
     // Decode after all collider components: liquid validation depends on them.

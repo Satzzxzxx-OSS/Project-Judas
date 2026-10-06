@@ -72,7 +72,8 @@ public:
     // Only committed residency is archived; partial installation/unload defers capture.
     bool SaveReady() const;
     void ResumeOwnership();
-    void Persist(class SaveArchive&);
+    unsigned ArchiveVersion()const;
+    void Persist(class SaveArchive&,unsigned version=1);
     std::string PersistentKey(SceneObjectId) const;
     SceneObjectId ResolvePersistentKey(const std::string&) const;
     // Tests hold a real read job before parsing. Production never sets this gate.

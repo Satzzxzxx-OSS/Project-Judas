@@ -90,6 +90,7 @@ bool CanCreateMetadata(const std::string& metaPath, std::string& outError) {
 
 const char* AssetTypeName(AssetType type) {
     switch (type) {
+        case AssetType::Deformable:return "deformable";
         case AssetType::AudioEffect:return "audio-effect";
         case AssetType::Material:return "material";
         case AssetType::World: return "world";
@@ -110,6 +111,7 @@ const char* AssetTypeName(AssetType type) {
 
 bool AssetTypeForExtension(const std::string& extension, AssetType& outType) {
     const std::string e = Lower(extension);
+    if(e==".judasdeform"){outType=AssetType::Deformable;return true;}
     if(e==".judasreverb"){outType=AssetType::AudioEffect;return true;}
     if(e==".judasmat"){outType=AssetType::Material;return true;}
     if(e==".judasworld"){outType=AssetType::World;return true;}
@@ -164,6 +166,7 @@ bool AssetDatabase::ValidateAssetFile(const std::string& path, AssetType type, s
             TextureData data;
             return LoadTextureFromFile(path, data, outError);
         }
+        case AssetType::Deformable: {std::ifstream s(path,std::ios::binary);std::vector<unsigned char> bytes{std::istreambuf_iterator<char>(s),{}};DeformableAsset a;return DecodeDeformableAsset(bytes,a,outError);}
         case AssetType::Liquid: {std::ifstream s(path,std::ios::binary);std::vector<unsigned char> bytes{std::istreambuf_iterator<char>(s),{}};LiquidResource r;return DecodeLiquidResource(bytes,r,outError);}
         case AssetType::Navigation: {NavigationData d;return LoadNavigation(path,d,outError);}
         case AssetType::UI: {UIDocument d;return LoadUIDocument(path,d,outError);}
@@ -226,6 +229,7 @@ bool AssetDatabase::ReadMeta(const std::string& metaPath, AssetId& outId, AssetT
             else if (tokens[1].first == "font") outType = AssetType::Font;
             else if (tokens[1].first == "audio") outType = AssetType::Audio;
             else if (tokens[1].first == "script") outType = AssetType::Script;
+            else if(tokens[1].first=="deformable")outType=AssetType::Deformable;
             else if(tokens[1].first=="liquid")outType=AssetType::Liquid;
             else if(tokens[1].first=="navigation")outType=AssetType::Navigation;
             else if(tokens[1].first=="ui")outType=AssetType::UI;

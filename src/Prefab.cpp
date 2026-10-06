@@ -142,6 +142,7 @@ bool InstantiatePrefab(Scene& scene,const Scene& prefab,const AssetId& asset,con
         auto copy=o;copy.id=ids.at(o.id);copy.parent=o.parent?ids.at(o.parent):0;
         copy.prefabRoot=root;copy.prefabSource=o.id;
         if(copy.render&&copy.render->textureCamera)copy.render->textureCamera=ids.at(copy.render->textureCamera);
+        if(copy.deformable)for(auto& a:copy.deformable->attachments)if(a.target){auto it=ids.find(a.target);if(it==ids.end()){error="prefab attachment target outside source";return false;}a.target=it->second;}
         if(copy.liquidConnection){copy.liquidConnection->source=ids.at(copy.liquidConnection->source);copy.liquidConnection->destination=ids.at(copy.liquidConnection->destination);}
         if(copy.joint){copy.joint->bodyA=ids.at(copy.joint->bodyA);if(copy.joint->bodyB)copy.joint->bodyB=ids.at(copy.joint->bodyB);}
         if(o.id==sourceRoot){copy.prefabAsset=asset;copy.prefabIds=ids;copy.transform=placement;}
@@ -176,6 +177,7 @@ bool ResolvePrefabs(const Scene& scene,const AssetDatabase* assets,Scene& resolv
             copy.id=mapping.at(o.id);copy.parent=o.parent?mapping.at(o.parent):root.parent;
             copy.prefabRoot=root.id;copy.prefabSource=o.id;
             if(copy.render&&copy.render->textureCamera){auto it=mapping.find(copy.render->textureCamera);if(it==mapping.end()){error="prefab camera reference outside source";return false;}copy.render->textureCamera=it->second;}
+            if(copy.deformable)for(auto& a:copy.deformable->attachments)if(a.target){auto it=mapping.find(a.target);if(it==mapping.end()){error="prefab attachment target outside source";return false;}a.target=it->second;}
             if(copy.liquidConnection){auto a=mapping.find(copy.liquidConnection->source),b=mapping.find(copy.liquidConnection->destination);if(a==mapping.end()||b==mapping.end()){error="prefab liquid connection outside source";return false;}copy.liquidConnection->source=a->second;copy.liquidConnection->destination=b->second;}
             if(copy.joint){auto a=mapping.find(copy.joint->bodyA),b=mapping.find(copy.joint->bodyB);if(a==mapping.end()||(copy.joint->bodyB&&b==mapping.end())){error="prefab joint reference outside source";return false;}copy.joint->bodyA=a->second;if(copy.joint->bodyB)copy.joint->bodyB=b->second;}
             if(o.id==root.prefabSource){copy.prefabAsset=root.prefabAsset;copy.prefabIds=mapping;copy.transform=root.transform;}
@@ -200,6 +202,7 @@ void CapturePrefabEdits(const Scene& before,Scene& after) {
             if(copy.render&&copy.render->textureCamera){const auto* root=after.Find(o.prefabRoot);
                 if(root)for(const auto& pair:root->prefabIds)if(pair.second==copy.render->textureCamera)copy.render->textureCamera=pair.first;}
             if(copy.joint){const auto* root=after.Find(o.prefabRoot);if(root){const auto a=copy.joint->bodyA,b=copy.joint->bodyB;for(const auto& pair:root->prefabIds){if(pair.second==a)copy.joint->bodyA=pair.first;if(pair.second==b)copy.joint->bodyB=pair.first;}}}
+            if(copy.deformable){const auto* root=after.Find(o.prefabRoot);if(root)for(auto& a:copy.deformable->attachments)for(auto pair:root->prefabIds)if(a.target==pair.second){a.target=pair.first;break;}}
             if(copy.liquidConnection){const auto* root=after.Find(o.prefabRoot);if(root){auto a=copy.liquidConnection->source,b=copy.liquidConnection->destination;for(const auto& pair:root->prefabIds){if(pair.second==a)copy.liquidConnection->source=pair.first;if(pair.second==b)copy.liquidConnection->destination=pair.first;}}}
             return ObjectProperties(copy);};
         auto a=normalized(*previous),b=normalized(o);

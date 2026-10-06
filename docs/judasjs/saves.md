@@ -78,3 +78,13 @@ same-name projects isolated. Equal legacy project name/filename identities share
 namespace unless an explicit `save-identity` is authored. Copies of an identity
 intentionally represent the same game. Editor Play uses `EditorSlots`. Runtime
 packages do not need write access to their installed content.
+
+## Deformable participation — M62
+
+A scene containing deformables adds a required version-1 `deformables` participant;
+scenes without them keep the original participant set. It preserves authoritative
+nodes/velocities, plastic rest state, runtime materials/attachments, enabled/sleep
+state. Missing or failed required simulations reject save capture. Runtime handles,
+contact candidates and presentation buffers rebuild on restore. Retained independent
+region deformables use streaming participant version 2. See [Deformable](deformables.md)
+for supported contact, scale and attachment semantics.

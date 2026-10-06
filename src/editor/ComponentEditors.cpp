@@ -4,6 +4,9 @@
 #include "ComponentEditors.h"
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include "ModelLoader.h"
+#include "SceneFingerprint.h"
 #include "ScriptSystem.h"
 
 #include <glm/gtc/quaternion.hpp>
@@ -460,6 +463,49 @@ void DrawPlayerStart(EditorDocument& doc, SceneObject& o, EditorPanelState& stat
 
 void PreviewLiquid(const LiquidBasinData& data,const SceneObject& o,double volume,EditorPanelState& state){state.liquidPreview.Clear();MeshData surface;const double q=LiquidInverse(data,volume);glm::vec3 minimum(1e30f),maximum(-1e30f);for(auto& t:data.geometry.cells){for(auto v:t){minimum=glm::min(minimum,glm::vec3(v));maximum=glm::max(maximum,glm::vec3(v));}LiquidClip(t,{data.equilibrium.Coordinate(t[0]),data.equilibrium.Coordinate(t[1]),data.equilibrium.Coordinate(t[2]),data.equilibrium.Coordinate(t[3])},q,&surface);}state.liquidPreview.Box(o.transform.position+o.transform.rotation*(minimum+maximum)*.5f,o.transform.rotation,(maximum-minimum)*.5f,{.15f,.4f,.9f});for(size_t i=0;i+2<surface.vertices.size();i+=3)for(int j=0;j<3;++j)state.liquidPreview.Line(o.transform.position+o.transform.rotation*surface.vertices[i+j].position,o.transform.position+o.transform.rotation*surface.vertices[i+(j+1)%3].position,{.1f,.5f,.95f});}
 void LiquidNumber(EditorDocument& doc,const char* label,double& value){double temp=value;if(ImGui::InputDouble(label,&temp,.001,.1,"%.8g")&&std::isfinite(temp)&&temp>=0){doc.BeginEdit();value=temp;doc.CommitEdit();}}
+void DrawDeformable(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
+    auto& d=*o.deformable;
+    Checkbox(doc,"Enabled",d.enabled);Checkbox(doc,"Cloth self-contact",d.selfContact);
+    AssetField(doc,"Simulation / render binding",d.asset,AssetType::Deformable,false,state);
+    int substeps=int(d.substeps),iterations=int(d.iterations);
+    if(DragInt(doc,"Substeps",substeps,1,16))d.substeps=unsigned(substeps);
+    if(DragInt(doc,"Iterations",iterations,1,16))d.iterations=unsigned(iterations);
+    if(state.project){DrawCategoryLayer(doc,"Collision layer",d.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",d.collisionMask,state.project->Settings().classification.collision);}
+    auto& m=d.material;
+    LiquidNumber(doc,"Density (kg/m2 cloth; kg/m3 solid)",m.density);
+    LiquidNumber(doc,"Stretch compliance",m.stretchCompliance);LiquidNumber(doc,"Shear compliance",m.shearCompliance);
+    LiquidNumber(doc,"Bend compliance",m.bendCompliance);LiquidNumber(doc,"Volume compliance",m.volumeCompliance);
+    LiquidNumber(doc,"Damping (1/s)",m.damping);LiquidNumber(doc,"Contact thickness (m)",m.thickness);LiquidNumber(doc,"Friction",m.friction);
+    LiquidNumber(doc,"Air drag (1/s)",m.airDrag);glm::vec3 air(m.airVelocity);if(DragVec3(doc,"World air velocity",air))m.airVelocity=air;
+    LiquidNumber(doc,"Yield strain (0 disables)",m.yieldStrain);LiquidNumber(doc,"Plastic rate (1/s)",m.plasticRate);LiquidNumber(doc,"Maximum plastic strain",m.maximumPlasticStrain);
+    std::string error;std::shared_ptr<const DeformableAsset> asset;
+    if(state.resources&&!d.asset.empty()){state.resources->RequestDeformable(d.asset);asset=state.resources->GetDeformable(d.asset,error);}
+    if(!error.empty())ImGui::TextWrapped("Asset: %s",error.c_str());
+    if(asset){
+        ImGui::Text("%zu nodes | %zu triangles | %zu tetrahedra",asset->nodes.size(),asset->triangles.size(),asset->tetrahedra.size());
+        if(ImGui::Button("Preview wireframe and selected groups")){state.deformablePreview.Clear();auto point=[&](glm::dvec3 p){return o.transform.position+o.transform.rotation*glm::vec3(p);};for(auto edge:asset->edges)state.deformablePreview.Line(point(asset->nodes[edge.x]),point(asset->nodes[edge.y]),{.1f,.7f,1});for(auto& attachment:d.attachments){auto it=asset->groups.find(attachment.group);if(it!=asset->groups.end())for(auto n:it->second)state.deformablePreview.Box(point(asset->nodes[n]),glm::quat(1,0,0,0),glm::vec3(.025f),{1,.7f,.1f});}}
+        for(auto& [name,nodes]:asset->groups){ImGui::PushID(name.c_str());ImGui::Text("%s: %zu nodes",name.c_str(),nodes.size());ImGui::SameLine();if(ImGui::Button("Attach group")){doc.BeginEdit();auto found=std::find_if(d.attachments.begin(),d.attachments.end(),[&](auto& a){return a.group==name;});if(found==d.attachments.end()){DeformableAttachment a;a.group=name;d.attachments.push_back(a);}doc.CommitEdit();}ImGui::PopID();}
+        TextField(doc,"New group name",state.deformableGroup);DragVec3(doc,"Local selection minimum",state.deformableSelectionMin);DragVec3(doc,"Local selection maximum",state.deformableSelectionMax);
+        if(state.mode==EditorMode::Edit&&ImGui::Button("Bake node group from selection box")){
+            auto changed=*asset;auto& group=changed.groups[state.deformableGroup];group.clear();for(unsigned i=0;i<changed.nodes.size();++i)if(glm::all(glm::greaterThanEqual(changed.nodes[i],glm::dvec3(state.deformableSelectionMin)))&&glm::all(glm::lessThanEqual(changed.nodes[i],glm::dvec3(state.deformableSelectionMax))))group.push_back(i);
+            auto* record=state.assets->Find(d.asset);if(group.empty())state.status="Selection contains no nodes.";else if(record&&PrepareDeformableAsset(changed,error)){std::ofstream output(record->path,std::ios::binary);auto bytes=EncodeDeformableAsset(changed);output.write(bytes.data(),std::streamsize(bytes.size()));output.close();if(output){state.resources->Invalidate(d.asset);state.status="Named group baked; existing saves require matching asset content.";}else state.status="Failed to write deformable asset.";}else state.status=error;
+        }
+    }
+    for(size_t i=0;i<d.attachments.size();){auto& a=d.attachments[i];ImGui::PushID(int(i));ImGui::Separator();ImGui::Text("Attachment %s",a.group.c_str());Checkbox(doc,"Attachment enabled",a.enabled);const char* kinds[]={"world (authored root anchor)","rigid body (finite mass)","skeleton joint (prescribed)"};Combo(doc,"Target kind",a.kind,kinds,3);
+        if(a.kind!=DeformableAttachment::Kind::World){std::vector<std::string> labels,values;for(auto& target:doc.GetScene().Objects())if(a.kind==DeformableAttachment::Kind::Body?bool(target.body):bool(target.animation)){labels.push_back(target.name);values.push_back(std::to_string(target.id));}std::string id=std::to_string(a.target);if(LabelledCombo(doc,"Target entity",id,labels,values,false))a.target=std::stoull(id);if(a.kind==DeformableAttachment::Kind::Bone)TextField(doc,"Stable skeleton joint key",a.joint);}
+        glm::vec3 offset(a.offset);if(DragVec3(doc,"Target-local offset",offset))a.offset=offset;
+        bool remove=ImGui::Button("Remove attachment");ImGui::PopID();if(remove){doc.BeginEdit();d.attachments.erase(d.attachments.begin()+i);doc.CommitEdit();}else ++i;
+    }
+    if(state.mode==EditorMode::Edit&&state.project&&state.assets&&ImGui::CollapsingHeader("Create/import deformable asset")){
+        TextField(doc,"Assets-relative destination",state.deformableDestination);DragInt(doc,"Sheet columns / block X",state.deformableColumns,1,48);DragInt(doc,"Sheet rows / block Y",state.deformableRows,1,48);DragInt(doc,"Render subdivision / block Z",state.deformableSubdivision,1,8);DragVec3(doc,"Size (metres)",state.deformableSize);TextField(doc,"Cloth source mesh asset ID",state.deformableSource);
+        int action=0;if(ImGui::Button("Create sheet"))action=1;ImGui::SameLine();if(ImGui::Button("Create tetrahedral block"))action=2;if(ImGui::Button("Import indexed cloth mesh"))action=3;
+        if(action)BakeEditorDeformable(doc,o.id,state,action);
+    }
+    if(!ValidDeformableSettings(d,error))ImGui::TextWrapped("Invalid configuration: %s",error.c_str());
+    if(state.runtime){auto* runtime=state.runtime->RuntimeDeformable(o.id,error);if(runtime)ImGui::Text("Runtime: %s | %zu contacts | min J %.3f | %s",runtime->sleeping?"sleeping":"active",runtime->stats.contacts,runtime->stats.minimumJacobian,runtime->error.c_str());else ImGui::TextWrapped("Runtime: %s",error.c_str());}
+    ImGui::TextWrapped("Nodes simulate in world space; root is initial placement. Explicit reset moves the entire state. Bone pins consume the fixed-step resolved pose. Render materials use normal Render slots.");
+}
+
 void LiquidMaterialEditor(EditorDocument& doc,LiquidMaterial& material){TextField(doc,"Liquid material identity",material.id);LiquidNumber(doc,"Density kg/m3",material.density);}
 void DrawLiquidBasin(EditorDocument& doc,SceneObject& o,EditorPanelState& state){auto& b=*o.liquidBasin;Checkbox(doc,"Enabled",b.enabled);AssetField(doc,"Physical cavity",b.geometry,AssetType::Liquid,true,state);AssetField(doc,"Baked capacity",b.asset,AssetType::Liquid,true,state);LiquidMaterialEditor(doc,b.material);LiquidNumber(doc,"Initial volume m3",b.initialVolume);LiquidNumber(doc,"Curve volume tolerance m3",b.volumeTolerance);LiquidNumber(doc,"Height tolerance metres",b.heightTolerance);
  Checkbox(doc,"Dynamic surface (rebake required)",b.surface.enabled);
@@ -515,6 +561,7 @@ ComponentEditor Make(const char* name, char indicator, std::optional<T> SceneObj
 
 const std::vector<ComponentEditor>& ComponentEditorRegistry() {
     static const std::vector<ComponentEditor> registry = {
+        Make<DeformableSettings>("Deformable",'D',&SceneObject::deformable,DrawDeformable),
         Make<LiquidBasinSettings>("Liquid basin",'Q',&SceneObject::liquidBasin,DrawLiquidBasin),
         Make<LiquidContainerSettings>("Liquid container",'C',&SceneObject::liquidContainer,DrawLiquidContainer),
         Make<LiquidConnectionSettings>("Liquid connection",'S',&SceneObject::liquidConnection,DrawLiquidConnection),
@@ -615,4 +662,19 @@ bool BakeEditorLiquid(EditorDocument& doc,SceneObjectId id,EditorPanelState& sta
  if(!BakeLiquidSurface(data,o->liquidBasin->surface,data.dynamicSurface,error,&geometry)){state.status=error;return false;}
  auto path=std::filesystem::path(state.project->AssetsDir())/"liquid"/("basin-"+std::to_string(id)+".judasbasin");std::filesystem::create_directories(path.parent_path());if(!SaveLiquidBasin(path.string(),data,error)){state.status=error;return false;}AssetRecord asset;auto* previous=state.assets->FindByRelativePath(std::filesystem::relative(path,state.project->RootDir()).generic_string());if(previous)asset=*previous;else if(!state.assets->Track(path.string(),asset,error)){state.status=error;return false;}doc.BeginEdit();doc.GetScene().Find(id)->liquidBasin->asset=asset.id;doc.CommitEdit();if(state.resources)state.resources->Invalidate(asset.id);PreviewLiquid(data,*o,o->liquidBasin->initialVolume,state);
  state.status="Baked "+std::to_string(data.capacity*1000)+" L capacity / "+std::to_string(data.curve.size())+" samples. Save scene.";return true;
+}
+
+bool BakeEditorDeformable(EditorDocument& doc,SceneObjectId id,EditorPanelState& state,int action){
+    auto* object=doc.GetScene().Find(id);std::string error;
+    if(!object||!object->deformable||!state.project||!state.assets||action<1||action>3){state.status="Select a deformable and an open project.";return false;}
+    try{
+            auto path=std::filesystem::path(state.project->AssetsDir())/state.deformableDestination;auto relative=path.lexically_normal().lexically_relative(state.project->AssetsDir());if(relative.empty()||relative.is_absolute()||*relative.begin()==".."||path.extension()!=".judasdeform")throw std::runtime_error("Choose a .judasdeform path inside project assets.");
+            if(std::filesystem::exists(path))throw std::runtime_error("Destination exists; choose a new name.");
+            DeformableAsset baked;
+            if(action==1)baked=MakeDeformableSheet(unsigned(state.deformableColumns),unsigned(state.deformableRows),state.deformableSize.x,state.deformableSize.y,unsigned(state.deformableSubdivision));
+            else if(action==2)baked=MakeDeformableBlock({state.deformableColumns,state.deformableRows,state.deformableSubdivision},glm::dvec3(state.deformableSize));
+            else{auto* source=state.assets->Find(state.deformableSource);MeshData mesh;if(!source||source->type!=AssetType::Mesh||!LoadModelMesh(source->path,mesh,error)||!ImportDeformableCloth(mesh,baked,error))throw std::runtime_error("Cloth import: "+error);baked.sourceAsset=source->id;if(!SceneFingerprintSha256File(source->path,baked.sourceFingerprint,error))throw std::runtime_error(error);}
+            auto bytes=EncodeDeformableAsset(baked);std::filesystem::create_directories(path.parent_path());std::ofstream output(path,std::ios::binary);output.write(bytes.data(),std::streamsize(bytes.size()));output.close();if(!output)throw std::runtime_error("Failed to write deformable asset.");AssetRecord record;if(!state.assets->Track(path.string(),record,error))throw std::runtime_error(error);doc.BeginEdit();object->deformable->asset=record.id;auto& attachments=object->deformable->attachments;size_t before=attachments.size();attachments.erase(std::remove_if(attachments.begin(),attachments.end(),[&](const auto& a){return !baked.groups.count(a.group);}),attachments.end());doc.CommitEdit();state.status="Deformable created and assigned: "+record.relativePath;if(before!=attachments.size())state.status+="; removed attachments to groups absent from the new topology.";
+        return true;
+    }catch(const std::exception& e){state.status=e.what();return false;}
 }

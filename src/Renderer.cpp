@@ -1081,7 +1081,9 @@ MeshHandle Renderer::CreateMesh(const MeshData& data) {
 
 bool Renderer::UpdateMeshVertices(MeshHandle handle, const std::vector<MeshVertex>& vertices) {
     GpuMesh* mesh = GetMesh(handle);
-    if (!mesh || mesh->ebo != 0) return false;
+    // Indexed deformables keep immutable topology; only their vertex stream
+    // changes. Existing non-indexed transient surfaces may still resize.
+    if (!mesh || (mesh->ebo != 0 && vertices.size()!=size_t(mesh->vertexCount))) return false;
     glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size() * sizeof(MeshVertex)),
                  vertices.empty() ? nullptr : vertices.data(), GL_DYNAMIC_DRAW);

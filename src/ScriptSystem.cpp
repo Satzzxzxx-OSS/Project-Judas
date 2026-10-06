@@ -51,6 +51,7 @@ export class Entity {
  get navigationLink(){return call("navLinkInfo",this.id)}
  setNavigationEnabled(component,enabled){return call("navEnabled",this.id,component,enabled)}
  get navigation(){return call("navAgentExists",this.id)?new NavigationAgent(this.id):null}
+ get deformable(){const epoch=call('deformableExists',this.id);return epoch?new Deformable(this.id,epoch):null}
  get character(){return call("characterExists",this.id)?new Character(this.id):null}
  get ragdoll(){return call('ragdollExists',this.id)?new Ragdoll(this.id):null}
  get audio(){return call('audioInfo',this.id)}
@@ -93,6 +94,21 @@ export class Material {
  assign(asset){return call('materialAssign',this.entityId,this.slot,asset)}
  set(parameters){return call('materialOverride',this.entityId,this.slot,parameters)}
  clearOverrides(){return call('materialClear',this.entityId,this.slot)}
+}
+export class Deformable {
+ constructor(id,epoch){this.id=id;this.epoch=epoch}
+ get valid(){return call('deformableValid',this.id,this.epoch)}
+ get state(){return call('deformableState',this.id,this.epoch)}
+ get enabled(){return this.state.enabled}
+ set enabled(value){call('deformableEnabled',this.id,this.epoch,value)}
+ reset(){return call('deformableReset',this.id,this.epoch)}
+ force(value,group=''){return call('deformableForce',this.id,this.epoch,value,group)}
+ impulse(value,group=''){return call('deformableImpulse',this.id,this.epoch,value,group)}
+ impulseAt(location,value){return call('deformableHitImpulse',this.id,this.epoch,location,value)}
+ release(group){return call('deformableRelease',this.id,this.epoch,group)}
+ attach(group,options){return call('deformableAttach',this.id,this.epoch,group,{...options,targetId:options.target?.id})}
+ setMaterial(options){return call('deformableMaterial',this.id,this.epoch,options)}
+ raycast(origin,direction,maximum){return call('deformableRaycast',this.id,this.epoch,origin,direction,maximum)}
 }
 export class Character {
  constructor(id){this.id=id}
@@ -586,6 +602,33 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         if(!ReadVec(c,arg(1),p)||!ReadVec(c,arg(2),up)||!ReadVec(c,arg(5),tangent)||JS_ToFloat64(c,&height,arg(3))||JS_ToFloat64(c,&radius,arg(4))||!std::isfinite(height)||!std::isfinite(radius)||height<0||radius<=0||glm::length(up)<1e-6f||glm::length(glm::cross(up,tangent))<1e-6f)return JS_ThrowTypeError(c,"invalid liquid query");
         auto sample=world.HasFluid()?world.FluidCoupling().SampleField(p,glm::normalize(up),float(height),float(radius),tangent):FluidFieldSample{};
         auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"immersion",JS_NewFloat64(c,sample.fraction));JS_SetPropertyStr(c,o,"density",JS_NewFloat64(c,sample.density));JS_SetPropertyStr(c,o,"velocity",Vec(c,sample.velocity));JS_SetPropertyStr(c,o,"acceleration",Vec(c,sample.acceleration));return o;
+    }
+    if(op.rfind("deformable",0)==0){
+        uint64_t id=0;try{id=std::stoull(String(c,arg(1)));}catch(...){return JS_ThrowReferenceError(c,"invalid deformable entity");}
+        std::string error;auto* d=world.RuntimeDeformable(id,error);
+        if(op=="deformableExists"){if(!d&&world.RuntimeDefinition(id)&&world.RuntimeDefinition(id)->deformable&&error!="loading")return JS_ThrowTypeError(c,"deformable: %s",error.c_str());return d?JS_NewString(c,std::to_string(d->generation).c_str()):JS_NULL;}
+        bool valid=d&&String(c,arg(2))==std::to_string(d->generation);
+        if(op=="deformableValid")return JS_NewBool(c,valid);
+        if(!valid)return JS_ThrowReferenceError(c,"stale/not ready deformable handle");
+        if(op=="deformableState"){
+            auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"enabled",JS_NewBool(c,d->settings.enabled));JS_SetPropertyStr(c,v,"sleeping",JS_NewBool(c,d->sleeping));JS_SetPropertyStr(c,v,"error",JS_NewString(c,d->error.c_str()));JS_SetPropertyStr(c,v,"mass",JS_NewFloat64(c,d->Mass()));JS_SetPropertyStr(c,v,"minimum",Vec(c,glm::vec3(d->Minimum())));JS_SetPropertyStr(c,v,"maximum",Vec(c,glm::vec3(d->Maximum())));JS_SetPropertyStr(c,v,"nodes",JS_NewUint32(c,unsigned(d->positions.size())));JS_SetPropertyStr(c,v,"contacts",JS_NewUint32(c,unsigned(d->stats.contacts)));JS_SetPropertyStr(c,v,"minimumJacobian",JS_NewFloat64(c,d->stats.minimumJacobian));JS_SetPropertyStr(c,v,"maximumStrain",JS_NewFloat64(c,d->stats.maximumStrain));auto groups=JS_NewArray(c);uint32_t n=0;for(auto& [name,_]:d->asset->groups)JS_SetPropertyUint32(c,groups,n++,JS_NewString(c,name.c_str()));JS_SetPropertyStr(c,v,"groups",groups);return v;
+        }
+        if(op=="deformableRaycast"){
+            glm::vec3 origin,direction;double maximum;if(!ReadVec(c,arg(3),origin)||!ReadVec(c,arg(4),direction)||JS_ToFloat64(c,&maximum,arg(5))||!std::isfinite(maximum)||maximum<0||glm::length(direction)<1e-8f)return JS_ThrowTypeError(c,"finite ray and nonnegative range required");auto hit=d->Raycast(origin,direction,maximum);if(!hit.hit)return JS_NULL;auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"point",Vec(c,glm::vec3(hit.point)));JS_SetPropertyStr(c,v,"normal",Vec(c,glm::vec3(hit.normal)));JS_SetPropertyStr(c,v,"distance",JS_NewFloat64(c,hit.distance));auto location=JS_NewObject(c);JS_SetPropertyStr(c,location,"epoch",JS_NewString(c,std::to_string(hit.location.generation).c_str()));JS_SetPropertyStr(c,location,"triangle",JS_NewUint32(c,hit.location.triangle));JS_SetPropertyStr(c,location,"weights",Vec(c,glm::vec3(hit.location.weights)));JS_SetPropertyStr(c,v,"location",location);return v;
+        }
+        if(!s->fixed)return JS_ThrowTypeError(c,"deformable mutation belongs in fixedUpdate");
+        if(op=="deformableEnabled"){if(!JS_IsBool(arg(3)))return JS_ThrowTypeError(c,"boolean required");d->settings.enabled=JS_ToBool(c,arg(3));d->Wake();return JS_TRUE;}
+        if(op=="deformableReset")return world.ResetDeformable(id,error)?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());
+        if(op=="deformableRelease")return JS_NewBool(c,d->Release(String(c,arg(3))));
+        if(op=="deformableForce"||op=="deformableImpulse"){glm::vec3 value;if(!ReadVec(c,arg(3),value))return JS_ThrowTypeError(c,"finite vector required");bool ok=op=="deformableForce"?d->Force(String(c,arg(4)),value):d->Impulse(String(c,arg(4)),value);return JS_NewBool(c,ok);}
+        if(op=="deformableHitImpulse"){DeformableLocation location;auto epoch=JS_GetPropertyStr(c,arg(3),"epoch"),triangle=JS_GetPropertyStr(c,arg(3),"triangle"),weights=JS_GetPropertyStr(c,arg(3),"weights");glm::vec3 w,impulse;bool ok=ReadVec(c,weights,w)&&ReadVec(c,arg(4),impulse)&&JS_ToUint32(c,&location.triangle,triangle)==0;try{location.generation=std::stoull(String(c,epoch));}catch(...){ok=false;}JS_FreeValue(c,epoch);JS_FreeValue(c,triangle);JS_FreeValue(c,weights);location.weights=w;return JS_NewBool(c,ok&&d->Impulse(location,impulse));}
+        if(op=="deformableMaterial"){
+            auto m=d->settings.material;const char* names[]={"density","stretchCompliance","shearCompliance","bendCompliance","volumeCompliance","damping","thickness","friction","airDrag","yieldStrain","plasticRate","maximumPlasticStrain"};double* values[]={&m.density,&m.stretchCompliance,&m.shearCompliance,&m.bendCompliance,&m.volumeCompliance,&m.damping,&m.thickness,&m.friction,&m.airDrag,&m.yieldStrain,&m.plasticRate,&m.maximumPlasticStrain};for(unsigned i=0;i<12;++i){auto v=JS_GetPropertyStr(c,arg(3),names[i]);bool ok=JS_IsUndefined(v)||JS_ToFloat64(c,values[i],v)==0;JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"invalid material number");}auto v=JS_GetPropertyStr(c,arg(3),"airVelocity");glm::vec3 air;bool has=!JS_IsUndefined(v),ok=!has||ReadVec(c,v,air);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"invalid air velocity");if(has)m.airVelocity=air;return d->SetMaterial(m,error)?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());
+        }
+        if(op=="deformableAttach"){
+            DeformableAttachment a;a.group=String(c,arg(3));if(!d->asset->groups.count(a.group))return JS_ThrowTypeError(c,"unknown attachment group");auto kind=JS_GetPropertyStr(c,arg(4),"kind"),entity=JS_GetPropertyStr(c,arg(4),"targetId"),joint=JS_GetPropertyStr(c,arg(4),"joint"),offset=JS_GetPropertyStr(c,arg(4),"offset");auto name=String(c,kind);bool ok=name=="world"||name=="body"||name=="bone";a.kind=name=="body"?DeformableAttachment::Kind::Body:name=="bone"?DeformableAttachment::Kind::Bone:DeformableAttachment::Kind::World;if(a.kind!=DeformableAttachment::Kind::World){try{a.target=std::stoull(String(c,entity));}catch(...){ok=false;}ok=ok&&world.RuntimeDefinition(a.target);if(a.kind==DeformableAttachment::Kind::Body)ok=ok&&world.Physics().IsBodyEnabled(world.RuntimeBody(a.target));if(a.kind==DeformableAttachment::Kind::Bone){a.joint=String(c,joint);auto* animation=world.RuntimeAnimation(a.target);ok=ok&&animation&&animation->asset&&FindSkeletonJoint(animation->asset->skeleton,a.joint)>=0;}}glm::vec3 v;if(!JS_IsUndefined(offset)){ok=ok&&ReadVec(c,offset,v);a.offset=v;}JS_FreeValue(c,kind);JS_FreeValue(c,entity);JS_FreeValue(c,joint);JS_FreeValue(c,offset);if(!ok)return JS_ThrowTypeError(c,"invalid attachment target/options");auto config=d->settings;size_t index=0;while(index<config.attachments.size()&&config.attachments[index].group!=a.group)++index;if(index==config.attachments.size())config.attachments.push_back(a);else config.attachments[index]=a;if(!ValidDeformableSettings(config,error))return JS_ThrowTypeError(c,"%s",error.c_str());d->settings=config;d->released.resize(config.attachments.size());d->released[index]=0;d->Wake();world.InvalidateDeformableTargets(id);return JS_TRUE;
+        }
+        return JS_ThrowTypeError(c,"unknown deformable operation");
     }
     if(op.rfind("character",0)==0){
         uint64_t id=0;try{id=std::stoull(String(c,arg(1)));}catch(...){return JS_ThrowReferenceError(c,"invalid character entity");}

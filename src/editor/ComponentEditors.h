@@ -43,3 +43,7 @@ void DrawCategoryMask(EditorDocument&,const char*,CategoryMask&,const CategoryRe
 bool BakeEditorNavigation(EditorDocument&,SceneObjectId,EditorPanelState&);
 
 bool BakeEditorLiquid(EditorDocument&,SceneObjectId,EditorPanelState&);
+
+// Same ordinary create/import command used by the inspector and editor smoke.
+// action: 1 sheet, 2 tetrahedral block, 3 indexed cloth import.
+bool BakeEditorDeformable(EditorDocument&,SceneObjectId,EditorPanelState&,int action);

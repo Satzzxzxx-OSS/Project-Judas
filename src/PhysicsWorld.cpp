@@ -1777,6 +1777,8 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
 
 const PhysicsWorld::StepStats& PhysicsWorld::LastStepStats() const { return m_impl->stats; }
 
+void PhysicsWorld::QueryBodiesInAabbInto(const glm::vec3& min,const glm::vec3& max,std::vector<BodyHandle>& output,const PhysicsQueryFilter& filter)const{output.clear();for(auto slot:m_impl->QuerySlots(Aabb{glm::min(min,max),glm::max(min,max)}))if(m_impl->MatchesQuery(slot,filter))output.push_back(m_impl->MakeHandle(slot));}
+
 std::vector<BodyHandle> PhysicsWorld::QueryBodiesInAabb(const glm::vec3& min, const glm::vec3& max, const PhysicsQueryFilter& filter) const {
     std::vector<BodyHandle> result;
     for (const unsigned int slot : m_impl->QuerySlots(Aabb{glm::min(min, max), glm::max(min, max)})) {

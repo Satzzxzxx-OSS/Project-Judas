@@ -1,5 +1,5 @@
 {
-  "checkpoint": "a9c6cd780b8c93db6355b791c6fdb34afec7cf53",
+  "checkpoint": "9e281d6ed57a7f88bc0a8fa48cd9c3cec6984961",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -335,6 +335,164 @@
       "reference": "docs/judasjs/character.md"
     },
     {
+      "symbol": "Deformable",
+      "kinds": [
+        "class"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Deformable",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.attach",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableAttach"
+      ],
+      "type": "docs/judas.d.ts:Deformable.attach",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.constructor",
+      "kinds": [
+        "call"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Deformable.constructor",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.enabled",
+      "kinds": [
+        "get",
+        "set"
+      ],
+      "native": [
+        "deformableEnabled"
+      ],
+      "type": "docs/judas.d.ts:Deformable.enabled",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.epoch",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Deformable.epoch",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.force",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableForce"
+      ],
+      "type": "docs/judas.d.ts:Deformable.force",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.id",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Deformable.id",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.impulse",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableImpulse"
+      ],
+      "type": "docs/judas.d.ts:Deformable.impulse",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.impulseAt",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableHitImpulse"
+      ],
+      "type": "docs/judas.d.ts:Deformable.impulseAt",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.raycast",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableRaycast"
+      ],
+      "type": "docs/judas.d.ts:Deformable.raycast",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.release",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableRelease"
+      ],
+      "type": "docs/judas.d.ts:Deformable.release",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.reset",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableReset"
+      ],
+      "type": "docs/judas.d.ts:Deformable.reset",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.setMaterial",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "deformableMaterial"
+      ],
+      "type": "docs/judas.d.ts:Deformable.setMaterial",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.state",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "deformableState"
+      ],
+      "type": "docs/judas.d.ts:Deformable.state",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
+      "symbol": "Deformable.valid",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "deformableValid"
+      ],
+      "type": "docs/judas.d.ts:Deformable.valid",
+      "reference": "docs/judasjs/deformables.md"
+    },
+    {
       "symbol": "Entity",
       "kinds": [
         "class"
@@ -495,6 +653,17 @@
       ],
       "native": [],
       "type": "docs/judas.d.ts:Entity.constructor",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.deformable",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "deformableExists"
+      ],
+      "type": "docs/judas.d.ts:Entity.deformable",
       "reference": "docs/judasjs/entities.md"
     },
     {
@@ -2680,6 +2849,18 @@
     "classification",
     "clearView",
     "colliderEnabled",
+    "deformableAttach",
+    "deformableEnabled",
+    "deformableExists",
+    "deformableForce",
+    "deformableHitImpulse",
+    "deformableImpulse",
+    "deformableMaterial",
+    "deformableRaycast",
+    "deformableRelease",
+    "deformableReset",
+    "deformableState",
+    "deformableValid",
     "delta",
     "destroy",
     "elapsed",

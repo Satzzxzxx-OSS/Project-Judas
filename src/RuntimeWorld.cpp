@@ -48,12 +48,13 @@ RuntimeWorld::~RuntimeWorld() {
 }
 
 bool RuntimeWorld::EntityRequiresFull(const SceneObject& o) {
-    if (o.vehicle || o.combustible || o.characterMotor || o.liquidContainer || o.liquidInteraction || !o.scripts.empty()) return true;
+    if (o.vehicle || o.combustible || o.characterMotor || o.deformable || o.liquidContainer || o.liquidInteraction || !o.scripts.empty()) return true;
     if (o.body && o.body->shape == SceneShape::Compound) return true;
     return false;
 }
 
 bool RuntimeWorld::ValidateVisualAssets(const SceneObject& o, std::string& error) const {
+    if(o.deformable){const auto* db=m_assets?m_assets->Assets():nullptr;auto* record=db?db->Find(o.deformable->asset):nullptr;if(!record||record->missing||record->type!=AssetType::Deformable){error="missing/wrong-type deformable asset";return false;}}
     if(o.liquidBasin||o.liquidContainer){const auto* db=m_assets?m_assets->Assets():nullptr;for(auto id:o.liquidBasin?std::vector<std::string>{o.liquidBasin->geometry,o.liquidBasin->asset}:std::vector<std::string>{o.liquidContainer->geometry}){const auto* a=db?db->Find(id):nullptr;LiquidResource resource;if(!a||a->missing||a->type!=AssetType::Liquid){error="missing/wrong-type liquid asset";return false;}std::ifstream file(a->path,std::ios::binary);std::vector<unsigned char> bytes{std::istreambuf_iterator<char>(file),{}};if(!DecodeLiquidResource(bytes,resource,error))return false;}}
 
     if(o.liquidContainer){const auto* db=m_assets?m_assets->Assets():nullptr;const auto* a=db?db->Find(o.liquidContainer->geometry):nullptr;LiquidGeometry geometry;if(!a||!LoadLiquidGeometry(a->path,geometry,error))return false;double capacity=0;for(auto& t:geometry.cells)capacity+=LiquidClip(t,{0,0,0,0},1).volume;if(o.liquidContainer->initialVolume>capacity){error="initial container volume exceeds physical capacity";return false;}}
@@ -326,7 +327,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
     if(runtimeSnapshot)m_policy=std::move(restoredPolicy);
     SynchronizeJoints();
-    for(const auto& o:scene.Objects())if((runtimeSnapshot||m_hasScripts||o.animation||o.ragdoll||o.characterMotor||!NavigationProperties(o).empty()||!LiquidProperties(o).empty())&&!FindEntity(o.id)){
+    for(const auto& o:scene.Objects())if((runtimeSnapshot||m_hasScripts||o.animation||o.ragdoll||o.characterMotor||o.deformable||!NavigationProperties(o).empty()||!LiquidProperties(o).empty())&&!FindEntity(o.id)){
         std::string unsupported;
         if(o.scripts.empty()&&!ValidateEntityDefinition(o,unsupported))continue;
         EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
@@ -340,6 +341,7 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
 
 bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     const FidelityPolicyContext& loadContext, std::string& outError) {
+    for(const auto& o:scene.Objects())if(o.deformable)m_deformableOwners.insert(o.id);
     for(const auto& o:scene.Objects())if(o.animation)m_animationOwners.insert(o.id);
     for(const auto& o:scene.Objects())if(o.joint){m_jointOwners.insert(o.id);m_jointParticipants.insert(o.joint->bodyA);if(o.joint->bodyB)m_jointParticipants.insert(o.joint->bodyB);}
     const auto fail = [&](const SceneObject& o, const std::string& what) {
@@ -350,6 +352,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
     for (const SceneObject& o : scene.Objects()) {
         if(o.ui&&o.ui->enabled){std::string uiError;if(!UI().Load(o.ui->asset,o.ui->name,o.id,uiError))return fail(o,uiError);}
         m_hasScripts|=!o.scripts.empty();
+        if(o.deformable){if(o.body||o.animation||o.ragdoll||o.characterMotor||o.transform.scale!=glm::vec3(1))return fail(o,"deformable owns node motion; owner cannot have another motion producer or nonunit scale");std::string error;if(!ValidDeformableSettings(*o.deformable,error)||!ValidateVisualAssets(o,error))return fail(o,error);if(m_assets){m_assets->AddRef(o.deformable->asset);m_referencedAssets.push_back(o.deformable->asset);m_assets->RequestDeformable(o.deformable->asset);}}
         m_hasLiquid|=!LiquidProperties(o).empty();
         if((o.liquidBasin||o.liquidContainer)&&m_assets){std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){m_assets->AddRef(id);m_referencedAssets.push_back(id);m_assets->RequestLiquid(id);}}
         m_hasNavigation|=o.navigationSurface.has_value()||o.navigationAgent.has_value()||o.navigationObstacle.has_value()||o.navigationLink.has_value()||o.navigationModifier.has_value();
@@ -733,8 +736,11 @@ void RuntimeWorld::RestoreAuthoredState() {
     if(m_navigation)m_navigation=std::make_unique<NavigationSystem>(m_navigation->Configuration());
     std::vector<EntityId> articulations;for(const auto& entry:m_ragdolls)articulations.push_back(entry.first);
     for(auto id:articulations){std::string error;LeaveRagdoll(id,0,error);}
-    m_ragdollReturns.clear();m_ragdollAutostarted.clear();ClearCharacters();m_animationInstances.clear();
-    m_scripts.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
+    // Destroy callbacks may still inspect lazy runtime components. Retire
+    // scripts before clearing them so callbacks cannot recreate reset state.
+    m_scripts.reset();
+    m_ragdollReturns.clear();m_ragdollAutostarted.clear();ClearDeformables();ClearCharacters();m_animationInstances.clear();
+    m_ui.reset();m_localization.reset();pointerCapture=false;m_touchEntityHistory.clear();m_physics.ClearTouchHistory();
     if (!m_built) return;
     for(const auto& o:ScriptObjects())if(o.ui&&o.ui->enabled){std::string error;UI().Load(o.ui->asset,o.ui->name,o.id,error);}
     for(auto& [id,info]:m_entityCategories){(void)id;info.tags=info.authoredTags;m_physics.SetBodyTags(info.body,info.tags);}
@@ -953,6 +959,7 @@ bool RuntimeWorld::ValidateEntityDestruction(EntityId id, std::string& error) co
 bool RuntimeWorld::DestroyEntity(EntityId id, std::string* outError) {
     std::string error;
     if (!ValidateEntityDestruction(id, error)) { if (outError) *outError = error; return false; }
+    RemoveDeformable(id);m_deformableOwners.erase(id);
     m_liquid->Remove(m_liquid->Handle(id));
     LeaveRagdoll(id,0,error);
     EntityRecord* e = FindEntity(id);
@@ -1234,11 +1241,13 @@ LightSwitch* RuntimeWorld::FindLightSwitch(SceneObjectId id) {
 void RuntimeWorld::Destroy() {
     m_regionPending.clear();m_regionAssets.clear();m_composed=false;
  JUDAS_PROFILE_SCOPE("World destroy"); PerformanceProfiler::Get().Boundary("World destroy");
+    m_scripts.reset();
     m_ragdolls.clear();m_ragdollReturns.clear();m_ragdollAutostarted.clear();
+    ClearDeformables();m_deformableOwners.clear();
     ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
-    m_scripts.reset();m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
+    m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioZones.clear();m_audioIdentities.clear();m_audioListener.reset();m_audioSystem=nullptr;

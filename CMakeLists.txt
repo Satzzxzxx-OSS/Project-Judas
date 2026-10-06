@@ -98,6 +98,9 @@ target_include_directories(judas_materials PUBLIC src)
 target_link_libraries(judas_materials PUBLIC ${JUDAS_GLM} judas_profiler)
 
 add_library(judas_engine STATIC
+    src/DeformableAsset.cpp
+    src/Deformable.cpp
+    src/WorldDeformables.cpp
     src/TextLayout.cpp
     src/Localization.cpp
     src/Material.cpp
@@ -1218,3 +1221,18 @@ target_compile_options(judas_save_streaming_tests PRIVATE -Wall -Wextra -Wpedant
 add_executable(judas_save_performance_tests tests/SavePerformanceTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_save_performance_tests PRIVATE judas_engine)
 target_compile_options(judas_save_performance_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(judas_deformable_tests tests/DeformableTests.cpp)
+target_link_libraries(judas_deformable_tests PRIVATE judas_engine)
+
+# M62 generic immutable topology preparation; no GL or alternate solver.
+add_executable(judas_deformable_bake tools/DeformableBake.cpp)
+target_link_libraries(judas_deformable_bake PRIVATE judas_engine)
+add_executable(judas_deformable_performance_tests tests/DeformablePerformanceTests.cpp)
+target_link_libraries(judas_deformable_performance_tests PRIVATE judas_engine)
+add_executable(judas_deformable_application_tests tests/DeformableApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_deformable_application_tests PRIVATE judas_engine)
+
+foreach(target judas_deformable_tests judas_deformable_bake judas_deformable_application_tests judas_deformable_performance_tests)
+  target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+endforeach()

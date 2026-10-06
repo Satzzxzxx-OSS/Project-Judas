@@ -112,6 +112,7 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
         task.material=std::make_shared<MaterialDefinition>();task.succeeded=ParseMaterial(std::string(bytes.begin(),bytes.end()),*task.material,task.error);
         if(task.succeeded)for(auto& map:task.material->maps)if(!map.asset.empty()){auto path=task.texturePaths.find(map.asset);if(path==task.texturePaths.end()){task.succeeded=false;task.error="missing/wrong-type material texture "+map.asset;break;}std::vector<uint8_t> imageBytes;if(!ReadWholeFile(path->second,imageBytes,task.error,context,&cancelled)||!DecodeTextureFromMemory(imageBytes.data(),imageBytes.size(),path->second,map.embedded,task.error)){task.cancelled=cancelled;task.succeeded=false;break;}}
     } else if(task.type==AssetType::Environment){task.succeeded=DecodeEnvironment(bytes,task.environment,task.error);
+    } else if(task.type==AssetType::Deformable){task.deformable=std::make_shared<DeformableAsset>();task.succeeded=DecodeDeformableAsset(bytes,*task.deformable,task.error);
     } else if(task.type==AssetType::Liquid){task.liquid=std::make_shared<LiquidResource>();task.succeeded=DecodeLiquidResource(bytes,*task.liquid,task.error);
     } else if (task.type == AssetType::Navigation) {
         task.navigation=std::make_shared<NavigationData>();task.succeeded=DecodeNavigation(bytes,*task.navigation,task.error);
@@ -144,7 +145,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     ++m_stats.misses;
     entry.error.clear();
     if (m_shutDown) { Fail(entry, "resource manager is shut down"); return entry; }
-    if (expected != AssetType::AudioEffect && expected != AssetType::Font && expected != AssetType::Catalog && expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
+    if (expected != AssetType::Deformable && expected != AssetType::AudioEffect && expected != AssetType::Font && expected != AssetType::Catalog && expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
     std::string path;
     if (!Resolve(id, expected, entry, path)) return entry;
 
@@ -203,7 +204,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         Fail(entry, task->error.empty() ? std::string("load failed") : task->error);
         return;
     }
-    if (task->type != AssetType::AudioEffect && task->type != AssetType::Font && task->type != AssetType::Catalog && task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
+    if (task->type != AssetType::Deformable && task->type != AssetType::AudioEffect && task->type != AssetType::Font && task->type != AssetType::Catalog && task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
     if(task->type==AssetType::Font){entry.font=task->font;entry.bytes=entry.font->bytes.size();
     } else if(task->type==AssetType::Catalog){entry.catalog=task->catalog;entry.bytes=0;for(auto& p:entry.catalog->messages)entry.bytes+=p.first.size()+p.second.size();
     } else if (task->type == AssetType::Mesh) {
@@ -215,6 +216,13 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         if(m_renderer)entry.material=m_renderer->CreateMaterial(*task->material);
         entry.bytes=sizeof(MaterialDefinition);for(auto& map:task->material->maps){entry.bytes+=EstimateTextureBytes(map.embedded);map.embedded=TextureData{};}entry.materialDefinition=task->material;
     } else if(task->type==AssetType::Environment){if(m_renderer)entry.environment=m_renderer->CreateEnvironment(task->environment);entry.bytes=0;for(auto& level:task->environment.specular)entry.bytes+=level.pixels.size()*6;entry.bytes+=task->environment.diffuse.pixels.size()*6+task->environment.brdf.size()*4;
+    } else if(task->type==AssetType::Deformable){
+        entry.deformable=task->deformable;const auto& a=*entry.deformable;
+        entry.bytes=EstimateMeshBytes(a.render)+a.nodes.size()*sizeof(glm::dvec3)+a.solids.size()*sizeof(DeformableTet)+a.cloth.size()*sizeof(DeformableTriangle)
+            +(a.massWeights.size()+a.measures.size())*sizeof(double)+a.triangles.size()*sizeof(glm::uvec3)+a.tetrahedra.size()*sizeof(glm::uvec4)
+            +a.edges.size()*sizeof(glm::uvec2)+a.bends.size()*sizeof(DeformableBend)+a.binding.size()*sizeof(DeformableBinding);
+        for(const auto& rows:{&a.neighbors,&a.excludedFaces,&a.excludedEdges}){entry.bytes+=rows->size()*sizeof(std::vector<unsigned>);for(const auto& row:*rows)entry.bytes+=row.size()*sizeof(unsigned);}
+        for(const auto& [name,nodes]:a.groups)entry.bytes+=name.size()+nodes.size()*sizeof(unsigned);
     } else if(task->type==AssetType::Liquid){entry.liquid=task->liquid;entry.bytes=entry.liquid->geometry.cells.size()*sizeof(LiquidTet);if(entry.liquid->basin)entry.bytes+=entry.liquid->basin->geometry.cells.size()*sizeof(LiquidTet)+entry.liquid->basin->curve.size()*sizeof(LiquidCurvePoint);
     } else if (task->type == AssetType::Navigation) {
         entry.navigation=task->navigation;entry.bytes=0;for(auto& layer:entry.navigation->layers)entry.bytes+=layer.size();
@@ -230,7 +238,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
     entry.state = ResourceState::Ready;
     entry.loadMilliseconds =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - task->requested).count();
-    if(task->type!=AssetType::Font&&task->type!=AssetType::Catalog&&task->type!=AssetType::Navigation&&task->type!=AssetType::Liquid)++m_stats.uploads;
+    if(task->type!=AssetType::Deformable&&task->type!=AssetType::Font&&task->type!=AssetType::Catalog&&task->type!=AssetType::Navigation&&task->type!=AssetType::Liquid)++m_stats.uploads;
     m_stats.bytesResident += entry.bytes;
     m_stats.peakBytesResident = std::max(m_stats.peakBytesResident, m_stats.bytesResident);
 }
@@ -447,7 +455,7 @@ void ResourceManager::DestroyGpu(Entry& entry) {
     }
     entry.material={};entry.environment={};entry.materialDefinition.reset();
     entry.mesh = MeshHandle{};
-    entry.skeletal.reset();entry.navigation.reset();entry.liquid.reset();entry.font.reset();entry.catalog.reset();
+    entry.skeletal.reset();entry.deformable.reset();entry.navigation.reset();entry.liquid.reset();entry.font.reset();entry.catalog.reset();
     entry.texture = TextureHandle{};
     entry.audio = AudioClipHandle{};entry.audioEnvironment.reset();
     entry.bytes = 0;
@@ -608,3 +616,6 @@ std::string ResourceManager::GetStreamAudioPath(const AssetId& id,std::string& e
  auto* record=m_assets?m_assets->Find(id):nullptr;if(!record||record->missing||record->type!=AssetType::Audio){error="Missing/wrong-type streamed audio asset: "+id;return {};}
  error.clear();return record->path;
 }
+
+ResourceState ResourceManager::RequestDeformable(const AssetId& id,JobPriority p){auto& e=Begin(id,AssetType::Deformable,p);return TypeMismatch(e.state,e.type,AssetType::Deformable)?ResourceState::Failed:e.state;}
+std::shared_ptr<const DeformableAsset> ResourceManager::GetDeformable(const AssetId& id,std::string& error){auto& e=Begin(id,AssetType::Deformable,JobPriority::Normal);if(e.type!=AssetType::Deformable){error="asset is not deformable data";return nullptr;}if(e.state!=ResourceState::Ready){error=e.state==ResourceState::Failed?e.error:"loading";return nullptr;}error.clear();return e.deformable;}

@@ -9066,3 +9066,35 @@ No universal hardware/network-filesystem power-loss guarantee is made.
 See [participation, limits and human review](M61_SAVES.md), the
 [`saves` reference](judasjs/saves.md) and [M61 evidence](evidence/m61/RESULTS.md).
 No fluid/audio/navigation algorithms, cloud service or VM checkpointing introduced.
+
+
+## M62 — cloth and volumetric deformables (combined review candidate)
+
+RuntimeWorld owns CPU-authoritative deformable instances. Shared immutable
+`.judasdeform` assets separate simulation nodes/topology/rest data, boundary contact
+geometry and stored render bindings. Cloth membrane/shear/bend constraints and
+volumetric tetrahedral strain/volume constraints use XPBD at the ordinary fixed
+cadence with bounded substeps/iterations. Optional bounded isochoric plastic rest
+flow belongs to each instance. Nodes are not Entities or RigidBodies.
+
+PhysicsWorld supplies primitive geometry/tree candidates and finite rigid-body
+reaction at one coupling boundary; it is not advanced a second time. Surface
+vertex/face and edge/edge contact use accelerated candidates and explicit topology
+exclusions. Bone pins consume the existing final resolved authoritative pose after
+animation/ragdoll. Dynamic body pins exchange finite reaction; static/world/bone
+anchors prescribe motion. Gravity is selected at node positions; owner placement
+is not applied twice to simulated world-frame nodes. Renderer maps/interpolates
+stored bindings and owns normal indexed mesh/material/shadow/camera/culling GL.
+
+Normal scene/prefab/resource/editor/export infrastructure carries the component.
+JudasJS exposes a safe Deformable facade, not raw native nodes or a project solver.
+M61 includes required conditional deformation state; M59 retains independent region
+state once and pins cross-region targets while attachments use them. GPU/contact
+caches rebuild. The ordinary Deformable Lab is content, not native dispatch.
+Current limits include sampled primitive contact, discrete EE contact, approximate
+cloth bending/materials, bounded non-inverted solids and unit owner scale. No
+terrain/general mesh collision expansion, CharacterMotor/event expansion, cloth
+wetting, fluid change, IK, fracture/tearing or M63 work was introduced.
+
+See [M62 implementation/limits](M62_DEFORMABLES.md),
+[JudasJS contract](judasjs/deformables.md) and [combined evidence](evidence/m62/RESULTS.md).

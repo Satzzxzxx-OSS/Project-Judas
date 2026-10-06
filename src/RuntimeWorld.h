@@ -327,6 +327,16 @@ public:
     AnimationInstance* RuntimeAnimation(EntityId);
     const std::vector<glm::mat4>* AnimationSkin(EntityId) const;
     void UpdateAnimations(float dt);
+    struct DeformableRecord {DeformableInstance simulation;std::vector<DeformableTarget> targets;mutable MeshData presentation;mutable MeshHandle mesh;uint64_t revision=0;mutable uint64_t mappedRevision=~uint64_t(0);mutable float mappedAlpha=-1;};
+    DeformableInstance* RuntimeDeformable(EntityId,std::string& error,bool staged=false);
+    void UpdateDeformables(double dt);
+    void DrawDeformables(Renderer&,float alpha)const;
+    void RemoveDeformable(EntityId);
+    void ClearDeformables();
+    bool RestoreDeformable(EntityId,const std::string&,std::string&,bool staged=false);
+    bool CaptureDeformable(EntityId,std::string&,std::string&);
+    bool ResetDeformable(EntityId,std::string&);
+    void InvalidateDeformableTargets(EntityId);
     bool SetFinalPose(EntityId,const SkeletalPose&,std::string& error);
     bool SetPoseContribution(EntityId,const std::string&,const PoseContribution&,std::string& error);
     void RemovePoseContribution(EntityId,const std::string&);
@@ -485,7 +495,8 @@ private:
     bool AppendSceneObjects(const Scene& scene, bool authored, const FidelityPolicyContext& context, std::string& error);
     Scene m_hierarchy; // local authored transforms, allocated only for parented scenes/spawns
     bool m_hasScripts=false,m_hasNavigation=false;
-    std::set<EntityId> m_animationOwners;
+    std::set<EntityId> m_animationOwners,m_deformableOwners;
+    std::map<EntityId,DeformableRecord> m_deformables;
     std::map<EntityId,CharacterInstance> m_characters;
     std::map<EntityId,AnimationInstance> m_animationInstances;
     std::map<EntityId,RagdollInstance> m_ragdolls;

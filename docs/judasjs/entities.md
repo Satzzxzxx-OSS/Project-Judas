@@ -81,3 +81,11 @@ acceleration gives a world torque; it does not add a controller or holding polic
 ## `Entity.liquid` (M54)
 
 Nullable generation-safe [LiquidVolume](liquid.md) owner after resource loading and fixed-step registration. It exposes conserved quantity/capacity/material snapshots and paired transfers. It is separate from the legacy PBF `world.fluidSample` API.
+
+## `Entity.deformable` — M62
+
+Returns a [Deformable](deformables.md) handle for an authored component after its
+normal asynchronous resource publishes. Absent/loading returns null; failed or
+stale source bakes throw a diagnostic TypeError. Mutable nodes remain native engine
+state. Force/impulse/attachment/material/reset mutations belong in fixedUpdate.
+Deformable-local picking queries the current surface, separate from rigid M44 casts.

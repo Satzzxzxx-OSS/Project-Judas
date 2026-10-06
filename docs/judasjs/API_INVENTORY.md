@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M61 review of the registered virtual module based on M60 checkpoint `a9c6cd780b8c93db6355b791c6fdb34afec7cf53`.
+M62 review of the registered virtual module based on starting checkpoint `9e281d6ed57a7f88bc0a8fa48cd9c3cec6984961`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -39,6 +39,21 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Character.supported` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
 | `Character.up` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](character.md) |
 | `Character.velocity` | `characterVelocity` | [declaration](../judas.d.ts) | [reference](character.md) |
+| `Deformable` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.attach` | `deformableAttach` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.enabled` | `deformableEnabled` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.epoch` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.force` | `deformableForce` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.impulse` | `deformableImpulse` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.impulseAt` | `deformableHitImpulse` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.raycast` | `deformableRaycast` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.release` | `deformableRelease` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.reset` | `deformableReset` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.setMaterial` | `deformableMaterial` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.state` | `deformableState` | [declaration](../judas.d.ts) | [reference](deformables.md) |
+| `Deformable.valid` | `deformableValid` | [declaration](../judas.d.ts) | [reference](deformables.md) |
 | `Entity` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.addTag` | `addTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.angularVelocity` | `angularVelocity`, `setAngularVelocity` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -54,6 +69,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.children` | `children` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.classification` | `classification` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.deformable` | `deformableExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.destroy` | `destroy` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.hasTag` | `hasTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |

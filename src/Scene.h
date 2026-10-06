@@ -1,4 +1,5 @@
 #pragma once
+#include "Deformable.h"
 #include "Classification.h"
 #include "Material.h"
 #include "NavigationTypes.h"
@@ -288,6 +289,7 @@ struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std
 struct SceneJointComponent {SceneObjectId bodyA=0,bodyB=0;JointSettings settings;};
 
 struct SceneObject {
+    std::optional<DeformableSettings> deformable;
     std::optional<LiquidBasinSettings> liquidBasin;
     std::optional<LiquidContainerSettings> liquidContainer;
     std::optional<LiquidConnectionSettings> liquidConnection;

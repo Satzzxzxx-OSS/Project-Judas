@@ -88,11 +88,12 @@ void DrawWorldGeometry(Renderer& r, const RuntimeWorld& world, const GameSession
                        float alpha, const WorldDrawOptions& options) {
     JUDAS_PROFILE_SCOPE("World culling and opaque submission");
     for (const RuntimeWorld::StaticRenderable& s : world.StaticRenderables()) {
-        if(!world.IsPublished(s.id))continue;
+        if(!world.IsPublished(s.id)||world.RuntimeDefinition(s.id)->deformable)continue;
         r.SetRenderLayer(world.RenderLayerOf(s.id));
         const auto t=world.PresentedTransform(s.id,SceneTransform{s.position,s.rotation,s.scale},alpha);
         DrawRenderable(r, world.Resources(), s.render, t.position, t.rotation, t.scale, 1.0f, world.CameraTexture(s.render.textureCamera),world.AnimationSkin(s.id));
     }
+    world.DrawDeformables(r,alpha);
     r.SetMaterialBindings({});
     if (options.includeTerrain) {
         for (const RuntimeWorld::Terrain& t : world.Terrains()) {

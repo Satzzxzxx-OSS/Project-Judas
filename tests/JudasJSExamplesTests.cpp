@@ -18,17 +18,35 @@ void Check(bool ok,const std::string& label){++checks;failures+=!ok;std::printf(
 int main(int argc,char** argv){
  fs::path out=argc>1?argv[1]:"build/m50-results";fs::create_directories(out);std::string only=argc>2?argv[2]:"";
  std::string error;EngineHost host;Check(host.Init("M50 cookbook",640,360,false,error),"real EngineHost");if(failures)return 1;host.Audio().Init(error,true);
- const char* names[]={"saves","streaming","localization","materials","profiling","liquid-surface","liquid","navigation","surface","presentation","impulse-point","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
+ const char* names[]={"deformable","saves","streaming","localization","materials","profiling","liquid-surface","liquid","navigation","surface","presentation","impulse-point","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
  for(auto name:names){if(!only.empty()&&only!=name)continue;
-  std::string n=name,project=n=="streaming"?"streamed_range":n=="localization"?"text_lab":n=="liquid-surface"?"liquid_surface_demo":n=="liquid"?"liquid_reservoir_demo":n=="navigation"?"shooter_game":n=="audio"?"script_demo":n=="joint"?"joint_demo":n=="animation"||n=="ragdoll"?"ragdoll_demo":"character_demo";
+  std::string n=name,project=n=="deformable"?"deformable_lab":n=="streaming"?"streamed_range":n=="localization"?"text_lab":n=="liquid-surface"?"liquid_surface_demo":n=="liquid"?"liquid_reservoir_demo":n=="navigation"?"shooter_game":n=="audio"?"script_demo":n=="joint"?"joint_demo":n=="animation"||n=="ragdoll"?"ragdoll_demo":"character_demo";
   auto root=fs::absolute(fs::path("build/m50-examples")/n);fs::remove_all(root);fs::create_directories(root);fs::copy("projects/"+project,root,fs::copy_options::recursive);
   auto example=std::string(n=="trigger"?"contacts":name);fs::copy_file("docs/judasjs/examples/"+example+".js",root/"Assets/example.js",fs::copy_options::overwrite_existing);
+  if(n=="deformable"){
+   fs::rename(root/"Assets/example.js",root/"Assets/deformable-example.js");
+   std::ofstream(root/"Assets/example.js")<<R"JS(import Base from './deformable-example.js';
+import {world,session} from 'judas';
+export default class extends Base {
+ destroy(){if(this.entity.valid){const d=this.entity.deformable;session.set('m62DestroyEpoch',d.epoch);}}
+ update(){if(this.fabric){try{this.fabric.force({x:0,y:0,z:1});}catch(e){this.state.phaseGuard=e instanceof TypeError;}}}
+ fixedUpdate(){super.fixedUpdate();const d=this.entity.deformable;if(!d)return;this.fabric=d;
+  if(!this.state.tested){const mass=d.state.mass;try{d.setMaterial({density:Number.MAX_VALUE});}catch(e){this.state.massGuard=e instanceof TypeError;}this.state.materialAtomic=d.state.mass===mass;
+   d.enabled=false;this.state.disabled=!d.force({x:0,y:0,z:1});d.enabled=true;
+   this.state.attached=d.attach('top',{kind:'body',target:world.entity('110'),offset:{x:0,y:0,z:0}})&&d.attach('top',{kind:'world'});
+   this.state.reset=d.reset();this.spawn=world.spawnPrefab('6262626262626262626262626262000b',{position:{x:0,y:3,z:5}});this.state.tested=true;
+  }
+  if(this.spawn?.valid&&this.spawn.deformable){const old=this.spawn.deformable;this.spawn.destroy();this.state.invalid=!old.valid;try{old.state;}catch(e){this.state.staleThrows=e instanceof ReferenceError;}this.spawn=null;}
+ }
+})JS";
+  }
   host.OpenProjectAssets(root.string(),(root/"Assets").string());AssetRecord script;
+  if(n=="deformable"){AssetRecord dependency;Check(host.Assets().Track((root/"Assets/deformable-example.js").string(),dependency,error),"deformable relative module registered through normal assets");}
   Check(host.Assets().Track((root/"Assets/example.js").string(),script,error),n+" normal registered script");
   Project p;Check(p.Load((root/(project+".judasproj")).string(),error),n+" normal project");
   Scene scene;Check(LoadSceneFromFile(p.StartupScenePath(),scene,error),n+" ordinary scene");
   if(n=="navigation"){Scene resolved;if(!ResolvePrefabs(scene,&host.Assets(),resolved,error)){Check(false,error);continue;}scene=std::move(resolved);for(auto& o:scene.Objects()){o.prefabAsset.clear();o.prefabRoot=o.prefabSource=0;o.prefabIds.clear();o.prefabOverrides.clear();}}
-  EntityId owner=n=="localization"?1:n=="liquid-surface"?10:n=="liquid"?10:n=="navigation"?1000:project=="character_demo"?40:10;
+  EntityId owner=n=="deformable"?100:n=="localization"?1:n=="liquid-surface"?10:n=="liquid"?10:n=="navigation"?1000:project=="character_demo"?40:10;
   for(auto& o:scene.Objects()){o.scripts.clear();o.ui.reset();if(n=="audio"&&o.audioEmitter)owner=o.id;}
   if(n=="joint")for(auto& o:scene.Objects())if(o.joint){owner=o.id;break;}
   if(n=="character"||n=="streaming")owner=10;
@@ -62,7 +80,7 @@ int main(int argc,char** argv){
   std::string state;for(const auto& s:world.Scripts()->Capture())if(s.entity==owner&&s.slot==1)state=s.json;
   std::printf("EXAMPLE %s %s\n",name,state.c_str());std::ofstream(out/(n+".json"))<<state;
   auto yes=[&](const char* key){return state.find(std::string("\"")+key+"\":true")!=std::string::npos;};
-  bool ok=n=="saves"?yes("resolved")&&yes("queued")&&yes("cancelled")&&yes("invalidTokens")&&session->Get("save_example")!="null":n=="streaming"?yes("active")&&session->Get("streamExample")=="1":n=="localization"?yes("supplementary")&&yes("plural")&&yes("named")&&yes("invalid")&&yes("nul")&&yes("keyLimit")&&yes("textWins"):n=="materials"?yes("changed")&&yes("reverted")&&yes("appearance")&&yes("stale"):n=="profiling"?yes("error")&&yes("invalid")&&state.find("\"value\":42")!=std::string::npos&&state.find("\"calls\":102")!=std::string::npos:n=="liquid-surface"?yes("ready")&&yes("conserved")&&yes("impulse")&&yes("presented"):n=="liquid"?yes("ready")&&yes("transferred")&&yes("conserved")&&yes("sample"):n=="navigation"?yes("sample")&&yes("path")&&yes("controlled"):n=="surface"?state.find("Entity.destroy")!=std::string::npos:
+  bool ok=n=="deformable"?yes("submitted")&&yes("disabled")&&yes("attached")&&yes("reset")&&yes("invalid")&&yes("staleThrows")&&yes("phaseGuard")&&yes("massGuard")&&yes("materialAtomic"):n=="saves"?yes("resolved")&&yes("queued")&&yes("cancelled")&&yes("invalidTokens")&&session->Get("save_example")!="null":n=="streaming"?yes("active")&&session->Get("streamExample")=="1":n=="localization"?yes("supplementary")&&yes("plural")&&yes("named")&&yes("invalid")&&yes("nul")&&yes("keyLimit")&&yes("textWins"):n=="materials"?yes("changed")&&yes("reverted")&&yes("appearance")&&yes("stale"):n=="profiling"?yes("error")&&yes("invalid")&&state.find("\"value\":42")!=std::string::npos&&state.find("\"calls\":102")!=std::string::npos:n=="liquid-surface"?yes("ready")&&yes("conserved")&&yes("impulse")&&yes("presented"):n=="liquid"?yes("ready")&&yes("transferred")&&yes("conserved")&&yes("sample"):n=="navigation"?yes("sample")&&yes("path")&&yes("controlled"):n=="surface"?state.find("Entity.destroy")!=std::string::npos:
    n=="presentation"?yes("synchronized")&&yes("frameMode")&&state.find("\"calls\":100")!=std::string::npos:
    n=="impulse-point"?yes("angular")&&yes("rejectsInvalid")&&yes("linear")&&yes("unchanged"):
    n=="physical-control"?yes("capture")&&state.find("\"mass\":40")!=std::string::npos:
@@ -74,7 +92,15 @@ int main(int argc,char** argv){
    n=="joint"?yes("controlled"):n=="animation"?yes("ready")&&yes("fade")&&yes("layers"):
    n=="ragdoll"?yes("entered")&&yes("left"):n=="character"?yes("controlled")&&yes("launched"):
    yes("invalid")&&yes("throws")&&yes("characterThrows")&&yes("lookupNull")&&yes("staleLookup");
-  Check(ok,n+" documented outcome");game.End();world.EndScripts();world.Destroy();Check(!world.Scripts(),n+" teardown");
+  Check(ok,n+" documented outcome");uint64_t stoppedEpoch=0;
+  if(n=="deformable"){auto* d=world.RuntimeDeformable(owner,error);stoppedEpoch=d?d->generation:0;}
+  game.End();
+  if(n=="deformable"){
+   world.RestoreAuthoredState();
+   Check(stoppedEpoch&&session->Get("m62DestroyEpoch")=="\""+std::to_string(stoppedEpoch)+"\"","Stop destroy callback sees existing deformable before cleanup");
+   auto* fresh=world.RuntimeDeformable(owner,error);Check(fresh&&fresh->generation!=stoppedEpoch&&session->Get("m62DestroyEpoch")!="\""+std::to_string(fresh->generation)+"\""&&fresh->velocities[0]==glm::dvec3(0),"authored reset creates a fresh rest instance after callbacks");
+  }
+  world.EndScripts();world.Destroy();Check(!world.Scripts(),n+" teardown");
  }
  host.Shutdown();std::printf("SUMMARY %d checks %d failures\n",checks,failures);return failures?1:0;
 }

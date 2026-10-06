@@ -84,6 +84,7 @@ declare module "judas" {
     readonly navigationLink: NavigationLinkInfo | null;
     setNavigationEnabled(component: "agent" | "obstacle" | "link", enabled: boolean): boolean;
     readonly character: Character | null;
+    readonly deformable: Deformable | null;
     readonly ragdoll: Ragdoll | null;
     readonly audio: AudioInfo | null;
     setAudio(settings:AudioSettingsPatch):boolean;
@@ -179,6 +180,26 @@ declare module "judas" {
     readonly profiles: {id: number; name: string; radius: number; height: number}[];
     readonly errors: {entityId: EntityId; message: string}[];
   };
+  export interface DeformableMaterialOptions {
+    density?:number;stretchCompliance?:number;shearCompliance?:number;bendCompliance?:number;volumeCompliance?:number;
+    damping?:number;thickness?:number;friction?:number;airDrag?:number;airVelocity?:Vec3;
+    yieldStrain?:number;plasticRate?:number;maximumPlasticStrain?:number;
+  }
+  export interface DeformableLocation {epoch:string;triangle:number;weights:Vec3}
+  export interface DeformableHit {point:Vec3;normal:Vec3;distance:number;location:DeformableLocation}
+  export interface DeformableState {enabled:boolean;sleeping:boolean;error:string;mass:number;minimum:Vec3;maximum:Vec3;nodes:number;contacts:number;minimumJacobian:number;maximumStrain:number;groups:string[]}
+  export interface DeformableAttachmentOptions {kind:'world'|'body'|'bone';target?:Entity;joint?:string;offset?:Vec3}
+  export class Deformable {
+    constructor(id:EntityId,epoch:string);
+    id:EntityId;epoch:string;
+    readonly valid:boolean;readonly state:DeformableState;
+    get enabled():boolean;set enabled(value:boolean);
+    reset():boolean;force(value:Vec3,group?:string):boolean;impulse(value:Vec3,group?:string):boolean;
+    impulseAt(location:DeformableLocation,value:Vec3):boolean;
+    release(group:string):boolean;attach(group:string,options:DeformableAttachmentOptions):boolean;
+    setMaterial(options:DeformableMaterialOptions):boolean;
+    raycast(origin:Vec3,direction:Vec3,maximum:number):DeformableHit|null;
+  }
   export class Character {
     constructor(id: EntityId);
     id: EntityId;

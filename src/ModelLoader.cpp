@@ -66,6 +66,7 @@ bool ConvertShapes(const tinyobj::attrib_t& attrib, const std::vector<tinyobj::s
                    MeshData& outMesh, std::string& outError) {
     outMesh.vertices.clear();
     outMesh.indices.clear();
+    outMesh.sourceVertexIds.clear();
 
     for (const tinyobj::shape_t& shape : shapes) {
         for (const tinyobj::index_t& index : shape.mesh.indices) {
@@ -103,6 +104,7 @@ bool ConvertShapes(const tinyobj::attrib_t& attrib, const std::vector<tinyobj::s
             // path, per MeshData's own convention, not that the index buffer
             // is maximally compact.
             outMesh.vertices.push_back(vertex);
+            outMesh.sourceVertexIds.push_back(uint32_t(index.vertex_index));
             outMesh.indices.push_back(static_cast<std::uint32_t>(outMesh.indices.size()));
         }
     }

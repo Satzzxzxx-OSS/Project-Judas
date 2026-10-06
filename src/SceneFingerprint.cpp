@@ -371,6 +371,8 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
             w.Boolean(bool(o.renderCamera));if(o.renderCamera)w.U64(o.renderCamera->renderMask);
         }
     }
+    size_t deformables=0;for(const auto& o:scene.Objects())deformables+=o.deformable.has_value();
+    if(deformables){w.Text("Judas.Deformable.1");w.U64(deformables);for(const auto& o:scene.Objects())if(o.deformable){w.U64(o.id);auto properties=DeformableProperties(o);w.U64(properties.size());for(auto [k,v]:properties){w.Text(k);w.Text(v);}}}
     size_t liquid=0;for(const auto& o:scene.Objects())liquid+=!LiquidProperties(o).empty();
     if(liquid){w.Text("Judas.ConservedLiquid.1");w.U64(liquid);for(const auto& o:scene.Objects()){auto properties=LiquidProperties(o);if(properties.empty())continue;std::string error;if(!ValidateLiquidComponents(o,error))w.Fail(error);w.U64(o.id);w.U64(properties.size());for(auto [k,v]:properties){w.Text(k);w.Text(v);}}}
     size_t navigation=0;for(const auto& o:scene.Objects())navigation+=!NavigationProperties(o).empty();

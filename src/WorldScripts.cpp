@@ -22,7 +22,7 @@ bool RuntimeWorld::SetRuntimeTransform(EntityId id,const SceneTransform& t){
     const auto* authored=RuntimeDefinition(id);if(!authored)return false;
     // Baked static capacity data cannot silently follow a runtime teleport.
     if(authored->liquidBasin&&(t.position!=authored->transform.position||t.rotation!=authored->transform.rotation||t.scale!=authored->transform.scale))return false;
-    if(authored->liquidContainer&&t.scale!=glm::vec3(1))return false;
+    if((authored->liquidContainer||authored->deformable)&&t.scale!=glm::vec3(1))return false;
     if(!std::isfinite(glm::dot(t.position,t.position))||!std::isfinite(glm::dot(t.scale,t.scale))||
        !std::isfinite(glm::dot(t.rotation,t.rotation))||glm::dot(t.rotation,t.rotation)<1e-12f)return false;
     if(auto it=m_characters.find(id);it!=m_characters.end()){

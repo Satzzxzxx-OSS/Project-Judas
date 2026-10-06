@@ -20,8 +20,8 @@ double ms(Clock::time_point t){return std::chrono::duration<double,std::milli>(C
 bool finite(glm::dvec3 v){return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);}
 bool read(const std::string& path,std::string& text,std::string& error,size_t cap=8*1024*1024){std::ifstream f(path,std::ios::binary|std::ios::ate);auto size=f.tellg();if(!f||size<0||size>std::streamoff(cap)){error="missing/oversized world content: "+path;return false;}text.resize(size_t(size));f.seekg(0);if(!f.read(text.data(),size)){error="cannot read world content: "+path;return false;}return true;}
 std::string orderKey(const WorldRegion& r,SceneObjectId local){std::ostringstream s;s<<"0:"<<std::setw(10)<<std::setfill('0')<<(1000000-r.priority)<<":"<<r.id<<":"<<std::setw(20)<<local;return s.str();}
-void remap(SceneObject& o,const std::map<SceneObjectId,SceneObjectId>& ids){auto map=[&](SceneObjectId& id){if(id&&ids.count(id))id=ids.at(id);};map(o.id);map(o.parent);map(o.prefabRoot);if(o.render)map(o.render->textureCamera);if(o.joint){map(o.joint->bodyA);map(o.joint->bodyB);}if(o.liquidConnection){map(o.liquidConnection->source);map(o.liquidConnection->destination);}for(auto& [source,id]:o.prefabIds){(void)source;map(id);}}
-bool reference(SceneObject& o,const std::string& field,SceneObjectId id){if(field=="parent"){o.parent=id;return true;}if(field=="textureCamera"&&o.render){o.render->textureCamera=id;return true;}if(field=="bodyA"&&o.joint){o.joint->bodyA=id;return true;}if(field=="bodyB"&&o.joint){o.joint->bodyB=id;return true;}if(field=="source"&&o.liquidConnection){o.liquidConnection->source=id;return true;}if(field=="destination"&&o.liquidConnection){o.liquidConnection->destination=id;return true;}return false;}
+void remap(SceneObject& o,const std::map<SceneObjectId,SceneObjectId>& ids){auto map=[&](SceneObjectId& id){if(id&&ids.count(id))id=ids.at(id);};map(o.id);map(o.parent);map(o.prefabRoot);if(o.render)map(o.render->textureCamera);if(o.joint){map(o.joint->bodyA);map(o.joint->bodyB);}if(o.deformable)for(auto& a:o.deformable->attachments)map(a.target);if(o.liquidConnection){map(o.liquidConnection->source);map(o.liquidConnection->destination);}for(auto& [source,id]:o.prefabIds){(void)source;map(id);}}
+bool reference(SceneObject& o,const std::string& field,SceneObjectId id){if(field.rfind("deformable:",0)==0&&o.deformable){for(auto& a:o.deformable->attachments)if(a.group==field.substr(11)){a.target=id;return true;}return false;}if(field=="parent"){o.parent=id;return true;}if(field=="textureCamera"&&o.render){o.render->textureCamera=id;return true;}if(field=="bodyA"&&o.joint){o.joint->bodyA=id;return true;}if(field=="bodyB"&&o.joint){o.joint->bodyB=id;return true;}if(field=="source"&&o.liquidConnection){o.liquidConnection->source=id;return true;}if(field=="destination"&&o.liquidConnection){o.liquidConnection->destination=id;return true;}return false;}
 }
 bool ParseWorldManifest(const std::string& text,WorldManifest& out,std::string& error){
     if(text.size()>1024*1024||text.find('\0')!=std::string::npos){error="world manifest exceeds 1MiB or contains NUL";return false;}
@@ -79,13 +79,14 @@ bool PrepareWorldRegion(const WorldRegion& region,const Project& project,const A
         }
         if(o.particleEmitter)result.bytes+=size_t(o.particleEmitter->maxParticles)*(sizeof(VisualParticle)+sizeof(ParticleBillboard));
         if(o.ragdoll){if(!o.render||o.render->meshAsset.empty()||!assets.Find(o.render->meshAsset)||assets.Find(o.render->meshAsset)->type!=AssetType::Mesh){error="ragdoll region requires an imported skeletal mesh";return false;}result.requiredGeometry.push_back(o.render->meshAsset);}
+        if(o.deformable)result.requiredGeometry.push_back(o.deformable->asset);
         if(o.liquidBasin)for(auto id:{o.liquidBasin->geometry,o.liquidBasin->asset})result.requiredGeometry.push_back(id);
         if(o.liquidContainer)result.requiredGeometry.push_back(o.liquidContainer->geometry);
         if(o.liquidBasin&&o.liquidBasin->enabled){const auto* a=assets.Find(o.liquidBasin->asset);std::string bytes;LiquidResource resource;
             if(!a||!read(a->path,bytes,error,128*1024*1024)||!DecodeLiquidResource({bytes.begin(),bytes.end()},resource,error)||!resource.basin||resource.basin->fingerprint!=LiquidSourceFingerprint(flat,o,assets,error)){error="stale/missing region liquid bake: "+error;return false;}
         }
     }
-    for(auto& id:result.requiredGeometry){auto* asset=assets.Find(id);if(!asset||asset->missing||(asset->type!=AssetType::Mesh&&asset->type!=AssetType::Liquid)){error="missing/incompatible required region geometry "+id;return false;}}
+    for(auto& id:result.requiredGeometry){auto* asset=assets.Find(id);if(!asset||asset->missing||(asset->type!=AssetType::Mesh&&asset->type!=AssetType::Deformable&&asset->type!=AssetType::Liquid)){error="missing/incompatible required region geometry "+id;return false;}}
     std::sort(result.requiredGeometry.begin(),result.requiredGeometry.end());result.requiredGeometry.erase(std::unique(result.requiredGeometry.begin(),result.requiredGeometry.end()),result.requiredGeometry.end());
     out=std::move(result);return true;
 }
@@ -99,7 +100,7 @@ struct WorldStreaming::Impl {
     RuntimeWorld& world;ResourceManager& resources;Project project;WorldManifest manifest;
     bool restoredRecords=false;std::string baselineError,restoredBaseline;uint64_t previousResourceBudget=0;JobHandle baselineJob;std::shared_ptr<std::string> baseline=std::make_shared<std::string>();
     struct Product {PreparedWorldRegion data;std::string error;double elapsed=0;};
-    struct Snapshot {SceneObject definition;EntityPhysicalState state;bool destroyed=false;std::vector<ScriptStateRecord> scripts;};
+    struct Snapshot {SceneObject definition;EntityPhysicalState state;bool destroyed=false;std::vector<ScriptStateRecord> scripts;std::string deformable;};
     struct Region {
         RegionStatus status;JobHandle job;std::shared_ptr<Product> product;
         std::map<SceneObjectId,EntityId> mapping;std::vector<EntityId> members;Scene local,flat;
@@ -118,7 +119,7 @@ struct WorldStreaming::Impl {
     ~Impl(){resources.SetBudgetBytes(previousResourceBudget);if(baselineJob.IsValid())resources.Jobs()->Cancel(baselineJob);for(auto& [_,r]:regions){if(r.job.IsValid())resources.Jobs()->Cancel(r.job);releaseHandoff(r);}}
     void releaseHandoff(Region& r){for(auto& a:r.handoffRefs)resources.ReleaseRef(a);r.handoffRefs.clear();}
     void clearPrepared(Region& r){releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};for(auto& [_,id]:r.mapping)if(!owners.count(id))gravityOrder.erase(id);r.mapping.clear();r.members.clear();r.next=r.navNext=r.resourceNext=0;}
-    size_t savedBytes(const std::map<SceneObjectId,Snapshot>& saved)const {size_t bytes=0;for(auto& [_,snap]:saved){bytes+=sizeof(Snapshot)+sizeof(SceneObject)*2;for(auto& [key,value]:ObjectProperties(snap.definition))bytes+=key.size()+value.size();for(auto& js:snap.scripts)bytes+=js.json.size();}return bytes;}
+    size_t savedBytes(const std::map<SceneObjectId,Snapshot>& saved)const {size_t bytes=0;for(auto& [_,snap]:saved){bytes+=sizeof(Snapshot)+sizeof(SceneObject)*2+snap.deformable.size();for(auto& [key,value]:ObjectProperties(snap.definition))bytes+=key.size()+value.size();for(auto& js:snap.scripts)bytes+=js.json.size();}return bytes;}
     void recount(){stats.resourceResidentBytes=resources.Stats().bytesResident;stats.resourceCacheBudget=resources.BudgetBytes();stats.pendingBytes=stats.liveBytes=stats.retainedBytes=stats.active=stats.pending=0;for(auto& [id,r]:regions){auto& s=r.status;s.demands=0;for(auto& [_,q]:requests)if(q.region==id)++s.demands;s.retained=r.retainedBytes;stats.retainedBytes+=s.retained;
         if(s.state=="active"||s.state=="unloading"){++stats.active;stats.liveBytes+=s.bytes;}else if(s.state=="preparing"||s.state=="prepared"||s.state=="installing"){++stats.pending;stats.pendingBytes+=s.bytes;if(s.state=="installing")stats.liveBytes+=s.bytes;}
     }}
@@ -130,6 +131,7 @@ struct WorldStreaming::Impl {
         if(manifest.regions.at(id).policy=="resident")add("authored resident policy");
         for(auto& o:world.ScriptObjects()){
             auto own=owners.find(o.id);bool here=own!=owners.end()&&own->second==id;
+            if(o.deformable){std::string error;auto* deform=world.RuntimeDeformable(o.id,error);const auto& settings=deform?deform->settings:*o.deformable;for(size_t i=0;i<settings.attachments.size();++i){const auto& a=settings.attachments[i];if(a.enabled&&(!deform||!deform->released[i])&&a.target&&Owner(a.target)==id&&Owner(o.id)!=id)add("external deformable attachment");}}
             if(here&&(o.liquidBasin||o.liquidContainer||o.liquidConnection))add("conserved liquid group: no lossless suspension");
             if(!here&&o.parent&&Owner(o.parent)==id)add("external hierarchy parent");
             if(here)if(auto* agent=world.Navigation().Agent(o.id);agent&&(agent->hasDestination||agent->onLink||agent->stopped))add("navigation intent in use: adopt or clear before suspension");
@@ -138,20 +140,22 @@ struct WorldStreaming::Impl {
             if(o.characterMotor)if(auto* motor=world.RuntimeCharacter(o.id)){auto support=world.EntityIdOfBody(motor->result.support);if(support&&Owner(support)==id&&Owner(o.id)!=id)add("active character support");}
             if(o.joint){if(Owner(o.joint->bodyA)==id&&Owner(o.id)!=id)add("external joint body A");if(Owner(o.joint->bodyB)==id&&Owner(o.id)!=id)add("external joint body B");}
             if(auto* agent=world.Navigation().Agent(o.id);agent&&(agent->onLink||agent->hasDestination)&&!here){for(auto& corner:agent->path.corners){if(corner.link&&Owner(corner.link)==id)add("active navigation link/corridor");auto surface=world.Navigation().Sample(corner.position,1);if(surface&&Owner(surface->surface)==id)add("active navigation surface corridor");}}
-            if(!here&&((o.body&&o.body->motion==SceneBodyMotion::Dynamic)||o.characterMotor||o.liquidContainer)){
-                EntityPhysicalState state;if(world.GetEntityState(o.id,state)){
+            if(!here&&((o.body&&o.body->motion==SceneBodyMotion::Dynamic)||o.characterMotor||o.liquidContainer||o.deformable)){
+                auto gravityDependency=[&](glm::vec3 position){
                     EntityId winner=0;std::string first;
-                    for(auto& g:world.GravityRegions()){auto d=glm::inverse(g.rotation)*(state.position-g.position);bool inside=g.component.regionShape==SceneRegionShape::Sphere?glm::length(d)<=g.component.regionRadius:glm::all(glm::lessThanEqual(glm::abs(d),g.component.regionHalfExtents));
+                    for(auto& g:world.GravityRegions()){auto d=glm::inverse(g.rotation)*(position-g.position);bool inside=g.component.regionShape==SceneRegionShape::Sphere?glm::length(d)<=g.component.regionRadius:glm::all(glm::lessThanEqual(glm::abs(d),g.component.regionHalfExtents));
                         auto key=gravityOrder.find(g.id);if(inside&&key!=gravityOrder.end()&&(winner==0||key->second<first)){winner=g.id;first=key->second;}}
-                    if(winner&&Owner(winner)==id)add("gravity dependency in use");
-                }
+                    return winner&&Owner(winner)==id;
+                };
+                if(o.deformable){std::string error;if(auto* deform=world.RuntimeDeformable(o.id,error))for(auto position:deform->positions)if(gravityDependency(glm::vec3(position))){add("deformable node gravity dependency in use");break;}}
+                else {EntityPhysicalState state;if(world.GetEntityState(o.id,state)&&gravityDependency(state.position))add("gravity dependency in use");}
             }
         }
         for(auto& [other,def]:manifest.regions)if(other!=id&&regions.at(other).status.state=="active"&&std::find(def.dependencies.begin(),def.dependencies.end(),id)!=def.dependencies.end())add("active dependent "+other);
     }
     std::string Owner(EntityId id)const{auto it=owners.find(id);return it==owners.end()?"root":it->second;}
     bool snapshot(Region& r,std::string& error){auto records=world.Scripts()?world.Scripts()->Capture():std::vector<ScriptStateRecord>{};auto result=r.saved;
-        for(auto& [local,id]:r.mapping){Snapshot s;const auto* def=world.RuntimeDefinition(id);s.destroyed=!def;if(def){s.definition=*def;s.definition.tags=world.TagsOf(id);world.GetEntityState(id,s.state);if(s.definition.joint){JointState joint;if(world.Physics().GetJoint(world.RuntimeJoint(id),joint)){s.definition.joint->settings=joint.settings;
+        for(auto& [local,id]:r.mapping){Snapshot s;const auto* def=world.RuntimeDefinition(id);s.destroyed=!def;if(def){s.definition=*def;s.definition.tags=world.TagsOf(id);if(def->deformable){auto* deform=world.RuntimeDeformable(id,error);if(!deform||!world.CaptureDeformable(id,s.deformable,error))return false;s.definition.deformable=deform->settings;}world.GetEntityState(id,s.state);if(s.definition.joint){JointState joint;if(world.Physics().GetJoint(world.RuntimeJoint(id),joint)){s.definition.joint->settings=joint.settings;
                     // Native world anchors are already in the simulation frame; authored
                     // settings are relative to their joint entity, including on revisit.
                     if(!s.definition.joint->bodyB){auto inverse=glm::inverse(s.definition.transform.rotation);s.definition.joint->settings.anchorB=inverse*(joint.settings.anchorB-s.definition.transform.position);s.definition.joint->settings.frameB=glm::normalize(inverse*joint.settings.frameB);}
@@ -233,7 +237,7 @@ void WorldStreaming::Advance(bool paused){
         if(s.state=="prepared"&&needed.count(id)){
             if(m->baselineJob.IsValid()){s.error="waiting for authored baseline";continue;}if(!m->baselineError.empty()){s.state="failed";s.error=m->baselineError;m->clearPrepared(r);s.bytes=0;continue;}
             auto& required=r.product->data.requiredGeometry;
-            while(budget()&&r.resourceNext<required.size()){auto id=required[r.resourceNext++];unit([&]{m->resources.AddRef(id);r.handoffRefs.push_back(id);if(m->resources.Assets()->Find(id)->type==AssetType::Mesh)m->resources.RequestMesh(id);else m->resources.RequestLiquid(id);},r);}
+            while(budget()&&r.resourceNext<required.size()){auto id=required[r.resourceNext++];unit([&]{m->resources.AddRef(id);r.handoffRefs.push_back(id);if(m->resources.Assets()->Find(id)->type==AssetType::Mesh)m->resources.RequestMesh(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Deformable)m->resources.RequestDeformable(id);else m->resources.RequestLiquid(id);},r);}
             bool loading=r.resourceNext<required.size();for(auto& asset:required){auto state=m->resources.StateOf(asset);if(state==ResourceState::Failed){s.state="failed";s.error="required geometry resource: "+m->resources.ErrorOf(asset);break;}if(state!=ResourceState::Ready)loading=true;else if(m->resources.Assets()->Find(asset)->type==AssetType::Mesh&&!m->resources.TryGetSkeletal(asset)){s.state="failed";s.error="required ragdoll mesh has no skeleton";break;}}
             if(s.state=="failed"){m->clearPrepared(r);s.bytes=0;continue;}if(loading){s.error="waiting for required geometry";continue;}
         }
@@ -285,10 +289,24 @@ void WorldStreaming::Advance(bool paused){
                 // Complete publication is one atomic boundary. Native surface registration
                 // is indivisible and measured; source certificates were checked on workers.
                 bool ok=true;std::string error;unit([&]{JUDAS_PROFILE_SCOPE("Streaming atomic publication");
-                    if(ok){m->world.Navigation().PublishSurfaces(r.members);m->world.PublishRegion(r.members);for(auto& [source,snap]:r.saved)if(!snap.destroyed&&r.mapping.count(source)){auto runtime=r.mapping.at(source);auto t=snap.definition.transform;t.position=snap.state.position;t.rotation=snap.state.rotation;m->world.SetRuntimeTransform(runtime,t);m->world.SetEntityState(runtime,snap.state);if(auto* motor=m->world.RuntimeCharacter(runtime))motor->velocity=snap.state.linearVelocity;std::vector<ScriptStateRecord> records=snap.scripts;for(auto& js:records)js.entity=runtime;if(!records.empty())m->world.RestoreScriptState(records,error,m->restoredRecords);}
-                        m->world.RebuildRegionGravity(m->gravityOrder);}
+                    // Restore required node state while the region is private.
+                    for(auto& [source,snap]:r.saved)if(!snap.destroyed&&!snap.deformable.empty()&&r.mapping.count(source)){
+                        auto runtime=r.mapping.at(source);
+                        if(!m->world.RestoreDeformable(runtime,snap.deformable,error,true)){ok=false;break;}
+                        auto* deform=m->world.RuntimeDeformable(runtime,error,true);
+                        for(auto& attachment:deform->settings.attachments){for(auto& [oldLocal,oldSnapshot]:r.saved)if(attachment.target==oldSnapshot.definition.id&&r.mapping.count(oldLocal)){attachment.target=r.mapping.at(oldLocal);break;}}
+                        for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==source&&ref.field.rfind("deformable:",0)==0)for(auto& attachment:deform->settings.attachments)if(attachment.group==ref.field.substr(11))attachment.target=Resolve(ref.target,ref.targetLocal);
+                    }
+                    if(ok){m->world.Navigation().PublishSurfaces(r.members);m->world.PublishRegion(r.members);
+                        for(auto& [source,snap]:r.saved)if(!snap.destroyed&&r.mapping.count(source)){
+                            auto runtime=r.mapping.at(source);auto t=snap.definition.transform;t.position=snap.state.position;t.rotation=snap.state.rotation;
+                            m->world.SetRuntimeTransform(runtime,t);m->world.SetEntityState(runtime,snap.state);if(auto* motor=m->world.RuntimeCharacter(runtime))motor->velocity=snap.state.linearVelocity;
+                            std::vector<ScriptStateRecord> records=snap.scripts;for(auto& js:records)js.entity=runtime;if(!records.empty()&&!m->world.RestoreScriptState(records,error,m->restoredRecords)){ok=false;break;}
+                        }
+                        m->world.RebuildRegionGravity(m->gravityOrder);
+                    }
                 },r);
-                if(!ok){s.state="unloading";s.error=error;r.unload=true;r.scriptsEnded=true;}else {s.state="active";s.loadMs=ms(r.requested);m->releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};r.activate=false;}
+                if(!ok){m->world.HideRegion(r.members);s.state="unloading";s.error=error;r.unload=true;r.scriptsEnded=true;}else {s.state="active";s.loadMs=ms(r.requested);m->releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};r.activate=false;}
             }
         }
         if(s.state=="active"&&!needed.count(id)&&!paused&&budget()){r.suspensionError.clear();m->pins(id);if(s.pins.empty()){unit([&]{JUDAS_PROFILE_SCOPE("Streaming snapshot and script teardown");std::string error;if(!m->snapshot(r,error)){r.suspensionError=error;s.pins.push_back(error);}else {s.state="unloading";m->world.EndRegionScripts(r.members);m->world.HideRegion(r.members);r.scriptsEnded=true;r.unload=true;}},r);}}
@@ -316,7 +334,9 @@ SceneObjectId WorldStreaming::ResolvePersistentKey(const std::string& key)const{
  if(key.rfind("region:",0)==0){auto split=key.rfind(':');if(split<=7)return 0;auto tail=key.substr(split+1);size_t end=0;auto local=std::stoull(tail,&end);return end==tail.size()?Resolve(key.substr(7,split-7),local):0;}}catch(...){}return 0;
 }
 void WorldStreaming::ResumeOwnership(){m->previousResourceBudget=m->resources.BudgetBytes();m->resources.SetBudgetBytes(m->manifest.resourceCacheBytes);}
-void WorldStreaming::Persist(SaveArchive& a){
+unsigned WorldStreaming::ArchiveVersion()const{for(auto& [_,r]:m->regions)for(auto& [__,s]:r.saved)if(!s.deformable.empty())return 2;return 1;}
+void WorldStreaming::Persist(SaveArchive& a,unsigned version){
+ a.Require(version==1||version==2,"unsupported streaming archive version");
  std::string baseline=m->world.BaselineFingerprint();a(baseline);a.Require(baseline.size()==64,"composed authored identity not ready");if(a.reading){m->restoredRecords=true;m->restoredBaseline=baseline;m->world.SetCompositionFingerprint(baseline);}
  a.Require(a.reading||SaveReady(),"streaming residency transaction pending");
  uint32_t count=uint32_t(m->regions.size());a(count);a.Require(count==m->regions.size(),"saved manifest region mismatch");std::set<std::string> seen;
@@ -325,7 +345,7 @@ void WorldStreaming::Persist(SaveArchive& a){
   uint32_t records=uint32_t(r.saved.size());a(records);a.Require(records<=4096,"region retained record bound");if(a.reading)r.saved.clear();
   for(uint32_t j=0;j<records;++j){SceneObjectId local=0;Impl::Snapshot snapshot;std::string text;
    if(!a.reading){auto it=r.saved.begin();std::advance(it,j);local=it->first;snapshot=it->second;WriteSceneObjectBlock(snapshot.definition,text);}
-   a(local,snapshot.destroyed,text,snapshot.state.position,snapshot.state.rotation,snapshot.state.linearVelocity,snapshot.state.angularVelocity);
+   a(local,snapshot.destroyed,text,snapshot.state.position,snapshot.state.rotation,snapshot.state.linearVelocity,snapshot.state.angularVelocity);if(version>=2)a(snapshot.deformable);
    uint32_t scripts=uint32_t(snapshot.scripts.size());a(scripts);a.Require(scripts<=16,"region script count bound");if(a.reading)snapshot.scripts.resize(scripts);for(auto& s:snapshot.scripts)a(s.entity,s.slot,s.json);
    if(a.reading){if(!snapshot.destroyed){std::vector<std::string> lines;std::istringstream input(text);std::string line;while(std::getline(input,line))lines.push_back(line);size_t cursor=0;std::string error;a.Require(ParseSceneObjectBlock(lines,cursor,snapshot.definition,error)&&cursor==lines.size(),"invalid retained definition");}a.Require(r.saved.emplace(local,std::move(snapshot)).second,"duplicate retained identity");}
   }

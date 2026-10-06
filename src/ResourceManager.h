@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "AssetDatabase.h"
+#include "Deformable.h"
 #include "AudioSystem.h"
 #include "NavigationAsset.h"
 #include "LiquidTypes.h"
@@ -117,6 +118,8 @@ public:
     std::shared_ptr<const TextFont> TryGetFont(const AssetId&);
     ResourceState RequestCatalog(const AssetId&,JobPriority priority=JobPriority::Normal);
     std::shared_ptr<const Catalog> TryGetCatalog(const AssetId&);
+    ResourceState RequestDeformable(const AssetId&,JobPriority priority=JobPriority::Normal);
+    std::shared_ptr<const DeformableAsset> GetDeformable(const AssetId&,std::string& error);
     ResourceState RequestLiquid(const AssetId&,JobPriority priority=JobPriority::Normal);
     std::shared_ptr<const LiquidResource> GetLiquid(const AssetId&,std::string& error);
     ResourceState RequestNavigation(const AssetId&,JobPriority priority=JobPriority::Normal);
@@ -221,6 +224,7 @@ private:
         std::shared_ptr<TextFont const> font;std::shared_ptr<Catalog> catalog;
         std::shared_ptr<NavigationData> navigation;
         std::shared_ptr<LiquidResource> liquid;
+        std::shared_ptr<DeformableAsset> deformable;
         std::shared_ptr<MaterialDefinition> material;EnvironmentData environment;
         std::map<std::string,std::string> texturePaths;
         std::thread::id decodeThread;
@@ -239,6 +243,7 @@ private:
         std::shared_ptr<const TextFont> font;std::shared_ptr<const Catalog> catalog;
         std::shared_ptr<const NavigationData> navigation;
         std::shared_ptr<const LiquidResource> liquid;
+        std::shared_ptr<const DeformableAsset> deformable;
         std::vector<MaterialDefinition> meshMaterials;std::vector<MeshPrimitive> meshPrimitives;
         std::shared_ptr<const MaterialDefinition> materialDefinition;MaterialHandle material;EnvironmentHandle environment;
         std::string error;

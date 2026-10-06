@@ -89,3 +89,14 @@ See [M59 authoring/component matrix](../M59_WORLD_STREAMING.md) and the executab
 [streaming cookbook](examples/streaming.js). Related APIs:
 [scene/session](scenes-state.md), [navigation](navigation.md),
 [character motors](character.md), [physics](physics.md).
+
+## Deformable residency — M62
+
+Independent deformables retain node/velocity/plastic/material/attachment state once
+before sliced teardown, then restore privately before publication with fresh owner
+IDs and handle epochs. An active attachment from another region pins its target
+region; releasing it permits suspension. Manifest reference fields use
+`deformable:<group>` with normal qualified region/local IDs. The selected gravity
+region is retained when live simulated node positions depend on it. Existing
+animation/ragdoll residency restrictions remain; M62 does not pretend a pinned
+region unloaded. See [Deformable](deformables.md) and [save slots](saves.md).

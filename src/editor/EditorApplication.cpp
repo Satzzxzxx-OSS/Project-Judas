@@ -417,7 +417,7 @@ std::string EditorApplication::WorldStatePathFor(const std::string& scenePath) c
 }
 
 bool EditorApplication::OpenScene(const std::string& path, std::string& outError) {
-    m_panels.liquidPreview.Clear();
+    m_panels.liquidPreview.Clear();m_panels.deformablePreview.Clear();
     const std::string resolved = ResolveScenePath(path);
     Scene authored, resolvedPrefabs;
     if(!LoadSceneFromFile(resolved,authored,outError)||!ResolvePrefabs(authored,&m_host->Assets(),resolvedPrefabs,outError))return false;
@@ -770,7 +770,7 @@ void EditorApplication::DrawEditOverlay(Renderer& renderer, const Scene& scene) 
     m_debugLines.Clear();
     BuildAuthoredDebugLines(scene, m_panels.debug, m_debugLines);
     if(m_panels.debug.navigation)m_debugLines.Append(m_panels.navigationPreview);
-    m_debugLines.Append(m_panels.liquidPreview);
+    m_debugLines.Append(m_panels.liquidPreview);m_debugLines.Append(m_panels.deformablePreview);
     if (const SceneObject* selected = scene.Find(m_document.Selected())) BuildSelectionLines(*selected, m_debugLines);
     renderer.DrawDebugLines(m_debugLines.Lines(), /*depthTest=*/true);
     renderer.DrawDebugLines(m_gizmoLines.Lines(), /*depthTest=*/false);
@@ -1011,6 +1011,15 @@ int EditorApplication::Run(int argc, char** argv) {
     std::string autotestBaseline;
     if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_LIQUID_BAKE")){std::vector<SceneObjectId> ids;for(const auto& o:m_document.GetScene().Objects())if(o.liquidBasin)ids.push_back(o.id);for(auto id:ids){bool ok=BakeEditorLiquid(m_document,id,m_panels);std::fprintf(stderr,"[editor autotest] liquid bake %llu: %s: %s\n",static_cast<unsigned long long>(id),ok?"PASS":"FAIL",m_panels.status.c_str());}}
     if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_NAV_BAKE")){std::vector<SceneObjectId> surfaces;for(const auto& o:m_document.GetScene().Objects())if(o.navigationSurface)surfaces.push_back(o.id);for(auto id:surfaces){bool ok=BakeEditorNavigation(m_document,id,m_panels);std::fprintf(stderr,"[editor autotest] navigation bake %llu: %s: %s\n",static_cast<unsigned long long>(id),ok?"PASS":"FAIL",m_panels.status.c_str());}}
+    if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_DEFORMABLE")){
+        m_panels.deformableColumns=9;m_panels.deformableRows=13;m_panels.deformableSubdivision=2;m_panels.deformableSize={2,3,1};m_panels.deformableDestination="deformables/editor-sheet.judasdeform";
+        bool sheet=BakeEditorDeformable(m_document,100,m_panels,1);
+        m_panels.deformableColumns=4;m_panels.deformableRows=2;m_panels.deformableSubdivision=2;m_panels.deformableSize={3,1,1};m_panels.deformableDestination="deformables/editor-block.judasdeform";
+        bool block=BakeEditorDeformable(m_document,300,m_panels,2);
+        std::fprintf(stderr,"[editor autotest] deformable sheet/block authoring: %s / %s: %s\n",sheet?"PASS":"FAIL",block?"PASS":"FAIL",m_panels.status.c_str());
+        if(const char* source=std::getenv("JUDAS_EDITOR_AUTOTEST_DEFORMABLE_SOURCE")){m_panels.deformableSource=source;m_panels.deformableDestination="deformables/editor-import.judasdeform";bool imported=BakeEditorDeformable(m_document,501,m_panels,3);std::fprintf(stderr,"[editor autotest] deformable indexed import authoring: %s: %s\n",imported?"PASS":"FAIL",m_panels.status.c_str());}
+
+    }
     if (autotest) SaveSceneToString(m_document.GetScene(), autotestBaseline);
     const auto screenshot = [&](const std::string& path) {
         std::vector<unsigned char> pixels;

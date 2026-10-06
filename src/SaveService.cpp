@@ -61,7 +61,7 @@ void SaveService::Advance(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& 
    snapshot.project=m_identity;snapshot.scene=m_session.Current();snapshot.content=m_content;snapshot.displayName=m_name;snapshot.metadata=m_metadata;snapshot.timestamp=uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
    if(!WorldPersistence::Capture(*world,snapshot.participants,error)){Finish(error);return;}
    try{SaveArchive a;auto values=m_session.m_values;auto locale=m_session.Localization(&m_resources).Locale();a(values,locale);snapshot.participants["session"]={1,std::move(a.bytes)};
-    SaveArchive stream;bool composed=m_session.ComposedProject();stream(composed);if(composed){std::string e;auto* coordinator=m_session.Streaming(*world,e);if(!coordinator)throw std::runtime_error(e);coordinator->Persist(stream);}snapshot.participants["streaming"]={1,std::move(stream.bytes)};
+    SaveArchive stream;unsigned streamVersion=1;bool composed=m_session.ComposedProject();stream(composed);if(composed){std::string e;auto* coordinator=m_session.Streaming(*world,e);if(!coordinator)throw std::runtime_error(e);streamVersion=coordinator->ArchiveVersion();coordinator->Persist(stream,streamVersion);}snapshot.participants["streaming"]={streamVersion,std::move(stream.bytes)};
    }catch(const std::exception& e){error=e.what();Finish(error);return;}
    s.captureMs=ms(start);
   }
@@ -84,8 +84,8 @@ void SaveService::Advance(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& 
   if(s.operation!="load"){Finish("");return;}
   auto& saved=m_product->snapshot;
   if(saved.project!=m_identity||saved.content!=m_content||std::find(m_session.Scenes().begin(),m_session.Scenes().end(),saved.scene)==m_session.Scenes().end()){error="save incompatible with registered project/content";Finish(error);return;}
-  if(saved.gameVersion!=1||saved.participants.size()!=11){error="unsupported save game/participant schema";Finish(error);return;}
-  Scene scene;if(!WorldPersistence::SceneFrom(saved.participants,scene,error)){Finish(error);return;}
+  if(saved.gameVersion!=1||(saved.participants.size()!=11&&saved.participants.size()!=12)){error="unsupported save game/participant schema";Finish(error);return;}
+  Scene scene;if(!WorldPersistence::SceneFrom(saved.participants,scene,error)){Finish(error);return;}const bool hasDeformable=std::any_of(scene.Objects().begin(),scene.Objects().end(),[](const auto& o){return bool(o.deformable);});if(saved.participants.size()!=size_t(11+hasDeformable)||bool(saved.participants.count("deformables"))!=hasDeformable){error="deformable participant does not match snapshot components";Finish(error);return;}
   m_restoreStart=Clock::now();m_stagedSession=std::make_shared<SceneSession>(m_session.m_project,saved.scene);m_staged=std::make_unique<RuntimeWorld>();m_staged->SetSceneControl(m_stagedSession);m_staged->audioGroups=m_session.m_project.Settings().audio;m_staged->legacyGameplay=m_session.m_project.Settings().legacyGameplay;
   if(!m_staged->Build(scene,&m_resources,error,&m_session.m_project.Settings().classification,&m_session.m_project.Settings().navigation,true)){Finish(error);return;}s.state="preparing";
  }
@@ -98,7 +98,7 @@ void SaveService::Advance(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& 
  if(!WorldPersistence::Restore(*m_staged,saved.participants,error)){Finish(error);return;}
  try{
   auto it=saved.participants.find("session");if(it==saved.participants.end()||it->second.version!=1)throw std::runtime_error("required session participant missing/newer");SaveArchive a(it->second.data);std::map<std::string,std::string> values;std::string locale;a(values,locale);a.Finish();for(auto& [key,json]:values)if(!m_stagedSession->Set(key,json,error))throw std::runtime_error(error);if(!m_stagedSession->Localization(&m_resources).Configuration().locales.empty()&&!m_stagedSession->Localization(&m_resources).SetLocale(locale,error))throw std::runtime_error(error);
-  it=saved.participants.find("streaming");if(it==saved.participants.end()||it->second.version!=1)throw std::runtime_error("required streaming participant missing/newer");SaveArchive b(it->second.data);bool composed=false;b(composed);if(composed!=m_session.ComposedProject())throw std::runtime_error("saved composition mismatch");if(composed){auto* stream=m_stagedSession->Streaming(*m_staged,error);if(!stream)throw std::runtime_error(error);stream->Persist(b);}b.Finish();
+  it=saved.participants.find("streaming");if(it==saved.participants.end()||(it->second.version!=1&&it->second.version!=2))throw std::runtime_error("required streaming participant missing/newer");SaveArchive b(it->second.data);bool composed=false;b(composed);if(composed!=m_session.ComposedProject())throw std::runtime_error("saved composition mismatch");if(composed){auto* stream=m_stagedSession->Streaming(*m_staged,error);if(!stream)throw std::runtime_error(error);stream->Persist(b,it->second.version);}b.Finish();
  }catch(const std::exception& e){error=e.what();Finish(error);return;}
  s.state="restoring";
  }

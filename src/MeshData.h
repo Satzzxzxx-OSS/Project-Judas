@@ -37,6 +37,9 @@ struct MeshData {
     std::vector<MeshSkinVertex> skinVertices;
     std::shared_ptr<const SkeletalAsset> skeletal;
     std::vector<MeshVertex> vertices;
+    // Importer position identities, independent of UV/normal seams. Empty means
+    // the indexed vertices themselves are the deliberate topology contract.
+    std::vector<uint32_t> sourceVertexIds;
     // Empty means "draw non-indexed" (glDrawArrays) — Judas's existing
     // built-in cube/sphere primitives use this; an imported model always
     // populates it (glDrawElements). 32-bit indices: this engine's meshes
