@@ -36,6 +36,7 @@
 class SceneSession;
 class RadialTerrain;
 class ResourceManager;
+struct PhysicalMaterial;
 class ProductionFluidCoupling;
 
 // Milestone 28: the RUNTIME instance of a Scene.
@@ -307,6 +308,8 @@ public:
     bool SetAppearance(const SceneSettings&);
     BodyHandle RuntimeBody(EntityId id) const;
     JointHandle RuntimeJoint(EntityId owner);
+    bool SetRuntimeJoint(EntityId owner,const SceneJointComponent&,bool remove,std::string& error);
+    bool SetBodyMaterial(EntityId,const std::string&,const PhysicalMaterial*,std::string& error);
     CharacterMotor* RuntimeCharacter(EntityId id);
     void UpdateCharacters(float dt);
     LiquidSystem& Liquids(){return *m_liquid;}
@@ -324,8 +327,12 @@ public:
     std::optional<RuntimeView> view;
     bool SetRuntimeView(const SceneTransform& pose,float fov);
     struct AnimationLayer {AnimationLayerSettings settings;AnimationPlayback playback;std::vector<int> mask;SkeletalPose reference;};
-    struct AnimationInstance {std::shared_ptr<const SkeletalAsset> asset;AnimationPlayback playback;PoseMixer mixer;SkeletalPose sourcePose,finalPose;std::vector<glm::mat4> skin;std::vector<AnimationLayer> layers;std::map<std::string,PoseContribution> external;std::string error;std::vector<glm::mat4> previousWorld,recentWorld;float motionDt=0;};
+    struct AnimationInstance {EntityId owner=0;std::shared_ptr<const SkeletalAsset> asset;AnimationPlayback playback;PoseMixer mixer;SkeletalPose sourcePose,finalPose;std::vector<glm::mat4> skin;std::vector<AnimationLayer> layers;std::map<std::string,PoseContribution> external;std::string error;std::vector<glm::mat4> previousWorld,recentWorld;float motionDt=0;};
     AnimationInstance* RuntimeAnimation(EntityId);
+    bool JointPose(EntityId,const std::string& key,const std::string& space,float alpha,SceneTransform&);
+    bool SetLimbIK(EntityId,const LimbIKSettings&,bool remove,std::string&);
+    void UpdateSockets();
+    bool SetSocket(EntityId,const SceneSocketComponent&,bool remove,std::string&);
     const std::vector<glm::mat4>* AnimationSkin(EntityId) const;
     void UpdateAnimations(float dt);
     struct FractureRigidState {std::vector<EntityId> parts;std::vector<JointHandle> bonds,supports;bool initialized=false;};

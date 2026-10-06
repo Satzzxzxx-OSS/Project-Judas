@@ -41,6 +41,7 @@ struct ProjectSettings {
     std::string name;
     std::string saveIdentity; // stable local/export save namespace; empty derives legacy name/file identity
     std::string iconAsset; // optional texture asset ID; empty uses the Judas icon
+    std::vector<std::string> exportScenes,excludeScenes; // empty inclusion means all registered scenes
     std::string startupScene;  // project-relative scene file
     std::string assetsDir = "Assets";
     std::string scenesDir = "Scenes";

@@ -113,6 +113,7 @@ void ResourceManager::RunLoadTask(LoadTask& task, const JobContext* context) {
         task.material=std::make_shared<MaterialDefinition>();task.succeeded=ParseMaterial(std::string(bytes.begin(),bytes.end()),*task.material,task.error);
         if(task.succeeded)for(auto& map:task.material->maps)if(!map.asset.empty()){auto path=task.texturePaths.find(map.asset);if(path==task.texturePaths.end()){task.succeeded=false;task.error="missing/wrong-type material texture "+map.asset;break;}std::vector<uint8_t> imageBytes;if(!ReadWholeFile(path->second,imageBytes,task.error,context,&cancelled)||!DecodeTextureFromMemory(imageBytes.data(),imageBytes.size(),path->second,map.embedded,task.error)){task.cancelled=cancelled;task.succeeded=false;break;}}
     } else if(task.type==AssetType::Environment){task.succeeded=DecodeEnvironment(bytes,task.environment,task.error);
+    } else if(task.type==AssetType::PhysicalMaterial){task.physicalMaterial=std::make_shared<PhysicalMaterial>();task.succeeded=ParsePhysicalMaterial(std::string(bytes.begin(),bytes.end()),*task.physicalMaterial,task.error);
     } else if(task.type==AssetType::Collision){task.collision=std::make_shared<CollisionAsset>();task.succeeded=DecodeCollisionAsset(bytes,*task.collision,task.error);
         if(task.succeeded&&!task.collision->sourceAsset.empty()){auto found=task.texturePaths.find(task.collision->sourceAsset);if(found==task.texturePaths.end()||CollisionAssetStale(*task.collision,found->second,task.error)){task.succeeded=false;task.error="stale/missing collision source; recook "+task.collision->sourceAsset;}}
     } else if(task.type==AssetType::Deformable){task.deformable=std::make_shared<DeformableAsset>();task.succeeded=DecodeDeformableAsset(bytes,*task.deformable,task.error);
@@ -148,7 +149,7 @@ ResourceManager::Entry& ResourceManager::Begin(const AssetId& id, AssetType expe
     ++m_stats.misses;
     entry.error.clear();
     if (m_shutDown) { Fail(entry, "resource manager is shut down"); return entry; }
-    if (expected != AssetType::Collision && expected != AssetType::Deformable && expected != AssetType::AudioEffect && expected != AssetType::Font && expected != AssetType::Catalog && expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
+    if (expected != AssetType::PhysicalMaterial && expected != AssetType::Collision && expected != AssetType::Deformable && expected != AssetType::AudioEffect && expected != AssetType::Font && expected != AssetType::Catalog && expected != AssetType::Navigation && expected != AssetType::Liquid && (expected == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, expected == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return entry; }
     std::string path;
     if (!Resolve(id, expected, entry, path)) return entry;
 
@@ -208,7 +209,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         Fail(entry, task->error.empty() ? std::string("load failed") : task->error);
         return;
     }
-    if (task->type != AssetType::Collision && task->type != AssetType::Deformable && task->type != AssetType::AudioEffect && task->type != AssetType::Font && task->type != AssetType::Catalog && task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
+    if (task->type != AssetType::PhysicalMaterial && task->type != AssetType::Collision && task->type != AssetType::Deformable && task->type != AssetType::AudioEffect && task->type != AssetType::Font && task->type != AssetType::Catalog && task->type != AssetType::Navigation && task->type != AssetType::Liquid && (task->type == AssetType::Audio ? !m_audio : (!m_renderer && !m_headlessResidency))) { Fail(entry, task->type == AssetType::Audio ? "no audio system" : "no renderer (headless)"); return; }
     if(task->type==AssetType::Font){entry.font=task->font;entry.bytes=entry.font->bytes.size();
     } else if(task->type==AssetType::Catalog){entry.catalog=task->catalog;entry.bytes=0;for(auto& p:entry.catalog->messages)entry.bytes+=p.first.size()+p.second.size();
     } else if (task->type == AssetType::Mesh) {
@@ -220,6 +221,7 @@ void ResourceManager::CompleteTask(Entry& entry, const std::shared_ptr<LoadTask>
         if(m_renderer)entry.material=m_renderer->CreateMaterial(*task->material);
         entry.bytes=sizeof(MaterialDefinition);for(auto& map:task->material->maps){entry.bytes+=EstimateTextureBytes(map.embedded);map.embedded=TextureData{};}entry.materialDefinition=task->material;
     } else if(task->type==AssetType::Environment){if(m_renderer)entry.environment=m_renderer->CreateEnvironment(task->environment);entry.bytes=0;for(auto& level:task->environment.specular)entry.bytes+=level.pixels.size()*6;entry.bytes+=task->environment.diffuse.pixels.size()*6+task->environment.brdf.size()*4;
+    } else if(task->type==AssetType::PhysicalMaterial){entry.physicalMaterial=task->physicalMaterial;entry.bytes=sizeof(PhysicalMaterial);
     } else if(task->type==AssetType::Collision){entry.collision=task->collision;const auto& a=*entry.collision;entry.bytes=a.vertices.size()*sizeof(glm::dvec3)+a.faces.size()*sizeof(CollisionFace)+a.nodes.size()*sizeof(CollisionNode)+a.order.size()*sizeof(uint32_t);
     } else if(task->type==AssetType::Deformable){
         entry.deformable=task->deformable;const auto& a=*entry.deformable;
@@ -638,4 +640,11 @@ std::shared_ptr<const CollisionAsset> ResourceManager::RequireCollision(const As
  auto& e=Begin(id,AssetType::Collision,JobPriority::High);if(e.type!=AssetType::Collision){error="asset is not cooked collision";return nullptr;}
  auto task=e.task;if(e.state!=ResourceState::Ready&&e.state!=ResourceState::Failed&&task){if(m_jobs&&task->job.IsValid())m_jobs->Wait(task->job);CompleteTask(e,task);if(m_jobs)m_jobs->Forget(task->job);m_inFlight.erase(std::remove(m_inFlight.begin(),m_inFlight.end(),task),m_inFlight.end());}
  error=e.state==ResourceState::Ready?"":e.error;return e.state==ResourceState::Ready?e.collision:nullptr;
+}
+
+ResourceState ResourceManager::RequestPhysicalMaterial(const AssetId& id,JobPriority priority){auto& e=Begin(id,AssetType::PhysicalMaterial,priority);return TypeMismatch(e.state,e.type,AssetType::PhysicalMaterial)?ResourceState::Failed:e.state;}
+std::shared_ptr<const PhysicalMaterial> ResourceManager::RequirePhysicalMaterial(const AssetId& id,std::string& error){
+ auto& e=Begin(id,AssetType::PhysicalMaterial,JobPriority::High);if(e.type!=AssetType::PhysicalMaterial){error="asset is not physical material";return nullptr;}
+ auto task=e.task;if(e.state!=ResourceState::Ready&&e.state!=ResourceState::Failed&&task){if(m_jobs&&task->job.IsValid())m_jobs->Wait(task->job);CompleteTask(e,task);if(m_jobs)m_jobs->Forget(task->job);m_inFlight.erase(std::remove(m_inFlight.begin(),m_inFlight.end(),task),m_inFlight.end());}
+ error=e.state==ResourceState::Ready?"":e.error;return e.state==ResourceState::Ready?e.physicalMaterial:nullptr;
 }

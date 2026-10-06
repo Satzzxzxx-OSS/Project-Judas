@@ -7,6 +7,7 @@
 #include "AsyncFile.h"
 #include "ProjectExporter.h"
 #include "CollisionAsset.h"
+#include "PhysicalMaterial.h"
 #include "AppIcon.h"
 #include "ScriptSystem.h"
 #include "AssetDatabase.h"
@@ -89,7 +90,7 @@ void References(const Scene& scene, const AssetDatabase& assets, const ProjectCl
     // Overrides/source content must be validated too, not just placeholders.
     Scene flattened;Require(FlattenHierarchy(resolved,flattened,error),error);
     for (const auto& object : flattened.Objects()) {
-        if(object.body){std::vector<std::string> ids;if(!object.body->collisionAsset.empty())ids.push_back(object.body->collisionAsset);for(auto& c:object.body->compoundBoxes)if(!c.assetId.empty())ids.push_back(c.assetId);for(auto& id:ids){check(id,AssetType::Collision);auto* record=assets.Find(id);CollisionAsset cooked;Require(record&&LoadCollisionAsset(record->path,cooked,error),"Collision: "+error);if(!cooked.sourceAsset.empty()){check(cooked.sourceAsset,AssetType::Mesh);auto* source=assets.Find(cooked.sourceAsset);Require(source&&!CollisionAssetStale(cooked,source->path,error),"Stale collision source/settings; recook "+cooked.sourceAsset+": "+error);}}}
+        if(object.body){if(!object.body->physicalMaterial.empty()){check(object.body->physicalMaterial,AssetType::PhysicalMaterial);PhysicalMaterial material;auto* record=assets.Find(object.body->physicalMaterial);Require(record&&LoadPhysicalMaterial(record->path,material,error),"Physical material: "+error);}std::vector<std::string> ids;if(!object.body->collisionAsset.empty())ids.push_back(object.body->collisionAsset);for(auto& c:object.body->compoundBoxes)if(!c.assetId.empty())ids.push_back(c.assetId);for(auto& id:ids){check(id,AssetType::Collision);auto* record=assets.Find(id);CollisionAsset cooked;Require(record&&LoadCollisionAsset(record->path,cooked,error),"Collision: "+error);if(!cooked.sourceAsset.empty()){check(cooked.sourceAsset,AssetType::Mesh);auto* source=assets.Find(cooked.sourceAsset);Require(source&&!CollisionAssetStale(cooked,source->path,error),"Stale collision source/settings; recook "+cooked.sourceAsset+": "+error);}}}
         if(object.deformable){check(object.deformable->asset,AssetType::Deformable);auto* record=assets.Find(object.deformable->asset);std::vector<uint8_t> bytes;DeformableAsset deform;Require(record&&ReadWholeFile(record->path,bytes,error)&&DecodeDeformableAsset(bytes,deform,error),"Deformable: "+error);Require(!deform.fracture||(!object.liquidBasin&&!object.liquidContainer&&!object.liquidConnection),"Liquid-bearing fracture owner is unsupported; conserved owner retained");if(!deform.sourceAsset.empty()){auto* source=assets.Find(deform.sourceAsset);std::string fingerprint;Require(source&&SceneFingerprintSha256File(source->path,fingerprint,error)&&fingerprint==deform.sourceFingerprint,"Stale deformable source: "+deform.sourceAsset+"; rebake");}}
         if(object.liquidBasin){check(object.liquidBasin->geometry,AssetType::Liquid);check(object.liquidBasin->asset,AssetType::Liquid);auto* r=assets.Find(object.liquidBasin->asset);LiquidBasinData b;Require(r&&LoadLiquidBasin(r->path,b,error),"Liquid basin: "+error);Require(LiquidSourceFingerprint(flattened,object,assets,error)==b.fingerprint,"Stale liquid basin: "+error);}
         if(object.liquidContainer){check(object.liquidContainer->geometry,AssetType::Liquid);auto* r=assets.Find(object.liquidContainer->geometry);LiquidGeometry g;Require(r&&LoadLiquidGeometry(r->path,g,error),"Container cavity: "+error);double capacity=0;for(auto& t:g.cells)capacity+=LiquidClip(t,{0,0,0,0},1).volume;Require(object.liquidContainer->initialVolume<=capacity,"Container initial volume exceeds capacity");}
@@ -157,6 +158,12 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
                     scenes.insert(fs::canonical(entry.path()));
                 }
         }
+        const auto registeredScenes=scenes;
+        if(!project.Settings().exportScenes.empty()){
+            scenes.clear();for(const auto& name:project.Settings().exportScenes){auto path=(root/name).lexically_normal();Require(registeredScenes.count(path),"Included scene is not registered: "+name);scenes.insert(path);}
+        }
+        for(const auto& name:project.Settings().excludeScenes){auto path=(root/name).lexically_normal();Require(registeredScenes.count(path),"Excluded scene is not registered: "+name);scenes.erase(path);}
+        Require(scenes.count(startup),"Startup scene is excluded from export");
         const auto safeContentPath = [&](const fs::path& relative) {
             Require(!relative.empty() && !relative.is_absolute() && Inside((root / relative).lexically_normal(), root), "Unsafe package content path: " + relative.string());
             const auto first = relative.begin()->string();
@@ -179,7 +186,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             Require(record&&record->type==AssetType::World,"Missing world manifest asset");
             Require(LoadWorldManifest(record->path,manifest,detail)&&ValidateWorldManifest(manifest,project,detail),detail);
             std::map<std::string,PreparedWorldRegion> products;
-            for(auto& [id,region]:manifest.regions)Require(PrepareWorldRegion(region,project,assets,products[id],detail),"World region: "+detail);
+            for(auto& [id,region]:manifest.regions){Require(scenes.count((root/region.scene).lexically_normal()),"World manifest requires excluded scene: "+region.scene);Require(PrepareWorldRegion(region,project,assets,products[id],detail),"World region: "+detail);}
             Require(ValidateWorldQualifiedReferences(manifest,products,detail),detail);
         }
         for (const auto& [id, record] : assets.Records()) {
@@ -252,7 +259,7 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
         Copy(engineRoot / "assets/fonts/DejaVuSans-LICENSE.txt", staging / "engine/licenses/DejaVuSans.txt");
         Copy(engineRoot / "third_party/RUNTIME_NOTICES.txt", staging / "engine/third_party/RUNTIME_NOTICES.txt");
         Copy(engineRoot / "LICENSE", staging / "engine/licenses/Judas.txt");
-        write("RUNTIME_REQUIREMENTS.txt", "Judas Linux desktop Release package. Run ./judas (no arguments).\nRequires compatible glibc/libstdc++, SDL2 and its system dependencies, OpenGL 3.3 drivers.\nNo editor or development tree is required. Platform libraries are system provided; not bundled.\nUnicode text libraries and ICU locale/boundary data are statically linked.\nProject fonts/catalogs are packaged assets; no desktop font or ICU_DATA lookup.\nAll registered project assets and project scenes are included for dynamic ID loading.\nSaves: $XDG_DATA_HOME/judas/games/<save-id>/Saves, otherwise $HOME/.local/share/...\nThird-party notices: engine/third_party/RUNTIME_NOTICES.txt and engine/licenses.\n");
+        write("RUNTIME_REQUIREMENTS.txt", "Judas Linux desktop Release package. Run ./judas (no arguments).\nRequires compatible glibc/libstdc++, SDL2 and its system dependencies, OpenGL 3.3 drivers.\nNo editor or development tree is required. Platform libraries are system provided; not bundled.\nUnicode text libraries and ICU locale/boundary data are statically linked.\nProject fonts/catalogs are packaged assets; no desktop font or ICU_DATA lookup.\nAll registered project assets are included for dynamic ID loading. Scenes follow explicit project inclusion/exclusion policy.\nSaves: $XDG_DATA_HOME/judas/games/<save-id>/Saves, otherwise $HOME/.local/share/...\nThird-party notices: engine/third_party/RUNTIME_NOTICES.txt and engine/licenses.\n");
         ProjectExportResult completed; completed.packageDirectory = destination.string();
         completed.assetCount = assets.Records().size(); completed.sceneCount = scenes.size();
         for (const auto& entry : fs::recursive_directory_iterator(staging))

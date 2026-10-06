@@ -27,7 +27,8 @@ overlap. Hits choose nearest distance, then body/primitive identities for ties.
 `CastHit`: `{entity,entityId,bodyId,point,normal,distance,fraction,primitiveIndex,
 initialOverlap,shape,childKey,feature}`. Target surface point and outward normal; deep initial
 overlap has a deterministic feature normal, not unique physical penetration data.
-`shape` is `sphere`, `box`, `terrain`, `hull` or `triangle-mesh`; compounds return child primitive index and authored stable `childKey`. Single shapes use key 0. `feature` identifies a cooked triangle where meaningful, otherwise null; recooking can change feature keys.
+`physicalMaterial` is the actual body-assigned stable asset ID or null; no per-triangle
+material is fabricated. `shape` is `capsule`, `sphere`, `box`, `terrain`, `hull` or `triangle-mesh`; compounds return child primitive index and authored stable `childKey`. Single shapes use key 0. `feature` identifies a cooked triangle where meaningful, otherwise null; recooking can change feature keys.
 `bodyId` is an opaque generation-bearing number, not a controllable JS Body.
 `entity` can be null for unassociated geometry; otherwise it may later become
 invalid. Retained hit data does not update with the world.
@@ -48,8 +49,7 @@ including miss. It sweeps a displacement, not a unit direction/maximum pair. Use
 
 Terrain: ray/sphere/capsule sample actual RadialTerrain, using approximate radial
 surface distance/bracketing. Thin/grazing features can be missed. Box casts reject
-permitted terrain candidates. Render-only meshes and query-only motors are not
-rigid query targets. No concurrent worker-query API. [Geometry limits](../PHYSICS_QUERIES.md).
+permitted terrain candidates. Render-only meshes remain non-queryable; motors expose their query-only capsule geometry without rigid mass. No concurrent worker-query API. [Geometry limits](../PHYSICS_QUERIES.md).
 
 All vectors/poses use local float simulation coordinates around a fixed double
 absolute origin. No JS absolute-coordinate/rebasing API is exposed. No universal
@@ -94,8 +94,10 @@ Other stale joint calls throw ReferenceError. `state` is detached:
 | `setMotor(speed,maxForce,motor=true)` | Hinge rad/s + N·m, slider m/s + N; finite bounded motor. |
 | `setSpring(rest,stiffness,damping,spring=true)` | Free-coordinate equilibrium and implicit spring/damping: slider rest in m, stiffness N/m, damping N·s/m; hinge rest in rad, stiffness N·m/rad, damping N·m·s/rad. |
 
-All setters return true or throw on invalid settings/stale handle. Controls do not
-create joints, replace types or edit anchors through JS. Author frames/anchors in
+All setters return true or throw on invalid settings/stale handle. `configure(settings)` validates an atomic partial patch, including type/anchors/frames,
+using JointSettings below; participants cannot be changed in place. `destroy()` retires
+the component and handle. `physics.createJoint(owner, settings)` creates one normal
+owner component (rejects an existing one), returning Joint. Author frames/anchors in
 editor/scene: body-local frame X is hinge/slider axis; a world-side anchor/frame is
 transformed through the joint owner's authored pose. Ball/socket has no angular
 cone limiter. Motors do not imply a gameplay state. Use fixedUpdate for control.
@@ -104,7 +106,7 @@ cone limiter. Motors do not imply a gameplay state. Use fixedUpdate for control.
 ## Collision and trigger callbacks
 
 `onCollisionEnter/Stay/Exit(event)` and `onTriggerEnter/Stay/Exit(event)` receive
-`{other,point,normal,relativeVelocity,normalImpulse}` at the fixed boundary.
+`{other,point,normal,relativeVelocity,normalImpulse,physicalMaterial}` at the fixed boundary.
 Normal points from other toward the recipient. Relative velocity is OTHER minus
 SELF point velocity (including angular contribution), observed when contact was
 recorded, not a fabricated post-solve measurement. `normalImpulse` is a reported
@@ -117,4 +119,35 @@ produce no response; overlaps are discrete endpoint observations, not continuous
 trigger trajectories. Disabled/destroyed recipients are rechecked; destroyed `other`
 may still be an Entity wrapper with `valid=false`. Check validity before use.
 Mapped ragdoll bodies have per-body events; owner scripts do not receive automatic
-aggregate articulation events. Motors have no M42 events. JS decides game meaning.
+aggregate articulation events. Motors now participate through massless query capsules and coalesced sweep/support
+observations; endpoint sensor overlap is discrete and supplies no solved impulse. JS decides game meaning.
+
+## Gravity, physical materials and runtime joint configuration (M65)
+
+`physics.gravity(position) → Vec3` samples acceleration (m/s²) using the normal
+position-based gravity resolver, including overriding zones, uniform and radial
+fields. It is a read-only simulation-coordinate query. No field-type branch or
+universal up is needed in scripts. `physics.gravity({x:0,y:1,z:0})` does not depend
+on having a CharacterMotor.
+
+`entity.physicalMaterial → {asset,friction,restitution}|null` reads effective body
+coefficients, with `asset` null for legacy inline values.
+`entity.setPhysicalMaterial(asset=null, parameters={}) → true` selects a registered
+`.judasphysmat` resource; optional friction/restitution apply explicit instance
+overrides. Missing body/stale entity throws ReferenceError; invalid resource or
+coefficients throws TypeError. Resource coefficient changes do not rewrite shared
+assets. Both identity and overrides persist. Runtime changes wake/invalidate body
+contact state. Render materials are independent.
+
+`JointSettings`: type fixed/hinge/ball/slider; bodyA required safe Entity, bodyB
+optional Entity/null (world anchor); anchorA/B Vec3, frameA/B quaternion; enabled,
+limits, lower, upper, motor, speed, maxForce, spring, rest, stiffness, damping.
+Creation accepts owner references, not raw handles. AnchorA is body-local; body-side
+B is body-local, world-side B is **owner-local**, composed through owner transform.
+Fixed/ball translation uses metres. Existing M45 angular/slider units apply.
+Configuration retains participants and invalidates cached rows; create/destroy can
+replace them. Use fixedUpdate. Normal scene/prefab/M59/M61 references own lifetime.
+
+Sleeping bodies retain geometry and queries. `entity.sleeping` reports current
+physical state (false without a physical body); force/impulse/torque and meaningful
+changes wake connected islands. It is not a gameplay pause or visibility policy.

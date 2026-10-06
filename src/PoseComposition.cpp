@@ -72,3 +72,46 @@ SkeletalPose PoseMixer::Sample(const SkeletalAsset& a,AnimationPlayback& target,
  if(fraction>=1)Clear();
  return combined;
 }
+
+#include "Ragdoll.h"
+
+#include <glm/gtc/matrix_transform.hpp>
+bool ValidLimbIK(const LimbIKSettings& s,std::string& error){
+ if(s.id.empty()||s.id.size()>128||s.root.empty()||s.middle.empty()||s.end.empty()||s.root==s.middle||s.middle==s.end||s.root==s.end||!std::isfinite(s.weight)||s.weight<0||s.weight>1||s.order<1||s.order>=1000){error="IK requires distinct joint keys, weight 0..1 and order 1..999";return false;}
+ for(auto v:{s.target,s.pole})for(int i=0;i<3;++i)if(!std::isfinite(v[i])){error="nonfinite IK target/pole";return false;}
+ return true;
+}
+namespace {
+glm::quat LimbAlignment(glm::vec3 from,glm::vec3 to,glm::vec3 bend){
+ from=glm::normalize(from);to=glm::normalize(to);float d=glm::clamp(glm::dot(from,to),-1.f,1.f);
+ if(d>1-1e-7f)return {1,0,0,0};
+ if(d<-1+1e-7f){auto axis=bend-from*glm::dot(bend,from);if(glm::length(axis)<1e-6f)axis=glm::cross(from,std::abs(from.x)<.7f?glm::vec3(1,0,0):glm::vec3(0,1,0));return glm::angleAxis(glm::pi<float>(),glm::normalize(axis));}
+ return glm::normalize(glm::quat(1+d,glm::cross(from,to)));
+}
+}
+bool SolveLimbIK(const Skeleton& s,const SkeletalPose& input,const LimbIKSettings& k,SkeletalPose& output,float& targetError,std::string& diagnostic){
+ if(!ValidLimbIK(k,diagnostic)||!ValidPose(s,input,diagnostic))return false;
+ int root=FindSkeletonJoint(s,k.root),mid=FindSkeletonJoint(s,k.middle),end=FindSkeletonJoint(s,k.end);
+ if(root<0||mid<0||end<0||s.parents[mid]!=root||s.parents[end]!=mid){diagnostic="IK joints must be an existing direct root/middle/end chain";return false;}
+ auto globals=PoseGlobalMatrices(s,input);auto a=glm::vec3(globals[root][3]),b=glm::vec3(globals[mid][3]),c=glm::vec3(globals[end][3]);
+ float l1=glm::length(b-a),l2=glm::length(c-b);if(l1<1e-5f||l2<1e-5f){diagnostic="IK chain has zero length";return false;}
+ JointTransform ar,br,parent;std::string ignored;
+ if(!DecomposeRigidPose(globals[root],ar,diagnostic)||!DecomposeRigidPose(globals[mid],br,diagnostic)){return false;}
+ for(auto scale:{ar.scale,br.scale})if(glm::length(scale-glm::vec3(scale.x))>1e-4f||scale.x<=0){diagnostic="IK requires uniform positive chain scale";return false;}
+ if(s.parents[root]>=0&&!DecomposeRigidPose(globals[s.parents[root]],parent,diagnostic))return false;
+ auto delta=k.target-a;float distance=glm::length(delta);auto direction=distance>1e-6f?delta/distance:glm::normalize(c-a+glm::vec3(1e-8f));
+ auto bend=k.pole-a; bend-=direction*glm::dot(bend,direction);
+ if(glm::length(bend)<1e-5f){bend=b-a; bend-=direction*glm::dot(bend,direction);}
+ if(glm::length(bend)<1e-5f){auto axis=std::abs(direction.x)<.7f?glm::vec3(1,0,0):glm::vec3(0,1,0);bend=axis-direction*glm::dot(axis,direction);}
+ bend=glm::normalize(bend);float reach=glm::clamp(distance,std::abs(l1-l2)+1e-5f,l1+l2-1e-5f);
+ float x=(l1*l1-l2*l2+reach*reach)/(2*reach),y=std::sqrt(std::max(0.f,l1*l1-x*x));
+ auto desiredMiddle=a+direction*x+bend*y,desiredEnd=a+direction*reach;
+ output=input;auto rootRotation=glm::normalize(LimbAlignment(b-a,desiredMiddle-a,bend)*ar.rotation);
+ output.local[root].rotation=glm::normalize(glm::inverse(parent.rotation)*rootRotation);
+ globals=PoseGlobalMatrices(s,output);b=glm::vec3(globals[mid][3]);c=glm::vec3(globals[end][3]);
+ if(!DecomposeRigidPose(globals[mid],br,diagnostic))return false;
+ auto midRotation=glm::normalize(LimbAlignment(c-b,desiredEnd-b,bend)*br.rotation);
+ output.local[mid].rotation=glm::normalize(glm::inverse(rootRotation)*midRotation);
+ output=BlendPoses(input,output,k.weight,{root,mid});globals=PoseGlobalMatrices(s,output);targetError=glm::length(glm::vec3(globals[end][3])-k.target);
+ return ValidPose(s,output,diagnostic);
+}

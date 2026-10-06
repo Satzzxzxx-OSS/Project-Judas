@@ -55,7 +55,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
         options.worldOriginOverride ? *options.worldOriginOverride : scene.Settings().worldOrigin);
 
     EngineHost host;
-    if (!host.Init("Project Judas", kWindowWidth, kWindowHeight, !options.IsTestRun() && !(control && control->hidden), error,
+    if (!host.Init(options.project.IsLoaded() ? options.project.Settings().name.c_str() : "Project Judas", kWindowWidth, kWindowHeight, !options.IsTestRun() && !(control && control->hidden), error,
                    control ? control->resourceTrace : ResourceTrace{})) {
         std::fprintf(stderr, "%s\n", error.c_str());
         return 1;
@@ -123,7 +123,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
     if(world.IsComposed())std::fprintf(stderr,"World state: disk saves disabled for additive compositions\n");
     else if (!options.worldStatePath.empty()) {
         std::fprintf(stderr, "World state: %s (%s)\n", options.worldStatePath.c_str(),
-                     worldStateApplied ? "loaded" : "none saved; F6 saves, F7 deletes");
+                     worldStateApplied ? "loaded" : "none saved");
     }
     std::fprintf(stderr, "Project: %s (%s)\nScene: %s (%s)\nWorld origin (m): %.3f, %.3f, %.3f\n",
                  options.project.IsLoaded() ? options.project.Settings().name.c_str() : "(none)",
@@ -132,16 +132,7 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
                  worldCoordinates.Origin().y, worldCoordinates.Origin().z);
 
     if (options.IsTestRun()) {
-        // A harness screenshot shows exactly what the real game renders.
-        const auto drawScene = [&](Renderer& r, float alpha) {
-            world.PresentationScripts(&window.Input(),0.f,alpha);
-            r.SetLighting(glm::normalize(world.Settings().sunDirection), world.Settings().sunColor,
-                          world.Settings().ambientColor);
-            UpdateFluidSurface(r, world, alpha);
-            DrawWorldGeometry(r, world, &play.Session(), alpha, WorldDrawOptions{});
-            DrawWorldTransparents(r, world, &play.Session(), alpha);
-        };
-        return RunTestHarness(window, renderer, play.Session(), drawScene, options.testScriptPath);
+        return RunTestHarness(window, renderer, play, options.testScriptPath);
     }
 
     if (control && control->worldReady) control->worldReady(host, world, play);

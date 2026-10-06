@@ -149,7 +149,7 @@ void AudioSystem::Shutdown(){
 AudioClipHandle AudioSystem::CreateClip(AudioData data){if(!data.Frames()||data.channels>2||data.sampleRate!=48000)return {};const auto id=m->nextClip++;m->clips[id]=std::make_shared<const AudioData>(std::move(data));return {id};}
 void AudioSystem::DestroyClip(AudioClipHandle c){m->clips.erase(c.id);}
 AudioVoiceHandle AudioSystem::CreateVoice(AudioClipHandle c,const AudioSettings& s,std::string& error){
- auto data=m->clips.find(c.id);if(data==m->clips.end()||!ValidAudioSettings(s)||m->GroupIndex(s.group)>16||m->voices.size()>=128){error="Invalid clip/settings/group or 128 voice limit";return {};}
+ auto data=m->clips.find(c.id);if(data==m->clips.end()){error="invalid or stale audio clip";return {};}if(!ValidAudioSettings(s)){error="invalid audio settings";return {};}if(m->GroupIndex(s.group)>16){error="missing audio group: "+s.group;return {};}if(m->voices.size()>=128){error="audio voice capacity reached (128)";return {};}
  if(!Init(error))return {};
  auto v=std::make_unique<Impl::Voice>();v->data=data->second;
  if(!v->buffer.Init(v->data.get())){error="Audio buffer initialization failed";return {};}v->bufferReady=true;
@@ -157,7 +157,7 @@ AudioVoiceHandle AudioSystem::CreateVoice(AudioClipHandle c,const AudioSettings&
  auto id=m->nextVoice++;m->voices[id]=std::move(v);SetSettings({id},s);error.clear();return {id};
 }
 AudioVoiceHandle AudioSystem::CreateStreamVoice(const std::string& path,const AudioSettings& s,std::string& error){
- if(!m->jobs||!ValidAudioSettings(s)||m->GroupIndex(s.group)>16||m->voices.size()>=128||Diagnostics().streams>=32||m->retired.size()+Diagnostics().streams>=64){error="Stream requires Judas jobs, valid settings/group, and limits (32 streams/64 retirements/128 voices)";return {};}
+ if(!m->jobs){error="audio stream requires Judas jobs";return {};}if(!ValidAudioSettings(s)){error="invalid audio settings";return {};}if(m->GroupIndex(s.group)>16){error="missing audio group: "+s.group;return {};}if(m->voices.size()>=128){error="audio voice capacity reached (128)";return {};}if(Diagnostics().streams>=32||m->retired.size()+Diagnostics().streams>=64){error="audio stream capacity reached (32 streams/64 retirements)";return {};}
  if(!Init(error))return {};
  auto& meta=m->metadata[path];if(!meta)meta=std::make_shared<AudioStreamMetadata>(path);
  auto v=std::make_unique<Impl::Voice>();v->stream=std::make_shared<PreparedAudioStream>(meta,s.streamPageFrames);

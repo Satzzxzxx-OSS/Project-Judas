@@ -1,3 +1,5 @@
+#include "Ragdoll.h"
+#include <glm/gtc/matrix_transform.hpp>
 #include "WorldStreaming.h"
 #include "Prefab.h"
 #include "PerformanceProfiler.h"
@@ -771,7 +773,11 @@ void EditorApplication::DrawEditOverlay(Renderer& renderer, const Scene& scene) 
     BuildAuthoredDebugLines(scene, m_panels.debug, m_debugLines);
     if(m_panels.debug.navigation)m_debugLines.Append(m_panels.navigationPreview);
     m_debugLines.Append(m_panels.liquidPreview);m_debugLines.Append(m_panels.deformablePreview);m_debugLines.Append(m_panels.collisionPreview);
-    if (const SceneObject* selected = scene.Find(m_document.Selected())) BuildSelectionLines(*selected, m_debugLines);
+    for(auto id:m_document.Selection())if(const SceneObject* selected=scene.Find(id))BuildSelectionLines(*selected,m_debugLines);
+    if(const auto* selected=scene.Find(m_document.Selected())){
+        const auto* owner=selected->socket?scene.Find(selected->socket->target):selected;
+        if(owner&&owner->render){auto asset=m_host->Resources().TryGetSkeletal(owner->render->meshAsset);if(asset){auto global=PoseGlobalMatrices(asset->skeleton,asset->skeleton.rest);auto t=owner->transform;auto model=glm::translate(glm::mat4(1),t.position)*glm::mat4_cast(t.rotation)*glm::scale(glm::mat4(1),t.scale);for(auto& matrix:global){JointTransform joint;std::string error;if(DecomposeRigidPose(model*matrix,joint,error))m_debugLines.Axes(joint.translation,joint.rotation,.18f);}}}
+    }
     renderer.DrawDebugLines(m_debugLines.Lines(), /*depthTest=*/true);
     renderer.DrawDebugLines(m_gizmoLines.Lines(), /*depthTest=*/false);
 }
@@ -842,7 +848,7 @@ void EditorApplication::FrameEditMode(float deltaSeconds) {
     renderer.SetLighting(glm::normalize(scene.Settings().sunDirection), scene.Settings().sunColor,
                          scene.Settings().ambientColor);
     const auto& appearance=scene.Settings();m_host->Resources().RequestEnvironment(appearance.environmentAsset);
-    renderer.SetSceneAppearance(appearance.linearRendering,appearance.exposure,m_host->Resources().TryGetEnvironment(appearance.environmentAsset),appearance.environmentIntensity,appearance.environmentRotation,appearance.environmentBackground);
+    renderer.SetSceneAppearance(appearance.linearRendering,appearance.exposure,m_host->Resources().TryGetEnvironment(appearance.environmentAsset),appearance.environmentIntensity,appearance.environmentRotation,appearance.environmentBackground,appearance.backgroundColor);
     RendererProfileScope editorCameraGPU(renderer, "Editor camera");
     renderer.BeginFrame(window.Width(), window.Height());
     renderer.SetCamera(m_camera.ViewMatrix(), m_camera.ProjectionMatrix(aspect));

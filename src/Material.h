@@ -25,6 +25,7 @@ struct MaterialOverride {
  std::optional<glm::vec4> baseColor;
  std::optional<float> metallic,roughness,emissiveIntensity;
  std::optional<glm::vec3> emissive;
+ std::optional<glm::vec2> uvScale,uvOffset;
 };
 struct MaterialSlot {std::string asset;MaterialOverride overrides;};
 bool ValidateMaterial(const MaterialDefinition&,std::string& error);

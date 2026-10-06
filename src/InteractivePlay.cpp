@@ -93,7 +93,7 @@ bool InteractivePlay::ConsumeResetOccurred() {
     return occurred;
 }
 
-float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDeltaTime, bool drawHud) {
+float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDeltaTime, bool drawHud, bool render) {
     JUDAS_PROFILE_SCOPE("Play frame");
     RuntimeWorld& world = m_session.World();
 
@@ -196,6 +196,7 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     PerformanceProfiler::Get().FixedState(m_physicsAccumulator,profileCap,profileDiscarded,IsPaused()||uiOwned);
     const float presentationAlpha = m_physicsAccumulator / SimulationTiming::kFixedTimestep;
     world.PresentationScripts(&window.Input(),frameDeltaTime,presentationAlpha);
+    if (!render) return presentationAlpha;
     const auto surfaceStart = Clock::now();
     UpdateFluidSurface(renderer, world, presentationAlpha);
     m_lastSurfaceMilliseconds = MillisecondsSince(surfaceStart);

@@ -46,6 +46,11 @@ export class Entity {
  addTag(tag){return call('addTag',this.id,tag)}
  removeTag(tag){return call('removeTag',this.id,tag)}
  get collider(){return call('colliderInfo',this.id)}
+ get sleeping(){return call('sleeping',this.id)}
+ get physicalMaterial(){return call('physicalMaterialInfo',this.id)}
+ setPhysicalMaterial(asset=null,parameters={}){return call('physicalMaterialSet',this.id,asset,parameters)}
+ setSocket(target,joint,offset={}){return call('socketSet',this.id,target?.id??'0',joint,offset)}
+ clearSocket(){return call('socketClear',this.id)}
  get classification(){return call('classification',this.id)}
  get animation(){return call('animationExists',this.id)?new Animation(this.id):null}
  get liquid(){const h=call("liquidOwner",this.id);return h?new LiquidVolume(h):null}
@@ -203,17 +208,24 @@ export class Animation {
  get layers(){return this.info.layers}
  layer(id,settings){return call('animationLayer',this.entityId,id,settings)}
  removeLayer(id){return call('animationRemoveLayer',this.entityId,id)}
+ jointTransform(key,space='world',presented=false){return call('animationJointPose',this.entityId,key,space,presented)}
+ limb(id,settings){return call('animationLimb',this.entityId,id,settings)}
+ removeLimb(id){return call('animationRemoveLimb',this.entityId,id)}
 }
 export class Joint {
  constructor(id){this.id=String(id)}
  get valid(){return call('jointValid',this.id)}
  get state(){return call('jointState',this.id)}
+ configure(settings){return call('jointConfigure',this.id,settings)}
+ destroy(){return call('jointDestroy',this.id)}
  setEnabled(enabled){return call('jointSet',this.id,{enabled})}
  setLimits(lower,upper,limits=true){return call('jointSet',this.id,{lower,upper,limits})}
  setMotor(speed,maxForce,motor=true){return call('jointSet',this.id,{speed,maxForce,motor})}
  setSpring(rest,stiffness,damping,spring=true){return call('jointSet',this.id,{rest,stiffness,damping,spring})}
 }
 export const physics={
+ gravity:point=>call('gravitySample',point),
+ createJoint:(owner,settings)=>new Joint(call('jointCreate',owner.id,{...settings,bodyAId:settings.bodyA?.id,bodyBId:settings.bodyB?.id??'0'})),
  closestPoint:(point,maximum,filter={})=>{const hit=call('closestPoint',point,{x:0,y:0,z:0},filter,{maximum});return hit?{...hit,entity:entity(hit.entityId)}:null},
  joint:owner=>{const id=call('joint',owner.id);return id?new Joint(id):null},
  raycast:(origin,direction,maximum,filter={})=>cast(origin,direction,maximum,filter,{kind:'ray'}),
@@ -409,6 +421,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     }
     if(!s->world)return JS_ThrowTypeError(c,"world API unavailable in metadata context");
     auto& world=*s->world;
+    if(op=="gravitySample"){glm::vec3 point;if(!ReadVec(c,arg(1),point))return JS_ThrowTypeError(c,"finite world position required");return Vec(c,world.Gravity().Sample(point));}
 
 
     if(op=="saveExclude"||op=="saveRequest"||op=="saveList"||op=="saveStatus"||op=="saveCancel"||op=="saveReference"||op=="saveResolve"){
@@ -445,6 +458,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         auto appearance=world.Settings();auto options=arg(1);
         auto has=[&](const char* name){auto v=JS_GetPropertyStr(c,options,name);bool found=!JS_IsUndefined(v);JS_FreeValue(c,v);return found;};
         if(op=="appearanceSet"){
+            if(has("backgroundColor")){auto v=JS_GetPropertyStr(c,options,"backgroundColor");bool ok=ReadVec(c,v,appearance.backgroundColor);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"finite background colour required");}
             for(auto pair:{std::pair<const char*,float*>{"exposure",&appearance.exposure},{"environmentIntensity",&appearance.environmentIntensity}})if(has(pair.first)&&!Number(c,options,pair.first,*pair.second))return JS_ThrowTypeError(c,"finite appearance parameter required");
             for(auto pair:{std::pair<const char*,bool*>{"linearRendering",&appearance.linearRendering},{"environmentBackground",&appearance.environmentBackground}})if(has(pair.first)){auto v=JS_GetPropertyStr(c,options,pair.first);if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"boolean appearance setting required");}*pair.second=JS_ToBool(c,v);JS_FreeValue(c,v);}
             if(has("environmentAsset")){auto v=JS_GetPropertyStr(c,options,"environmentAsset");if(!JS_IsString(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"environment asset ID required");}appearance.environmentAsset=String(c,v);JS_FreeValue(c,v);}
@@ -452,7 +466,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
             if(!world.SetAppearance(appearance))return JS_ThrowTypeError(c,"invalid appearance/environment asset");
             return JS_TRUE;
         }
-        auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"linearRendering",JS_NewBool(c,appearance.linearRendering));JS_SetPropertyStr(c,result,"exposure",JS_NewFloat64(c,appearance.exposure));JS_SetPropertyStr(c,result,"environmentAsset",JS_NewString(c,appearance.environmentAsset.c_str()));JS_SetPropertyStr(c,result,"environmentIntensity",JS_NewFloat64(c,appearance.environmentIntensity));JS_SetPropertyStr(c,result,"environmentBackground",JS_NewBool(c,appearance.environmentBackground));auto q=Vec(c,{appearance.environmentRotation.x,appearance.environmentRotation.y,appearance.environmentRotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,appearance.environmentRotation.w));JS_SetPropertyStr(c,result,"environmentRotation",q);return result;
+        auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"linearRendering",JS_NewBool(c,appearance.linearRendering));JS_SetPropertyStr(c,result,"backgroundColor",Vec(c,appearance.backgroundColor));JS_SetPropertyStr(c,result,"exposure",JS_NewFloat64(c,appearance.exposure));JS_SetPropertyStr(c,result,"environmentAsset",JS_NewString(c,appearance.environmentAsset.c_str()));JS_SetPropertyStr(c,result,"environmentIntensity",JS_NewFloat64(c,appearance.environmentIntensity));JS_SetPropertyStr(c,result,"environmentBackground",JS_NewBool(c,appearance.environmentBackground));auto q=Vec(c,{appearance.environmentRotation.x,appearance.environmentRotation.y,appearance.environmentRotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,appearance.environmentRotation.w));JS_SetPropertyStr(c,result,"environmentRotation",q);return result;
     }
     auto liquidHandle=[&](JSValueConst value){LiquidHandle h;std::istringstream text(String(c,value));char separator=0;if(!(text>>h.generation>>separator>>h.id)||separator!=':')return LiquidHandle{};text>>std::ws;return text.eof()?h:LiquidHandle{};};
     if(op=="liquidValid")return JS_NewBool(c,world.Liquids().Get(liquidHandle(arg(1)))!=nullptr);
@@ -495,8 +509,24 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         std::optional<NavigationLocation> location;if(op=="navSample"){double range;if(JS_ToFloat64(c,&range,arg(2))!=0||!std::isfinite(range)||range<=0||range>100)return JS_ThrowTypeError(c,"invalid sample range");location=world.Navigation().Sample(a,float(range),f);}else location=world.Navigation().Raycast(a,b,f);if(!location)return JS_NULL;auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"position",Vec(c,location->position));JS_SetPropertyStr(c,result,"surfaceId",JS_NewString(c,std::to_string(location->surface).c_str()));JS_SetPropertyStr(c,result,"area",JS_NewUint32(c,location->area));return result;
     }
     if(op=="navAreas"||op=="navProfiles"||op=="navErrors"){auto result=JS_NewArray(c);uint32_t i=0;const auto& config=world.Navigation().Configuration();if(op=="navErrors"){for(auto [id,error]:world.Navigation().Errors()){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"entityId",JS_NewString(c,std::to_string(id).c_str()));JS_SetPropertyStr(c,v,"message",JS_NewString(c,error.c_str()));JS_SetPropertyUint32(c,result,i++,v);}}else if(op=="navAreas"){for(auto [id,name]:config.areas.names){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"id",JS_NewUint32(c,id));JS_SetPropertyStr(c,v,"name",JS_NewString(c,name.c_str()));JS_SetPropertyUint32(c,result,i++,v);}}else for(auto [id,p]:config.profiles){auto v=JS_NewObject(c);JS_SetPropertyStr(c,v,"id",JS_NewUint32(c,id));JS_SetPropertyStr(c,v,"name",JS_NewString(c,p.name.c_str()));JS_SetPropertyStr(c,v,"radius",JS_NewFloat64(c,p.radius));JS_SetPropertyStr(c,v,"height",JS_NewFloat64(c,p.height));JS_SetPropertyUint32(c,result,i++,v);}return result;}
-    if(op=="joint"||op=="jointValid"||op=="jointState"||op=="jointSet") {
+    if(op=="jointCreate"||op=="jointConfigure"||op=="jointDestroy"||op=="joint"||op=="jointValid"||op=="jointState"||op=="jointSet") {
         uint64_t id=0;try{const auto text=String(c,arg(1));size_t end;id=std::stoull(text,&end);if(end!=text.size())id=0;}catch(...){id=0;}
+        if(op=="jointCreate"||op=="jointConfigure"||op=="jointDestroy"){
+            EntityId owner=id;SceneJointComponent definition;
+            if(op!="jointCreate"){owner=0;for(const auto& o:world.ScriptObjects())if(o.joint&&world.RuntimeJoint(o.id).id==id){owner=o.id;definition=*o.joint;break;}if(!owner)return JS_ThrowReferenceError(c,"stale or unowned joint");}
+            else {auto* d=world.RuntimeDefinition(owner);if(!d)return JS_ThrowReferenceError(c,"stale joint owner");if(d->joint)return JS_ThrowTypeError(c,"owner already has a joint");}
+            if(op!="jointDestroy"){
+                auto o=arg(2);auto& settings=definition.settings;
+                for(auto item:{std::pair<const char*,EntityId*>{"bodyAId",&definition.bodyA},{"bodyBId",&definition.bodyB}}){auto v=JS_GetPropertyStr(c,o,item.first);if(!JS_IsUndefined(v)){try{auto text=String(c,v);size_t end=0;*item.second=std::stoull(text,&end);if(end!=text.size())throw std::runtime_error("identity");}catch(...){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"stable entity required");}}JS_FreeValue(c,v);}
+                auto type=JS_GetPropertyStr(c,o,"type");if(!JS_IsUndefined(type)){auto name=String(c,type);if(name=="fixed")settings.type=JointType::Fixed;else if(name=="hinge")settings.type=JointType::Hinge;else if(name=="ball")settings.type=JointType::Ball;else if(name=="slider")settings.type=JointType::Slider;else{JS_FreeValue(c,type);return JS_ThrowTypeError(c,"unknown joint type");}}JS_FreeValue(c,type);
+                for(auto item:{std::pair<const char*,glm::vec3*>{"anchorA",&settings.anchorA},{"anchorB",&settings.anchorB}}){auto v=JS_GetPropertyStr(c,o,item.first);bool ok=JS_IsUndefined(v)||ReadVec(c,v,*item.second);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"invalid joint anchor");}
+                for(auto item:{std::pair<const char*,glm::quat*>{"frameA",&settings.frameA},{"frameB",&settings.frameB}}){auto v=JS_GetPropertyStr(c,o,item.first);bool ok=JS_IsUndefined(v)||(Number(c,v,"x",item.second->x)&&Number(c,v,"y",item.second->y)&&Number(c,v,"z",item.second->z)&&Number(c,v,"w",item.second->w));JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"invalid joint frame");}
+                for(auto item:{std::pair<const char*,float*>{"lower",&settings.lower},{"upper",&settings.upper},{"speed",&settings.speed},{"maxForce",&settings.maxForce},{"rest",&settings.rest},{"stiffness",&settings.stiffness},{"damping",&settings.damping}}){auto v=JS_GetPropertyStr(c,o,item.first);bool has=!JS_IsUndefined(v);JS_FreeValue(c,v);if(has&&!Number(c,o,item.first,*item.second))return JS_ThrowTypeError(c,"invalid joint number");}
+                for(auto item:{std::pair<const char*,bool*>{"enabled",&settings.enabled},{"limits",&settings.limits},{"motor",&settings.motor},{"spring",&settings.spring}}){auto v=JS_GetPropertyStr(c,o,item.first);if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"invalid joint flag");}*item.second=JS_ToBool(c,v);}JS_FreeValue(c,v);}
+            }
+            if(op=="jointConfigure"){auto* current=world.RuntimeDefinition(owner);if(current&&current->joint&&(current->joint->bodyA!=definition.bodyA||current->joint->bodyB!=definition.bodyB))return JS_ThrowTypeError(c,"configure retains participants; destroy/create to replace them");}
+            std::string error;if(!world.SetRuntimeJoint(owner,definition,op=="jointDestroy",error))return JS_ThrowTypeError(c,"%s",error.c_str());return op=="jointCreate"?JS_NewString(c,std::to_string(world.RuntimeJoint(owner).id).c_str()):JS_TRUE;
+        }
         if(op=="joint"){auto h=world.RuntimeJoint(id);return h.IsValid()?JS_NewString(c,std::to_string(h.id).c_str()):JS_NULL;}
         JointHandle h{id};JointState state;bool valid=world.Physics().GetJoint(h,state);
         if(op=="jointValid")return JS_NewBool(c,valid);
@@ -749,10 +779,11 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
             JS_SetPropertyStr(c,o,"bodyId",JS_NewUint32(c,hit.body.id));
             JS_SetPropertyStr(c,o,"point",Vec(c,hit.point));JS_SetPropertyStr(c,o,"normal",Vec(c,hit.normal));
             JS_SetPropertyStr(c,o,"distance",JS_NewFloat64(c,hit.distance));JS_SetPropertyStr(c,o,"fraction",JS_NewFloat64(c,hit.fraction));
+            std::string physical;float friction=0,restitution=0;world.Physics().GetPhysicalMaterial(hit.body,physical,friction,restitution);JS_SetPropertyStr(c,o,"physicalMaterial",physical.empty()?JS_NULL:JS_NewString(c,physical.c_str()));
             JS_SetPropertyStr(c,o,"primitiveIndex",JS_NewInt32(c,hit.primitiveIndex));
             JS_SetPropertyStr(c,o,"childKey",JS_NewUint32(c,hit.childKey));JS_SetPropertyStr(c,o,"feature",hit.feature==UINT32_MAX?JS_NULL:JS_NewUint32(c,hit.feature));
             JS_SetPropertyStr(c,o,"initialOverlap",JS_NewBool(c,hit.initialOverlap));
-            JS_SetPropertyStr(c,o,"shape",JS_NewString(c,hit.shape==ShapeType::Sphere?"sphere":hit.shape==ShapeType::Terrain?"terrain":hit.shape==ShapeType::ConvexHull?"hull":hit.shape==ShapeType::TriangleMesh?"triangle-mesh":"box"));
+            JS_SetPropertyStr(c,o,"shape",JS_NewString(c,hit.shape==ShapeType::Capsule?"capsule":hit.shape==ShapeType::Sphere?"sphere":hit.shape==ShapeType::Terrain?"terrain":hit.shape==ShapeType::ConvexHull?"hull":hit.shape==ShapeType::TriangleMesh?"triangle-mesh":"box"));
             return o;
         }
         if(op=="sweep"){glm::quat rotation;auto r=arg(4);
@@ -779,11 +810,12 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
             if(has("baseColor")){auto v=JS_GetPropertyStr(c,options,"baseColor");glm::vec3 rgb;float alpha;bool ok=ReadVec(c,v,rgb)&&Number(c,v,"a",alpha);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"baseColor requires finite x,y,z,a");value.overrides.baseColor=glm::vec4(rgb,alpha);}
             if(has("emissive")){auto v=JS_GetPropertyStr(c,options,"emissive");glm::vec3 rgb;bool ok=ReadVec(c,v,rgb);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"emissive requires finite x,y,z");value.overrides.emissive=rgb;}
             for(auto pair:{std::pair<const char*,std::optional<float>*>{"metallic",&value.overrides.metallic},{"roughness",&value.overrides.roughness},{"emissiveIntensity",&value.overrides.emissiveIntensity}})if(has(pair.first)){float v;if(!Number(c,options,pair.first,v))return JS_ThrowTypeError(c,"finite material parameter required");*pair.second=v;}
+            for(auto item:{std::pair<const char*,std::optional<glm::vec2>*>{"uvScale",&value.overrides.uvScale},{"uvOffset",&value.overrides.uvOffset}})if(has(item.first)){auto v=JS_GetPropertyStr(c,options,item.first);glm::vec2 xy;bool ok=Number(c,v,"x",xy.x)&&Number(c,v,"y",xy.y);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"finite UV x/y required");*item.second=xy;}
             if(!world.SetMaterialSlot(id,slot,value))return JS_ThrowTypeError(c,"material parameter out of range");
             return JS_TRUE;
         }
         MaterialDefinition source;source.model=MaterialModel::Legacy;bool ready=value.asset.empty();if(!value.asset.empty()&&world.Resources()){auto m=world.Resources()->TryGetMaterialDefinition(value.asset);ready=bool(m);if(m)source=*m;}else if(world.Resources()){auto m=world.Resources()->TryGetMeshMaterial(definition->render->meshAsset,slot);if(m)source=*m;}
-        auto m=ApplyMaterialOverride(source,value.overrides);auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"asset",JS_NewString(c,value.asset.c_str()));JS_SetPropertyStr(c,result,"ready",JS_NewBool(c,ready));const char* models[]={"legacy","pbr","unlit"};const char* alphas[]={"opaque","mask","blend"};JS_SetPropertyStr(c,result,"model",JS_NewString(c,models[int(m.model)]));JS_SetPropertyStr(c,result,"alphaMode",JS_NewString(c,alphas[int(m.alpha)]));auto base=Vec(c,glm::vec3(m.baseColor));JS_SetPropertyStr(c,base,"a",JS_NewFloat64(c,m.baseColor.a));JS_SetPropertyStr(c,result,"baseColor",base);JS_SetPropertyStr(c,result,"emissive",Vec(c,m.emissive));JS_SetPropertyStr(c,result,"metallic",JS_NewFloat64(c,m.metallic));JS_SetPropertyStr(c,result,"roughness",JS_NewFloat64(c,m.roughness));JS_SetPropertyStr(c,result,"emissiveIntensity",JS_NewFloat64(c,m.emissiveIntensity));JS_SetPropertyStr(c,result,"overridden",JS_NewBool(c,bool(value.overrides.baseColor||value.overrides.emissive||value.overrides.roughness||value.overrides.metallic||value.overrides.emissiveIntensity)));return result;
+        auto m=ApplyMaterialOverride(source,value.overrides);auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"asset",JS_NewString(c,value.asset.c_str()));JS_SetPropertyStr(c,result,"ready",JS_NewBool(c,ready));const char* models[]={"legacy","pbr","unlit"};const char* alphas[]={"opaque","mask","blend"};JS_SetPropertyStr(c,result,"model",JS_NewString(c,models[int(m.model)]));JS_SetPropertyStr(c,result,"alphaMode",JS_NewString(c,alphas[int(m.alpha)]));auto base=Vec(c,glm::vec3(m.baseColor));JS_SetPropertyStr(c,base,"a",JS_NewFloat64(c,m.baseColor.a));JS_SetPropertyStr(c,result,"baseColor",base);JS_SetPropertyStr(c,result,"emissive",Vec(c,m.emissive));JS_SetPropertyStr(c,result,"metallic",JS_NewFloat64(c,m.metallic));JS_SetPropertyStr(c,result,"roughness",JS_NewFloat64(c,m.roughness));JS_SetPropertyStr(c,result,"emissiveIntensity",JS_NewFloat64(c,m.emissiveIntensity));auto uv=[&](glm::vec2 xy){auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"x",JS_NewFloat64(c,xy.x));JS_SetPropertyStr(c,o,"y",JS_NewFloat64(c,xy.y));return o;};JS_SetPropertyStr(c,result,"uvScale",uv(m.uvScale));JS_SetPropertyStr(c,result,"uvOffset",uv(m.uvOffset));JS_SetPropertyStr(c,result,"overridden",JS_NewBool(c,bool(value.overrides.baseColor||value.overrides.emissive||value.overrides.roughness||value.overrides.metallic||value.overrides.emissiveIntensity||value.overrides.uvScale||value.overrides.uvOffset)));return result;
     }
     if(op=="liquidOwner"){auto h=world.Liquids().Handle(id);if(!world.Liquids().Get(h))return JS_NULL;return JS_NewString(c,(std::to_string(h.generation)+":"+std::to_string(h.id)).c_str());}
     if(op=="navEnabled"){if(!JS_IsBool(arg(3)))return JS_ThrowTypeError(c,"boolean required");return JS_NewBool(c,world.SetNavigationEnabled(id,String(c,arg(2)),JS_ToBool(c,arg(3))));}
@@ -815,6 +847,23 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         if(op=="animationExists")return JS_NewBool(c,definition->animation.has_value());
         auto* instance=world.RuntimeAnimation(id);if(!instance)return JS_ThrowTypeError(c,"entity has no animated mesh");
         auto& player=instance->playback;
+        if(op=="animationJointPose"){
+            const auto space=String(c,arg(3));if(space!="local"&&space!="model"&&space!="world")return JS_ThrowTypeError(c,"joint space must be local/model/world");
+            SceneTransform pose;float alpha=JS_ToBool(c,arg(4))&&s->inPresentation?s->presentationAlpha:1;
+            if(!world.JointPose(id,String(c,arg(2)),space,alpha,pose))return JS_NULL;
+            auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"position",Vec(c,pose.position));JS_SetPropertyStr(c,o,"scale",Vec(c,pose.scale));auto q=Vec(c,{pose.rotation.x,pose.rotation.y,pose.rotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,pose.rotation.w));JS_SetPropertyStr(c,o,"rotation",q);return o;
+        }
+        if(op=="animationLimb"||op=="animationRemoveLimb"){
+            LimbIKSettings k;k.id=String(c,arg(2));if(definition->animation)for(auto& old:definition->animation->limbs)if(old.id==k.id)k=old;
+            if(op=="animationLimb"){
+                auto o=arg(3);for(auto item:{std::pair<const char*,std::string*>{"root",&k.root},{"middle",&k.middle},{"end",&k.end}}){auto v=JS_GetPropertyStr(c,o,item.first);if(!JS_IsUndefined(v)){if(!JS_IsString(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"joint key must be string");}*item.second=String(c,v);}JS_FreeValue(c,v);}
+                for(auto item:{std::pair<const char*,glm::vec3*>{"target",&k.target},{"pole",&k.pole}}){auto v=JS_GetPropertyStr(c,o,item.first);bool ok=JS_IsUndefined(v)||ReadVec(c,v,*item.second);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"finite IK vector required");}
+                auto v=JS_GetPropertyStr(c,o,"weight");bool has=!JS_IsUndefined(v);JS_FreeValue(c,v);if(has&&!Number(c,o,"weight",k.weight))return JS_ThrowTypeError(c,"finite IK weight required");
+                v=JS_GetPropertyStr(c,o,"order");if(!JS_IsUndefined(v)){double value;if(JS_ToFloat64(c,&value,v)||!std::isfinite(value)||std::floor(value)!=value||value<1||value>999){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"IK order must be 1..999");}k.order=int(value);}JS_FreeValue(c,v);
+                v=JS_GetPropertyStr(c,o,"enabled");if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"IK enabled must be boolean");}k.enabled=JS_ToBool(c,v);}JS_FreeValue(c,v);
+            }
+            std::string error;return world.SetLimbIK(id,k,op=="animationRemoveLimb",error)?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());
+        }
         if(op=="animationInfo"){
             auto result=JS_NewObject(c);JS_SetPropertyStr(c,result,"ready",JS_NewBool(c,bool(instance->asset)));JS_SetPropertyStr(c,result,"playing",JS_NewBool(c,player.playing&&!player.stopped));JS_SetPropertyStr(c,result,"loop",JS_NewBool(c,player.loop));JS_SetPropertyStr(c,result,"speed",JS_NewFloat64(c,player.speed));JS_SetPropertyStr(c,result,"time",JS_NewFloat64(c,player.time));JS_SetPropertyStr(c,result,"clip",JS_NewString(c,player.clip.c_str()));
             auto clips=JS_NewArray(c);uint32_t i=0;if(instance->asset)for(const auto& clip:instance->asset->clips){auto value=JS_NewObject(c);JS_SetPropertyStr(c,value,"name",JS_NewString(c,clip.name.c_str()));JS_SetPropertyStr(c,value,"duration",JS_NewFloat64(c,clip.duration));JS_SetPropertyUint32(c,clips,i++,value);}JS_SetPropertyStr(c,result,"clips",clips);
@@ -857,11 +906,29 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
         else return JS_ThrowTypeError(c,"unknown animation operation");
         world.ResolveAnimationPose(*instance,0);return JS_TRUE;
     }
+    if(op=="physicalMaterialInfo"||op=="physicalMaterialSet"){
+        std::string asset;float friction=0,restitution=0;auto body=world.RuntimeBody(id);
+        if(!world.Physics().GetPhysicalMaterial(body,asset,friction,restitution))return op=="physicalMaterialInfo"?JS_NULL:JS_ThrowReferenceError(c,"unavailable physical body");
+        if(op=="physicalMaterialSet"){
+            std::string chosen;PhysicalMaterial material{friction,restitution};const PhysicalMaterial* override=nullptr;
+            if(!JS_IsNull(arg(2))){if(!JS_IsString(arg(2)))return JS_ThrowTypeError(c,"physical material asset or null required");chosen=String(c,arg(2));}
+            if(!chosen.empty()){std::string error;auto loaded=world.Resources()?world.Resources()->RequirePhysicalMaterial(chosen,error):nullptr;if(!loaded)return JS_ThrowTypeError(c,"%s",error.c_str());material=*loaded;}
+            for(auto item:{std::pair<const char*,float*>{"friction",&material.friction},{"restitution",&material.restitution}}){auto v=JS_GetPropertyStr(c,arg(3),item.first);bool has=!JS_IsUndefined(v);JS_FreeValue(c,v);if(has){override=&material;if(!Number(c,arg(3),item.first,*item.second))return JS_ThrowTypeError(c,"finite physical factor required");}}
+            std::string error;return world.SetBodyMaterial(id,chosen,override,error)?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());
+        }
+        auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"asset",asset.empty()?JS_NULL:JS_NewString(c,asset.c_str()));JS_SetPropertyStr(c,o,"friction",JS_NewFloat64(c,friction));JS_SetPropertyStr(c,o,"restitution",JS_NewFloat64(c,restitution));return o;
+    }
+    if(op=="sleeping")return JS_NewBool(c,world.Physics().IsSleeping(world.RuntimeBody(id)));
+    if(op=="socketSet"||op=="socketClear"){
+        SceneSocketComponent socket;std::string error;
+        if(op=="socketSet"){try{socket.target=std::stoull(String(c,arg(2)));}catch(...){return JS_ThrowTypeError(c,"socket target required");}socket.joint=String(c,arg(3));if(!readTransform(arg(4),socket.offset))return JS_ThrowTypeError(c,"invalid socket offset");}
+        return world.SetSocket(id,socket,op=="socketClear",error)?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());
+    }
     if(op=="colliderInfo"){
         const auto handle=world.RuntimeBody(id);Shape shape;BodyTransform pose;if(!world.Physics().GetBodyShape(handle,shape,pose))return JS_NULL;
-        auto metadata=[&](const Shape& value,glm::vec3 center,glm::quat rotation,uint32_t key){auto o=JS_NewObject(c);const char* type=value.type==ShapeType::Sphere?"sphere":value.type==ShapeType::Box?"box":value.type==ShapeType::ConvexHull?"hull":value.type==ShapeType::TriangleMesh?"triangle-mesh":value.type==ShapeType::CompoundBoxes?"compound":"terrain";
+        auto metadata=[&](const Shape& value,glm::vec3 center,glm::quat rotation,uint32_t key){auto o=JS_NewObject(c);const char* type=value.type==ShapeType::Sphere?"sphere":value.type==ShapeType::Box?"box":value.type==ShapeType::ConvexHull?"hull":value.type==ShapeType::TriangleMesh?"triangle-mesh":value.type==ShapeType::CompoundBoxes?"compound":value.type==ShapeType::Capsule?"capsule":"terrain";
             JS_SetPropertyStr(c,o,"type",JS_NewString(c,type));JS_SetPropertyStr(c,o,"key",JS_NewUint32(c,key));JS_SetPropertyStr(c,o,"position",Vec(c,center));auto q=Vec(c,{rotation.x,rotation.y,rotation.z});JS_SetPropertyStr(c,q,"w",JS_NewFloat64(c,rotation.w));JS_SetPropertyStr(c,o,"rotation",q);
-            JS_SetPropertyStr(c,o,"halfExtents",value.type==ShapeType::Box?Vec(c,value.halfExtents):JS_NULL);JS_SetPropertyStr(c,o,"radius",value.type==ShapeType::Sphere?JS_NewFloat64(c,value.radius):JS_NULL);JS_SetPropertyStr(c,o,"asset",value.asset?JS_NewString(c,value.assetId.c_str()):JS_NULL);
+            JS_SetPropertyStr(c,o,"halfExtents",value.type==ShapeType::Box?Vec(c,value.halfExtents):JS_NULL);JS_SetPropertyStr(c,o,"radius",(value.type==ShapeType::Sphere||value.type==ShapeType::Capsule)?JS_NewFloat64(c,value.radius):JS_NULL);JS_SetPropertyStr(c,o,"halfHeight",value.type==ShapeType::Capsule?JS_NewFloat64(c,value.halfHeight):JS_NULL);JS_SetPropertyStr(c,o,"asset",value.asset?JS_NewString(c,value.assetId.c_str()):JS_NULL);
             JS_SetPropertyStr(c,o,"vertexCount",JS_NewUint32(c,value.asset?value.asset->vertices.size():0));JS_SetPropertyStr(c,o,"triangleCount",JS_NewUint32(c,value.asset?value.asset->faces.size():0));JS_SetPropertyStr(c,o,"twoSided",JS_NewBool(c,value.asset&&value.asset->twoSided));return o;};
         auto result=metadata(shape,{0,0,0},{1,0,0,0},0);JS_SetPropertyStr(c,result,"centerOfMassOffset",Vec(c,shape.pivotOffset));JS_SetPropertyStr(c,result,"enabled",JS_NewBool(c,world.Physics().IsBodyEnabled(handle)));JS_SetPropertyStr(c,result,"sensor",JS_NewBool(c,world.Physics().IsBodySensor(handle)));
         auto children=JS_NewArray(c);for(unsigned i=0;i<shape.boxes.size();++i){const auto& child=shape.boxes[i];Shape primitive=child.type==ShapeType::Sphere?Shape::Sphere(child.radius):child.type==ShapeType::ConvexHull?Shape::Cooked(child.asset,child.assetId):Shape::Box(child.halfExtents);JS_SetPropertyUint32(c,children,i,metadata(primitive,child.localCenter,child.rotation,child.key?child.key:i+1));}JS_SetPropertyStr(c,result,"children",children);return result;
@@ -952,7 +1019,11 @@ void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){
         auto props=JS_ParseJSON(m->ctx,propertyText.data(),propertyText.size(),"authored properties");
         auto args=JS_NewObject(m->ctx);i.loaded=m->resumed.count(key)!=0;JS_SetPropertyStr(m->ctx,args,"restored",JS_NewBool(m->ctx,i.loaded));JS_SetPropertyStr(m->ctx,args,"properties",props);
         auto libraryNs=m->NamespaceLibrary();
-        auto entityFn=JS_GetPropertyStr(m->ctx,libraryNs,"entity");auto id=JS_NewString(m->ctx,std::to_string(object.id).c_str());auto self=JS_Call(m->ctx,entityFn,JS_UNDEFINED,1,&id);
+        auto entityFn=JS_GetPropertyStr(m->ctx,libraryNs,"entity");
+        for(const auto& field:fields)if(field.type=="entity"){
+            auto id=JS_NewString(m->ctx,field.text.c_str());auto value=JS_Call(m->ctx,entityFn,JS_UNDEFINED,1,&id);JS_FreeValue(m->ctx,id);JS_SetPropertyStr(m->ctx,props,field.name.c_str(),value);
+        }
+        auto id=JS_NewString(m->ctx,std::to_string(object.id).c_str());auto self=JS_Call(m->ctx,entityFn,JS_UNDEFINED,1,&id);
         JS_FreeValue(m->ctx,id);JS_FreeValue(m->ctx,entityFn);JS_FreeValue(m->ctx,libraryNs);JS_SetPropertyStr(m->ctx,args,"entity",self);
         i.value=JS_CallConstructor(m->ctx,ctor,1,&args);JS_FreeValue(m->ctx,ctor);JS_FreeValue(m->ctx,args);
         if(JS_IsException(i.value)){i.value=JS_UNDEFINED;m->Error(i,"construct");}
@@ -998,6 +1069,9 @@ bool ScriptSystem::ReadProperties(const std::string& schema,const std::string& v
         auto value=JS_GetProperty(c,data,keys[i].atom);if(JS_IsUndefined(value)){JS_FreeValue(c,value);value=JS_GetPropertyStr(c,spec,"default");}
         if(field.type=="number"){double number=0;ok=JS_IsNumber(value)&&JS_ToFloat64(c,&number,value)==0&&std::isfinite(number);field.number=number;}
         else if(field.type=="boolean"){ok=JS_IsBool(value);field.boolean=JS_ToBool(c,value);}
+        else if(field.type=="entity"){
+            if(JS_IsNull(value)){field.text="0";}else {auto id=JS_GetPropertyStr(c,value,"entity");ok=JS_IsObject(value)&&JS_IsString(id);field.text=String(c,id);try{size_t end=0;auto n=std::stoull(field.text,&end);ok=ok&&n>0&&end==field.text.size();}catch(...){ok=false;}JS_FreeValue(c,id);}
+        }
         else if(field.type=="string"){ok=JS_IsString(value);field.text=String(c,value);}
         else ok=false;
         JS_FreeValue(c,value);JS_FreeValue(c,spec);fields.push_back(field);
@@ -1010,7 +1084,7 @@ bool ScriptSystem::ReadProperties(const std::string& schema,const std::string& v
     JS_FreePropertyEnum(c,keys,count);JS_FreeValue(c,definition);JS_FreeValue(c,data);if(ok)out=std::move(fields);return ok;
 }
 std::string ScriptSystem::WriteProperties(const std::vector<ScriptProperty>& values){Impl vm(nullptr,nullptr);auto o=JS_NewObject(vm.ctx);
-    for(const auto& field:values){auto v=field.type=="number"?JS_NewFloat64(vm.ctx,field.number):field.type=="boolean"?JS_NewBool(vm.ctx,field.boolean):JS_NewString(vm.ctx,field.text.c_str());JS_SetPropertyStr(vm.ctx,o,field.name.c_str(),v);}
+    for(const auto& field:values){if(field.type=="entity"){auto v=field.text=="0"?JS_NULL:JS_NewObject(vm.ctx);if(!JS_IsNull(v))JS_SetPropertyStr(vm.ctx,v,"entity",JS_NewString(vm.ctx,field.text.c_str()));JS_SetPropertyStr(vm.ctx,o,field.name.c_str(),v);continue;}auto v=field.type=="number"?JS_NewFloat64(vm.ctx,field.number):field.type=="boolean"?JS_NewBool(vm.ctx,field.boolean):JS_NewString(vm.ctx,field.text.c_str());JS_SetPropertyStr(vm.ctx,o,field.name.c_str(),v);}
     auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);auto text=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return text;}
 bool ScriptSystem::SourceFingerprint(const AssetDatabase& assets,const Scene& scene,std::string& digest,std::string& error,bool strict){
     Impl vm(nullptr,&assets);std::set<std::string> roots;std::map<std::string,std::string> sources;
@@ -1074,6 +1148,7 @@ void ScriptSystem::PhysicsEvent(SceneObjectId self,SceneObjectId other,const Phy
             JS_SetPropertyStr(m->ctx,e,"point",Vec(m->ctx,event.point));
             JS_SetPropertyStr(m->ctx,e,"normal",Vec(m->ctx,reverse?-event.normal:event.normal));
             JS_SetPropertyStr(m->ctx,e,"relativeVelocity",Vec(m->ctx,reverse?-event.relativeVelocity:event.relativeVelocity));
+            std::string material;float friction=0,restitution=0;m->world->Physics().GetPhysicalMaterial(m->world->RuntimeBody(other),material,friction,restitution);JS_SetPropertyStr(m->ctx,e,"physicalMaterial",material.empty()?JS_NULL:JS_NewString(m->ctx,material.c_str()));
             JS_SetPropertyStr(m->ctx,e,"normalImpulse",event.impulseAvailable?JS_NewFloat64(m->ctx,event.normalImpulse):JS_NULL);
             auto result=JS_Call(m->ctx,fn,i.value,1,&e);
             if(JS_IsException(result))m->Error(i,name);else if(JS_PromiseState(m->ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(m->ctx,"async contact callbacks unsupported");m->Error(i,name);}
@@ -1102,3 +1177,15 @@ void ScriptSystem::Presentation(const InputSystem* input,float dt,float alpha){
 }
 
 void ScriptSystem::FractureEvent(SceneObjectId owner,uint64_t revision,const std::vector<std::string>& keys,const std::vector<unsigned>& causes){m->CheckThread();m->fixed=true;const auto* d=m->world->RuntimeDefinition(owner);if(!d)return;auto slots=d->scripts;for(auto& slot:slots){if(!m->world->RuntimeDefinition(owner))return;auto* live=m->world->RuntimeDefinition(owner);if(!live||std::none_of(live->scripts.begin(),live->scripts.end(),[&](const auto& s){return s.id==slot.id&&s.enabled;}))continue;auto it=m->instances.find({owner,slot.id});if(!slot.enabled||it==m->instances.end()||it->second.fault)continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}if(!m->world->RuntimeDefinition(owner)||i.fault)continue;ProfileScope assetScope(m->AssetLabel(i));m->polls=0;m->currentOwner=owner;m->currentSlot=slot.id;auto fn=JS_GetPropertyStr(m->ctx,i.value,"onFracture");if(JS_IsException(fn)){m->Error(i,"onFracture");JS_FreeValue(m->ctx,fn);continue;}if(JS_IsFunction(m->ctx,fn)){auto event=JS_NewObject(m->ctx);JS_SetPropertyStr(m->ctx,event,"revision",JS_NewFloat64(m->ctx,double(revision)));auto interfaces=JS_NewArray(m->ctx);for(unsigned b=0;b<keys.size();++b){auto v=JS_NewObject(m->ctx);JS_SetPropertyStr(m->ctx,v,"key",JS_NewString(m->ctx,keys[b].c_str()));JS_SetPropertyStr(m->ctx,v,"cause",JS_NewString(m->ctx,causes[b]==1?"physical":"explicit"));JS_SetPropertyUint32(m->ctx,interfaces,b,v);}JS_SetPropertyStr(m->ctx,event,"interfaces",interfaces);auto result=JS_Call(m->ctx,fn,i.value,1,&event);if(JS_IsException(result))m->Error(i,"onFracture");else if(JS_PromiseState(m->ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(m->ctx,"async fracture callbacks unsupported");m->Error(i,"onFracture");}JS_FreeValue(m->ctx,result);JS_FreeValue(m->ctx,event);}JS_FreeValue(m->ctx,fn);}}
+
+namespace {
+// Tagged authored references are remapped through existing scene/prefab IDs.
+// Arbitrary numeric/string gameplay properties are never interpreted as IDs.
+void PropertyReferences(JSContext* c,JSValueConst object,const std::function<void(const std::string&,JSValueConst)>& visit){
+ JSPropertyEnum* keys=nullptr;uint32_t count=0;if(!JS_IsObject(object)||JS_GetOwnPropertyNames(c,&keys,&count,object,JS_GPN_STRING_MASK)<0)return;
+ for(uint32_t i=0;i<count;++i){auto name=JS_AtomToString(c,keys[i].atom);auto key=String(c,name);JS_FreeValue(c,name);auto value=JS_GetProperty(c,object,keys[i].atom);if(JS_IsObject(value)){auto id=JS_GetPropertyStr(c,value,"entity");if(JS_IsString(id))visit(key,id);JS_FreeValue(c,id);}JS_FreeValue(c,value);}JS_FreePropertyEnum(c,keys,count);
+}
+}
+std::vector<SceneObjectId> ScriptSystem::PropertyEntities(const std::string& values){Impl vm(nullptr,nullptr);auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");std::vector<SceneObjectId> result;PropertyReferences(vm.ctx,o,[&](const std::string&,JSValueConst id){try{size_t end=0;auto text=String(vm.ctx,id);auto value=std::stoull(text,&end);if(value&&end==text.size())result.push_back(value);}catch(...){}});JS_FreeValue(vm.ctx,o);return result;}
+std::string ScriptSystem::RemapPropertyEntities(const std::string& values,const std::map<SceneObjectId,SceneObjectId>& ids){Impl vm(nullptr,nullptr);auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");if(JS_IsException(o)){JS_FreeValue(vm.ctx,o);return values;}PropertyReferences(vm.ctx,o,[&](const std::string& key,JSValueConst id){try{auto value=std::stoull(String(vm.ctx,id));auto found=ids.find(value);if(found!=ids.end()){auto ref=JS_NewObject(vm.ctx);JS_SetPropertyStr(vm.ctx,ref,"entity",JS_NewString(vm.ctx,std::to_string(found->second).c_str()));JS_SetPropertyStr(vm.ctx,o,key.c_str(),ref);}}catch(...){}});auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);auto result=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return result;}
+bool ScriptSystem::SetPropertyEntity(std::string& values,const std::string& name,SceneObjectId id){Impl vm(nullptr,nullptr);auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");if(!JS_IsObject(o)){JS_FreeValue(vm.ctx,o);return false;}auto ref=id?JS_NewObject(vm.ctx):JS_NULL;if(id)JS_SetPropertyStr(vm.ctx,ref,"entity",JS_NewString(vm.ctx,std::to_string(id).c_str()));JS_SetPropertyStr(vm.ctx,o,name.c_str(),ref);auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);values=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return true;}

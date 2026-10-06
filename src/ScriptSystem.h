@@ -1,3 +1,4 @@
+#include <map>
 #pragma once
 #include "Scene.h"
 #include "PhysicsWorld.h"
@@ -33,6 +34,9 @@ public:
     const std::vector<ScriptDiagnostic>& Diagnostics() const;
     void SetBudget(unsigned interruptPolls);
     static bool ValidateJson(const std::string& text,std::string& error,bool requireObject=true);
+    static std::vector<SceneObjectId> PropertyEntities(const std::string& values);
+    static std::string RemapPropertyEntities(const std::string& values,const std::map<SceneObjectId,SceneObjectId>& ids);
+    static bool SetPropertyEntity(std::string& values,const std::string& name,SceneObjectId id);
     static bool ReadProperties(const std::string& schema,const std::string& values,std::vector<ScriptProperty>& out,std::string& error);
     static std::string WriteProperties(const std::vector<ScriptProperty>& values);
     static bool SourceFingerprint(const AssetDatabase& assets,const Scene& scene,std::string& digest,std::string& error,bool strict=true);

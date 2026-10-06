@@ -1,6 +1,7 @@
 #include "SceneSession.h"
 #include "RuntimeWorld.h"
 #include "ResourceManager.h"
+#include "PhysicalMaterial.h"
 #include "InputSystem.h"
 #include <cmath>
 #include <limits>
@@ -12,6 +13,7 @@ const SceneObject* RuntimeWorld::RuntimeDefinition(EntityId id) const {
 }
 BodyHandle RuntimeWorld::RuntimeBody(EntityId id) const {
     if(!RuntimeDefinition(id))return {};
+    if(auto it=m_characters.find(id);it!=m_characters.end())return it->second.motor.observationBody;
     if(const auto* e=FindEntity(id))if(e->slot!=std::numeric_limits<size_t>::max())return m_dynamicBodies[e->slot].Handle();
     auto it=m_entityCategories.find(id);return it==m_entityCategories.end()?BodyHandle{}:it->second.body;
 }
@@ -53,6 +55,8 @@ void RuntimeWorld::UpdateScripts(const InputSystem* input,float dt){
     m_scripts->Synchronize(ScriptObjects());m_scripts->Frame(input,dt);
 }
 void RuntimeWorld::FixedScripts(const InputSystem* input,float dt){
+    // Register authored motor geometry before this step, including its first one.
+    for(const auto& [id,d]:m_scriptDefinitions)if(d.characterMotor&&RuntimeDefinition(id))RuntimeCharacter(id);
     SynchronizeJoints();
     if(!m_scripts){if(!m_hasScripts)return;
         m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);}
@@ -90,6 +94,7 @@ void RuntimeWorld::DispatchPhysicsEvents(const InputSystem* input,float dt){
     m_touchEntityHistory=std::move(next);(void)input;(void)dt;
 }
 bool RuntimeWorld::SetColliderEnabled(EntityId id,bool enabled){
+    if(const auto* d=RuntimeDefinition(id);d&&d->characterMotor){auto settings=*d->characterMotor;settings.enabled=enabled;SetCharacterSettings(id,settings);return true;}
     auto h=RuntimeBody(id);if(!h.IsValid()||!m_physics.SetBodyEnabled(h,enabled))return false;
     auto& d=m_scriptDefinitions.at(id);if(d.body)d.body->enabled=enabled;return true;
 }
@@ -115,3 +120,29 @@ void RuntimeWorld::PresentationScripts(const InputSystem* input,float dt,float a
 }
 
 LocalizationSession& RuntimeWorld::Localization(){if(auto scenes=SceneControl())return scenes->Localization(m_assets);if(!m_localization)m_localization=std::make_unique<LocalizationSession>();m_localization->Bind(m_assets);return *m_localization;}
+
+bool RuntimeWorld::SetRuntimeJoint(EntityId owner,const SceneJointComponent& authored,bool remove,std::string& error){
+ auto* def=RuntimeDefinition(owner);if(!def){error="stale joint owner";return false;}
+ auto old=m_runtimeJoints.find(owner);
+ if(remove){if(old!=m_runtimeJoints.end()){m_physics.DestroyJoint(old->second);m_runtimeJoints.erase(old);}m_scriptDefinitions.at(owner).joint.reset();if(auto* e=FindEntity(owner))e->definition.joint.reset();if(auto* h=m_hierarchy.Find(owner))h->joint.reset();m_jointOwners.erase(owner);return true;}
+ auto copy=authored;auto& s=copy.settings;s.bodyA=RuntimeBody(copy.bodyA);s.bodyB=RuntimeBody(copy.bodyB);
+ auto* a=RuntimeDefinition(copy.bodyA);auto* b=RuntimeDefinition(copy.bodyB);
+ if(!a||!a->body||(copy.bodyB&&(!b||!b->body))||!ValidJointSettings(s)||!s.bodyA.IsValid()||(copy.bodyB&&!s.bodyB.IsValid())||copy.bodyA==copy.bodyB||(!m_physics.IsDynamicBody(s.bodyA)&&(!copy.bodyB||!m_physics.IsDynamicBody(s.bodyB)))){error="joint requires valid body references/settings and a dynamic participant";return false;}
+ if(!copy.bodyB){s.anchorB=def->transform.position+def->transform.rotation*s.anchorB;s.frameB=glm::normalize(def->transform.rotation*s.frameB);}
+ // Scripts run outside the physics solver; validate and allocate before replacing.
+ JointHandle replacement;JointState previous;bool same=old!=m_runtimeJoints.end()&&m_physics.GetJoint(old->second,previous)&&previous.settings.bodyA.id==s.bodyA.id&&previous.settings.bodyB.id==s.bodyB.id;
+ if(same){replacement=old->second;if(!m_physics.SetJoint(replacement,s)){error="invalid joint configuration";return false;}}else replacement=m_physics.CreateJoint(s);if(!replacement.IsValid()){error="joint allocation failed";return false;}
+ if(!same&&old!=m_runtimeJoints.end())m_physics.DestroyJoint(old->second);
+ copy.settings.bodyA={};copy.settings.bodyB={};m_scriptDefinitions.at(owner).joint=copy;if(auto* e=FindEntity(owner))e->definition.joint=copy;if(auto* h=m_hierarchy.Find(owner))h->joint=copy;
+ m_runtimeJoints[owner]=replacement;m_jointOwners.insert(owner);m_jointParticipants.insert(copy.bodyA);if(copy.bodyB)m_jointParticipants.insert(copy.bodyB);return true;
+}
+bool RuntimeWorld::SetBodyMaterial(EntityId id,const std::string& asset,const PhysicalMaterial* factors,std::string& error){
+ auto* d=RuntimeDefinition(id);auto body=RuntimeBody(id);if(!d||!d->body||!body.IsValid()){error="stale entity or unavailable physical body";return false;}
+ PhysicalMaterial material{d->body->friction,d->body->restitution};
+ if(!asset.empty()){if(!m_assets){error="physical material needs project resources";return false;}auto loaded=m_assets->RequirePhysicalMaterial(asset,error);if(!loaded)return false;material=*loaded;}
+ if(factors)material=*factors;
+ if(!ValidPhysicalMaterial(material,error))return false;
+ if(!m_physics.SetPhysicalMaterial(body,asset,material.friction,material.restitution)){error="physical material mutation failed";return false;}
+ auto settings=*d->body;settings.physicalMaterial=asset;settings.physicalMaterialOverride=factors!=nullptr;settings.friction=material.friction;settings.restitution=material.restitution;m_scriptDefinitions.at(id).body=settings;if(auto* e=FindEntity(id))e->definition.body=settings;
+ if(!asset.empty()){m_assets->AddRef(asset);m_referencedAssets.push_back(asset);}return true;
+}

@@ -136,6 +136,7 @@ struct ClosestBodyResult {
     float distance = std::numeric_limits<float>::max();
     glm::vec3 normal{0.0f};
     int bodyIndex = -1;
+    glm::vec3 point{0};
 };
 
 struct PhysicsWorld::Impl {
@@ -164,10 +165,14 @@ struct PhysicsWorld::Impl {
         PoseBound currentBound, previousBound;
         unsigned collisionLayer=0;
         CategoryMask collisionMask=kAllCategories, tags=0;
+        std::string physicalMaterial;
         float friction = 0.5f;
         float restitution = 0.0f;
-        bool sensor = false, enabled = true;
+        bool sensor = false, enabled = true, queryOnly=false;
         bool isDynamic = false;
+        bool sleeping=false,deferredAcceleration=false;
+        float quietSeconds=0;
+        glm::vec3 lastAcceleration{0};
         bool alive = false;
         // Milestone 29: a slot is reused after DestroyBody; the generation
         // in the handle's upper bits makes a handle from a previous
@@ -190,6 +195,7 @@ struct PhysicsWorld::Impl {
     std::vector<PhysicsWorld::DebugContact> lastStepContacts;
     using TouchKey=std::pair<unsigned,unsigned>;
     std::map<TouchKey,PhysicsWorld::TouchEvent> previousTouches,stepTouches;
+    bool queryTouchesPending=false;
     std::vector<PhysicsWorld::TouchEvent> touchEvents;
     void Observe(unsigned a,unsigned b,const Contact& c,float impulse=0) {
         auto ha=MakeHandle(a),hb=MakeHandle(b);
@@ -232,7 +238,7 @@ struct PhysicsWorld::Impl {
     DynamicAabbTree tree;
     std::vector<std::pair<unsigned int, unsigned int>> candidatePairs;
     mutable std::vector<unsigned int> queryScratch;
-    struct JointRecord {JointHandle handle;JointState state;std::array<float,10> warm{};};
+    struct JointRecord {JointHandle handle;JointState state;std::array<float,10> warm{};float previousCoordinate=0;};
     std::vector<JointRecord> joints;
     std::set<std::pair<unsigned,unsigned>> suppressedPairs;
     JointSolver jointSolver,eventJointSolver;
@@ -245,11 +251,70 @@ struct PhysicsWorld::Impl {
         std::vector<JointInput> result;
         for(auto& joint:joints){joint.state.active=JointActive(joint);if(!joint.state.active){joint.warm.fill(0);continue;}
             auto* a=Get(joint.state.settings.bodyA);auto* b=Get(joint.state.settings.bodyB);
+            if((a->sleeping||a->rigidBody.IsStatic())&&(!b||b->sleeping||b->rigidBody.IsStatic()))continue;
             if(included&&!(*included)[joint.state.settings.bodyA.id&kSlotMask]&&
                (!b||!(*included)[joint.state.settings.bodyB.id&kSlotMask]))continue;
             result.push_back({&a->rigidBody,b?&b->rigidBody:&worldAnchor,&joint.state,&joint.warm,a->shape.pivotOffset,b?b->shape.pivotOffset:glm::vec3(0)});
         }
         return result;
+    }
+    bool sleepingEnabled=true;
+    void Wake(unsigned slot){
+        if(slot>=bodies.size()||!bodies[slot].alive)return;
+        std::set<unsigned> visited;std::vector<unsigned> queue{slot};
+        for(size_t i=0;i<queue.size();++i){auto n=queue[i];if(!visited.insert(n).second)continue;
+            auto& b=bodies[n];b.sleeping=false;b.quietSeconds=0;
+            if(n!=slot&&b.rigidBody.IsStatic())continue;
+            for(const auto& j:joints)if(j.state.settings.enabled){const auto a=j.state.settings.bodyA,c=j.state.settings.bodyB;if(!Get(a))continue;if((a.id&kSlotMask)==n&&Get(c))queue.push_back(c.id&kSlotMask);else if(Get(c)&&(c.id&kSlotMask)==n)queue.push_back(a.id&kSlotMask);}
+            for(const auto& [_,e]:previousTouches)if(!e.sensor&&Get(e.a)&&Get(e.b)){
+                auto a=e.a.id&kSlotMask,c=e.b.id&kSlotMask;if(a==n&&!bodies[c].rigidBody.IsStatic())queue.push_back(c);if(c==n&&!bodies[a].rigidBody.IsStatic())queue.push_back(a);
+            }
+            // Speculative resting rows may have a positive gap and therefore
+            // no touch callback. They still connect the sleeping contact island.
+            for(const auto& c:contactCache)if(c.normalImpulse>0){
+                const auto a=c.key.slotA,b=c.key.slotB;
+                if(a>=bodies.size()||b>=bodies.size()||!bodies[a].alive||!bodies[b].alive||bodies[a].generation!=c.key.generationA||bodies[b].generation!=c.key.generationB)continue;
+                if(a==n&&!bodies[b].rigidBody.IsStatic())queue.push_back(b);
+                if(b==n&&!bodies[a].rigidBody.IsStatic())queue.push_back(a);
+            }
+        }
+    }
+    void Settle(float dt){
+        if(!sleepingEnabled){for(auto i:aliveSlots)if(bodies[i].isDynamic)++stats.awakeBodies;return;}
+        std::vector<unsigned> parent(bodies.size());for(unsigned i=0;i<parent.size();++i)parent[i]=i;
+        auto root=[&](unsigned i){while(parent[i]!=i){parent[i]=parent[parent[i]];i=parent[i];}return i;};
+        auto unite=[&](unsigned a,unsigned b){if(bodies[a].isDynamic&&bodies[b].isDynamic)parent[root(b)]=root(a);};
+        // Positive solver impulses also represent speculative resting support.
+        // Touch callbacks alone deliberately omit positive-gap contact rows.
+        auto validSupport=[&](const CachedContact& c){return c.normalImpulse>0&&c.key.slotA<bodies.size()&&c.key.slotB<bodies.size()&&bodies[c.key.slotA].alive&&bodies[c.key.slotB].alive&&bodies[c.key.slotA].generation==c.key.generationA&&bodies[c.key.slotB].generation==c.key.generationB;};
+        for(const auto& c:contactCache)if(validSupport(c))unite(c.key.slotA,c.key.slotB);
+        for(const auto& [_,e]:stepTouches)if(!e.sensor&&Get(e.a)&&Get(e.b))unite(e.a.id&kSlotMask,e.b.id&kSlotMask);
+        for(const auto& j:joints)if(JointActive(j)&&Get(j.state.settings.bodyB))unite(j.state.settings.bodyA.id&kSlotMask,j.state.settings.bodyB.id&kSlotMask);
+        std::map<unsigned,std::vector<unsigned>> islands;for(auto i:aliveSlots)if(bodies[i].isDynamic&&bodies[i].enabled&&!bodies[i].sensor)islands[root(i)].push_back(i);
+        for(auto& [_,slots]:islands){bool quiet=true,anchored=false;float seconds=1000;
+            for(const auto& c:contactCache)if(validSupport(c)){auto a=c.key.slotA,b=c.key.slotB;anchored|=(root(a)==root(slots.front())&&bodies[b].rigidBody.IsStatic())||(root(b)==root(slots.front())&&bodies[a].rigidBody.IsStatic());}
+            for(const auto& [_,e]:stepTouches)if(!e.sensor&&Get(e.a)&&Get(e.b)){auto a=e.a.id&kSlotMask,b=e.b.id&kSlotMask;anchored|=(root(a)==root(slots.front())&&bodies[b].rigidBody.IsStatic())||(root(b)==root(slots.front())&&bodies[a].rigidBody.IsStatic());}
+            for(const auto& j:joints)if(JointActive(j)){auto a=j.state.settings.bodyA.id&kSlotMask;auto* b=Get(j.state.settings.bodyB);anchored|=root(a)==root(slots.front())&&(!b||b->rigidBody.IsStatic());}
+            for(auto i:slots){auto& b=bodies[i];quiet&=glm::length(b.rigidBody.linearVelocity)<.03f&&glm::length(b.rigidBody.angularVelocity)<.03f&&glm::length(b.rigidBody.position-b.previousPosition)<.002f&&glm::abs(glm::dot(b.rigidBody.orientation,b.previousOrientation))>.999999f;seconds=std::min(seconds,b.quietSeconds);}
+            for(const auto& j:joints)if(JointActive(j)&&root(j.state.settings.bodyA.id&kSlotMask)==root(slots.front())){
+                const auto& s=j.state.settings;auto* a=Get(s.bodyA);auto* b=Get(s.bodyB);auto pa=a->rigidBody.position+a->rigidBody.orientation*(s.anchorA-a->shape.pivotOffset);auto pb=b?b->rigidBody.position+b->rigidBody.orientation*(s.anchorB-b->shape.pivotOffset):s.anchorB;
+                auto error=pb-pa;if(s.type==JointType::Slider){auto axis=a->rigidBody.orientation*s.frameA*glm::vec3(1,0,0);error-=axis*glm::dot(error,axis);}quiet&=glm::length(error)<.02f;quiet&=!s.motor||s.speed==0;
+                auto qa=glm::normalize(a->rigidBody.orientation*s.frameA),qb=b?glm::normalize(b->rigidBody.orientation*s.frameB):glm::normalize(s.frameB);
+                if(s.type==JointType::Fixed||s.type==JointType::Slider)quiet&=2*std::acos(std::clamp(glm::abs(glm::dot(qa,qb)),0.f,1.f))<.01f;
+                if(s.type==JointType::Hinge)quiet&=glm::length(qa*glm::vec3(1,0,0)-qb*glm::vec3(1,0,0))<.01f;
+                if(s.spring)quiet&=std::abs(j.state.coordinate-j.previousCoordinate)<.002f; // gravity can balance a spring away from its rest coordinate
+                if(s.limits)quiet&=j.state.coordinate>=s.lower-.01f&&j.state.coordinate<=s.upper+.01f;
+            }
+            for(const auto& c:lastStepContacts)if(c.penetration>.02f){ // only invalidate the contacting island
+                for(auto i:slots)if(glm::length(c.point-bodies[i].rigidBody.position)<bodies[i].boundingRadius+.1f)quiet=false;
+            }
+            seconds=quiet?seconds+dt:0;
+            const bool asleep=quiet&&seconds>=.75f&&(anchored||std::all_of(slots.begin(),slots.end(),[&](unsigned i){return glm::length(bodies[i].lastAcceleration)<1e-6f&&glm::length(bodies[i].rigidBody.linearVelocity)<1e-6f&&glm::length(bodies[i].rigidBody.angularVelocity)<1e-6f;}));
+            for(auto i:slots){auto& b=bodies[i];b.quietSeconds=seconds;b.sleeping=asleep;if(asleep){b.rigidBody.linearVelocity={0,0,0};b.rigidBody.angularVelocity={0,0,0};}}
+            stats.sleepingIslands+=asleep;
+        }
+        for(auto& j:joints)j.previousCoordinate=j.state.coordinate;
+        for(auto i:aliveSlots)if(bodies[i].isDynamic){stats.sleepingBodies+=bodies[i].sleeping;stats.awakeBodies+=!bodies[i].sleeping;}
     }
     ContactSolver solver;
     ContactSolver particleSolver; // independent storage; never replays the rigid warm cache
@@ -513,6 +578,8 @@ struct PhysicsWorld::Impl {
     void AdvanceImpacts(float dt) {
         stepDuration=dt;
         impactCounts.assign(bodies.size(),0); impactCapped.assign(bodies.size(),0);
+        // A sleeping body still needs its stationary pre-impact trajectory.
+        // An actual TOI may wake it and append a new segment during this step.
         for (const auto slot:aliveSlots) if (bodies[slot].isDynamic)
             bodies[slot].motion.Begin(MakeHandle(slot).id,bodies[slot].rigidBody,dt);
         // Initial touching impacts can launch a previously stationary body.
@@ -550,6 +617,7 @@ struct PhysicsWorld::Impl {
             std::vector<unsigned> island;
             std::vector<unsigned char> included(bodies.size(),0);
             auto include=[&](unsigned slot){if(!included[slot] && !bodies[slot].rigidBody.IsStatic()) {
+                if(bodies[slot].sleeping)Wake(slot);
                 included[slot]=1;island.push_back(slot);}};
             include(seedA);include(seedB);
             std::vector<std::pair<unsigned,unsigned>> touching;
@@ -585,6 +653,12 @@ struct PhysicsWorld::Impl {
                 auto& body=bodies[slot];const auto pose=PoseAt(slot,now);
                 oldVelocities.emplace_back(body.rigidBody.linearVelocity,body.rigidBody.angularVelocity);
                 body.rigidBody.position=pose.position;body.rigidBody.orientation=pose.orientation;
+                // Gravity was deferred while stationary. Integrate only the
+                // remaining interval; never drift the frozen pre-impact pose.
+                if(body.deferredAcceleration){
+                    body.rigidBody.linearVelocity+=body.lastAcceleration*static_cast<float>(dt-now);
+                    body.deferredAcceleration=false;
+                }
                 if (++impactCounts[slot]>16) {
                     if(!impactCapped[slot]) {impactCapped[slot]=1;++stats.impactEventCapFallback;}
                     capture=true;
@@ -652,7 +726,7 @@ struct PhysicsWorld::Impl {
             for(const auto& key:dirty) schedule(key);
             if(now>=dt) break;
         }
-        for(const auto slot:aliveSlots) if(bodies[slot].isDynamic) {
+        for(const auto slot:aliveSlots) if(bodies[slot].isDynamic&&!bodies[slot].sleeping) {
             auto& body=bodies[slot];const auto pose=body.motion.Evaluate(dt);
             stats.motionSegments+=body.motion.Segments().size();stats.motionStorageBytes+=body.motion.StorageBytes();
             body.rigidBody.position=pose.position;body.rigidBody.orientation=pose.orientation;
@@ -805,7 +879,7 @@ struct PhysicsWorld::Impl {
         if(!suppressedPairs.empty()&&suppressedPairs.count(std::minmax(ha,hb)))return false;
         return bodies[a].enabled&&bodies[b].enabled&&CollisionPermitted(bodies[a].collisionLayer,bodies[a].collisionMask,bodies[b].collisionLayer,bodies[b].collisionMask);
     }
-    bool CanRespond(unsigned a,unsigned b) const {return CanCollide(a,b)&&!bodies[a].sensor&&!bodies[b].sensor;}
+    bool CanRespond(unsigned a,unsigned b) const {return CanCollide(a,b)&&!bodies[a].sensor&&!bodies[b].sensor&&!bodies[a].queryOnly&&!bodies[b].queryOnly&&!( (bodies[a].sleeping||bodies[a].rigidBody.IsStatic())&&(bodies[b].sleeping||bodies[b].rigidBody.IsStatic()) );}
     bool MatchesQuery(unsigned slot,const PhysicsQueryFilter& filter) const {
         const auto& b=bodies[slot]; if(!b.enabled||(b.sensor&&!filter.includeSensors))return false; const auto bit=CategoryBit(b.collisionLayer);
         if(!(filter.includeLayers&bit)||(filter.excludeLayers&bit)||
@@ -817,14 +891,14 @@ struct PhysicsWorld::Impl {
         candidatePairs.clear();
         for (const unsigned int slot : aliveSlots) {
             const Body& a = bodies[slot];
-            if (!a.enabled || (a.rigidBody.IsStatic()&&!a.sensor)) continue;
+            if (!a.enabled || (a.rigidBody.IsStatic()&&!a.sensor&&!a.queryOnly)) continue;
             tree.Query(tree.FatAabb(a.proxy), [&](int proxy) {
                 const unsigned int other = tree.UserData(proxy);
                 if (other == slot) return;
                 const Body& b = bodies[other];
                 // A pair of two movable bodies is found by both queries;
                 // keep it from the lower slot's query only.
-                if ((!b.rigidBody.IsStatic()||b.sensor) && other < slot) return;
+                if ((!b.rigidBody.IsStatic()||b.sensor||b.queryOnly) && other < slot) return;
                 if(!CanCollide(slot,other)){++stats.layerRejectedPairs;return;}
                 candidatePairs.emplace_back(std::min(slot, other), std::max(slot, other));
             });
@@ -857,7 +931,7 @@ struct PhysicsWorld::Impl {
         ClosestBodyResult result;
         for (const unsigned int i : candidates) {
             const Body& body = bodies[i];
-            if(!body.enabled||body.sensor)continue;
+            if(!body.enabled||body.sensor||body.queryOnly)continue;
             const bool interpolateBody = interpolateDynamicBodyMotion && body.isDynamic;
             const bool ledger=interpolateBody && bodyMotionAlpha<1.0f && !body.motion.Segments().empty();
             const auto observed=ledger ? body.motion.Evaluate(std::clamp(double(bodyMotionAlpha),0.0,1.0)*stepDuration) : body.rigidBody;
@@ -891,6 +965,7 @@ struct PhysicsWorld::Impl {
                     if (distance < result.distance) {
                         result.distance = distance;
                         result.normal = sample.outwardNormal;
+                        result.point=glm::mix(segA,segB,t)-sample.outwardNormal*sample.signedDistance;
                         result.bodyIndex = static_cast<int>(i);
                     }
                 }
@@ -916,6 +991,7 @@ struct PhysicsWorld::Impl {
                 if (capsuleDistance.distance < result.distance) {
                     result.distance = capsuleDistance.distance;
                     result.normal = capsuleDistance.normal;
+                    result.point=capsuleDistance.otherPoint;
                     result.bodyIndex = static_cast<int>(i);
                 }
             }
@@ -1080,6 +1156,7 @@ BodyHandle PhysicsWorld::CreateDynamicCompoundBoxes(const glm::vec3& position,
 }
 
 void PhysicsWorld::DestroyBody(BodyHandle handle) {
+    Wake(handle);
     if(m_impl){for(auto it=m_impl->suppressedPairs.begin();it!=m_impl->suppressedPairs.end();){if(it->first==handle.id||it->second==handle.id)it=m_impl->suppressedPairs.erase(it);else ++it;}}
     if(m_impl){auto& joints=m_impl->joints;joints.erase(std::remove_if(joints.begin(),joints.end(),[&](const auto& j){return j.state.settings.bodyA.id==handle.id||j.state.settings.bodyB.id==handle.id;}),joints.end());}
     m_impl->Remove(handle);
@@ -1105,18 +1182,23 @@ void PhysicsWorld::ApplyLinearAcceleration(BodyHandle handle, const glm::vec3& a
                                             float fixedDeltaTime) {
     Impl::Body* body = m_impl->Get(handle);
     if (!body || body->rigidBody.IsStatic()) return;
-    body->rigidBody.linearVelocity += acceleration * fixedDeltaTime;
+    if(body->sleeping&&glm::length(acceleration-body->lastAcceleration)>1e-5f)m_impl->Wake(handle.id&Impl::kSlotMask);
+    body->lastAcceleration=acceleration;
+    if(body->sleeping){body->deferredAcceleration=true;return;}
+    body->deferredAcceleration=false;body->rigidBody.linearVelocity += acceleration * fixedDeltaTime;
 }
 
 void PhysicsWorld::ApplyForce(BodyHandle handle, const glm::vec3& force) {
     Impl::Body* body = m_impl->Get(handle);
     if (!body || body->rigidBody.IsStatic()) return;
+    if(glm::length(force)>1e-8f)m_impl->Wake(handle.id&Impl::kSlotMask);
     body->rigidBody.ApplyForce(force);
 }
 
 void PhysicsWorld::ApplyTorque(BodyHandle handle, const glm::vec3& torque) {
     Impl::Body* body = m_impl->Get(handle);
     if (!body || body->rigidBody.IsStatic()) return;
+    if(glm::length(torque)>1e-8f)m_impl->Wake(handle.id&Impl::kSlotMask);
     body->rigidBody.ApplyTorque(torque);
 }
 
@@ -1135,6 +1217,7 @@ float PhysicsWorld::GetMass(BodyHandle handle) const {
 void PhysicsWorld::ApplyLinearImpulse(BodyHandle handle, const glm::vec3& impulse) {
     Impl::Body* body = m_impl->Get(handle);
     if (!body || !body->isDynamic) return;
+    if(glm::length(impulse)>1e-8f)m_impl->Wake(handle.id&Impl::kSlotMask);
     body->rigidBody.ApplyLinearImpulse(impulse);
 }
 
@@ -1142,6 +1225,7 @@ void PhysicsWorld::ApplyImpulseAtPoint(BodyHandle handle, const glm::vec3& impul
                                        const glm::vec3& worldPoint) {
     Impl::Body* body = m_impl->Get(handle);
     if (!body || !body->isDynamic) return;
+    if(glm::length(impulse)>1e-8f)m_impl->Wake(handle.id&Impl::kSlotMask);
     body->rigidBody.ApplyImpulseAtPoint(impulse, worldPoint);
 }
 
@@ -1276,6 +1360,7 @@ void PhysicsWorld::SolveParticleContacts(std::vector<ContactParticle>& particles
                                          std::vector<glm::vec3>& particleImpulses,
                                          glm::vec3* staticSupportImpulse,
                                          float remainingRigidDt) {
+    for(const auto& contact:contacts)if(contact.twoWay)Wake(contact.body);
     m_impl->particleContactStats={};
     particleImpulses.assign(contacts.size(), glm::vec3(0));
     if (staticSupportImpulse) *staticSupportImpulse = glm::vec3(0);
@@ -1534,7 +1619,7 @@ glm::vec3 PhysicsWorld::GetLinearVelocity(BodyHandle handle) const {
 
 void PhysicsWorld::SetLinearVelocity(BodyHandle handle, const glm::vec3& velocity) {
     Impl::Body* body = m_impl->Get(handle);
-    if (body) body->rigidBody.linearVelocity = velocity;
+    if (body) {if(velocity!=body->rigidBody.linearVelocity)m_impl->Wake(handle.id&Impl::kSlotMask);body->rigidBody.linearVelocity = velocity;}
 }
 
 glm::vec3 PhysicsWorld::GetAngularVelocity(BodyHandle handle) const {
@@ -1593,7 +1678,7 @@ float PhysicsWorld::GetPlayerShapeMaxSupportDistance() const {
 
 void PhysicsWorld::SetAngularVelocity(BodyHandle handle, const glm::vec3& angularVelocity) {
     Impl::Body* body = m_impl->Get(handle);
-    if (body) body->rigidBody.angularVelocity = angularVelocity;
+    if (body) {if(angularVelocity!=body->rigidBody.angularVelocity)m_impl->Wake(handle.id&Impl::kSlotMask);body->rigidBody.angularVelocity = angularVelocity;}
 }
 
 void PhysicsWorld::Step(float fixedDeltaTime) {
@@ -1605,6 +1690,13 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     const auto cachesBefore = w.cacheCounters;
     const ContactGeometryDiagnostics geometryBefore = GetContactGeometryDiagnostics();
 
+    // Awaken connected state before velocity integration for predicted impacts.
+    for(auto i:w.aliveSlots)if(w.bodies[i].isDynamic&&!w.bodies[i].sleeping)w.CoverStepReach(w.bodies[i],fixedDeltaTime);
+    w.GenerateCandidatePairs();
+    for(auto [a,b]:w.candidatePairs){auto& aa=w.bodies[a];auto& bb=w.bodies[b];if(aa.sensor||bb.sensor||aa.queryOnly||bb.queryOnly)continue;
+        if(aa.sleeping&&!bb.sleeping&&!bb.rigidBody.IsStatic()&&(glm::length(bb.rigidBody.linearVelocity-bb.lastAcceleration*fixedDeltaTime)>.03f||glm::length(bb.rigidBody.angularVelocity)>.03f))w.Wake(a);
+        if(bb.sleeping&&!aa.sleeping&&!aa.rigidBody.IsStatic()&&(glm::length(aa.rigidBody.linearVelocity-aa.lastAcceleration*fixedDeltaTime)>.03f||glm::length(aa.rigidBody.angularVelocity)>.03f))w.Wake(b);
+    }
     // 1) Velocity from this step's force/torque accumulators (M12). Gravity
     // is already in linearVelocity via the caller's ApplyLinearAcceleration.
     // The start-of-step pose is kept for player sweeps and presentation.
@@ -1620,6 +1712,8 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         // keyed by represented pose, so a later correction cannot reuse it.
         w.CurrentBound(body);
         body.previousBound = body.currentBound;
+        if(body.sleeping)continue;
+        if(body.deferredAcceleration){body.rigidBody.linearVelocity+=body.lastAcceleration*fixedDeltaTime;body.deferredAcceleration=false;}
         IntegrateRigidBodyVelocity(body.rigidBody, fixedDeltaTime);
         w.CoverStepReach(body, fixedDeltaTime);
     }
@@ -1649,7 +1743,12 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     for (const auto& [slotA, slotB] : w.candidatePairs) {
         Impl::Body& a = w.bodies[slotA];
         Impl::Body& b = w.bodies[slotB];
-        if(a.sensor||b.sensor)continue;
+        if(a.sensor||b.sensor||a.queryOnly||b.queryOnly)continue;
+        if((a.sleeping||a.rigidBody.IsStatic())&&(b.sleeping||b.rigidBody.IsStatic())){
+            const auto ha=w.MakeHandle(slotA).id,hb=w.MakeHandle(slotB).id;auto key=std::minmax(ha,hb);auto old=w.previousTouches.find(key);
+            if(old!=w.previousTouches.end()){auto observation=old->second;observation.normalImpulse=0;observation.impulseAvailable=false;observation.relativeVelocity={0,0,0};w.stepTouches[key]=observation;}
+            continue;
+        }
         const float friction = std::sqrt(std::max(a.friction, 0.0f) * std::max(b.friction, 0.0f));
         // Speculative margin: the distance this pair's surfaces can close
         // within the step at their post-force velocities (relative linear
@@ -1739,6 +1838,17 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
 
     // 4) Accumulated-impulse velocity solve (src/ContactSolver.h), then
     // positions from the solved velocities, then direct penetration removal.
+    // A newly gravity-driven neighbour can reach an asleep body without any
+    // prior velocity. Actual start contacts, not the early prediction alone,
+    // must wake participating state before the velocity solver changes it.
+    for(const auto& c:w.startContacts)for(auto slot:{c.a,c.b})
+        if(w.bodies[slot].sleeping)w.Wake(slot);
+    for(auto slot:w.aliveSlots){auto& body=w.bodies[slot];
+        if(body.isDynamic&&!body.sleeping&&body.deferredAcceleration){
+            body.rigidBody.linearVelocity+=body.lastAcceleration*fixedDeltaTime;
+            body.deferredAcceleration=false;
+        }
+    }
     w.ResolveInitialImpacts(fixedDeltaTime);
     w.supportPairs.clear();
     for(const auto& c:w.startContacts) if(!c.newImpact) {
@@ -1760,6 +1870,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         w.pendingCache[i].normalImpulse = solved[i].normalImpulse;
         w.pendingCache[i].tangentImpulse = solved[i].tangentImpulse;
     }
+    for(const auto& cached:w.contactCache)if(cached.key.slotA<w.bodies.size()&&cached.key.slotB<w.bodies.size()&&w.bodies[cached.key.slotA].alive&&w.bodies[cached.key.slotB].alive&&w.bodies[cached.key.slotA].generation==cached.key.generationA&&w.bodies[cached.key.slotB].generation==cached.key.generationB&&(w.bodies[cached.key.slotA].sleeping||w.bodies[cached.key.slotA].rigidBody.IsStatic())&&(w.bodies[cached.key.slotB].sleeping||w.bodies[cached.key.slotB].rigidBody.IsStatic()))w.pendingCache.push_back(cached);
     std::stable_sort(w.pendingCache.begin(), w.pendingCache.end(),
                      [](const CachedContact& x, const CachedContact& y) { return x.key < y.key; });
     std::swap(w.contactCache, w.pendingCache);
@@ -1769,6 +1880,7 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         if(body.isDynamic) w.solver.UpdatePreparedRotation(body.rigidBody,w.Orientation(body).rotation);
     }
     w.solver.SolvePositions();
+    w.Settle(fixedDeltaTime);
     solverScope.End(); ProfileScope proxyScope(proxiesLabel);
     const Clock::time_point solverEnd = Clock::now();
 
@@ -1778,7 +1890,8 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
         Impl::Body& body = w.bodies[slot];
         if (body.isDynamic) w.RefreshProxy(body);
     }
-    w.FinishTouches();
+    w.queryTouchesPending=std::any_of(w.aliveSlots.begin(),w.aliveSlots.end(),[&](unsigned i){return w.bodies[i].queryOnly;});
+    if(!w.queryTouchesPending)w.FinishTouches();
     w.stats.proxyReinsertions = w.reinsertionsSinceStep;
     w.reinsertionsSinceStep = 0;
     w.stats.treeHeight = w.tree.Height();
@@ -1796,6 +1909,8 @@ void PhysicsWorld::Step(float fixedDeltaTime) {
     w.stats.broadphaseMilliseconds = MillisecondsBetween(broadphaseStart, narrowphaseStart) +
                                      MillisecondsBetween(solverEnd, stepEnd);
     w.stats.narrowphaseMilliseconds = MillisecondsBetween(narrowphaseStart, solverStart);
+    JUDAS_PROFILE_COUNTER("Sleeping physics bodies",double(w.stats.sleepingBodies),ProfileCounterMode::Latest);
+    JUDAS_PROFILE_COUNTER("Awake physics bodies",double(w.stats.awakeBodies),ProfileCounterMode::Latest);
     JUDAS_PROFILE_COUNTER("Physics bodies last step",double(w.stats.bodies),ProfileCounterMode::Latest);
     JUDAS_PROFILE_COUNTER("Physics candidate pairs last step",double(w.stats.candidatePairs),ProfileCounterMode::Latest);
     JUDAS_PROFILE_COUNTER("Physics contacts last step",double(w.stats.contactPoints),ProfileCounterMode::Latest);
@@ -1956,6 +2071,10 @@ void PhysicsWorld::ResetBody(BodyHandle handle, const glm::vec3& position,
                               const glm::quat& rotation) {
     Impl::Body* body = m_impl->Get(handle);
     if (!body) return;
+    if(body->rigidBody.position!=position+rotation*body->shape.pivotOffset||body->rigidBody.orientation!=rotation){
+        m_impl->Wake(handle.id&Impl::kSlotMask);
+        const auto bounds=m_impl->CurrentBound(*body);auto slots=m_impl->QuerySlots(bounds);for(auto i:slots)if(m_impl->bodies[i].sleeping)m_impl->Wake(i);
+    }
     for(auto& j:m_impl->joints)if(j.state.settings.bodyA.id==handle.id||j.state.settings.bodyB.id==handle.id)j.warm.fill(0);
     body->rigidBody.position = position+rotation*body->shape.pivotOffset;
     body->rigidBody.orientation = rotation;
@@ -1966,6 +2085,7 @@ void PhysicsWorld::ResetBody(BodyHandle handle, const glm::vec3& position,
     body->rigidBody.angularVelocity = glm::vec3(0.0f);
     body->rigidBody.ClearAccumulators();
     m_impl->RefreshProxy(*body);
+    if(!body->isDynamic&&!body->queryOnly){auto slots=m_impl->QuerySlots(m_impl->CurrentBound(*body));for(auto i:slots)if(m_impl->bodies[i].sleeping)m_impl->Wake(i);}
 }
 
 bool PhysicsWorld::CreatePlayerShape(float radius, float halfHeight) {
@@ -2042,6 +2162,7 @@ ShapeSweepHit PhysicsWorld::SweepCapsuleMotion(float radius,float halfHeight,
         result.distance = 0.0f;
         result.penetration = -startResult.distance;
         result.normal = startResult.normal;
+        result.point=startResult.point;
         result.hitBody = m_impl->MakeHandle(static_cast<unsigned int>(startResult.bodyIndex));
         return result;
     }
@@ -2085,6 +2206,7 @@ ShapeSweepHit PhysicsWorld::SweepCapsuleMotion(float radius,float halfHeight,
             result.hit = true;
             result.distance = lo * displacementLength;
             result.normal = refined.normal;
+            result.point=refined.point;
             result.hitBody = m_impl->MakeHandle(static_cast<unsigned int>(refined.bodyIndex));
             return result;
         }
@@ -2096,6 +2218,8 @@ ShapeSweepHit PhysicsWorld::SweepCapsuleMotion(float radius,float halfHeight,
 
 bool PhysicsWorld::SetCollisionFilter(BodyHandle handle,unsigned layer,CategoryMask mask){
     auto* b=m_impl->Get(handle);if(!b||layer>=64)return false;
+    if(b->collisionLayer==layer&&b->collisionMask==mask)return true;
+    m_impl->Wake(handle.id&Impl::kSlotMask);
     b->collisionLayer=layer;b->collisionMask=mask;
     const unsigned slot=handle.id&Impl::kSlotMask;
     auto remove=[&](auto& cache){cache.erase(std::remove_if(cache.begin(),cache.end(),[&](const auto& c){return c.key.slotA==slot||c.key.slotB==slot;}),cache.end());};
@@ -2108,9 +2232,9 @@ bool PhysicsWorld::SetBodyTags(BodyHandle handle,CategoryMask tags){auto* b=m_im
 void PhysicsWorld::SetPlayerCollisionFilter(unsigned layer,CategoryMask mask){if(layer<64){m_impl->playerCollisionLayer=layer;m_impl->playerCollisionMask=mask;}}
 
 const std::vector<PhysicsWorld::TouchEvent>& PhysicsWorld::LastStepTouchEvents() const {return m_impl->touchEvents;}
-bool PhysicsWorld::SetBodySensor(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b|| (value&&b->shape.type==ShapeType::TriangleMesh))return false;b->sensor=value;return true;}
+bool PhysicsWorld::SetBodySensor(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b|| (value&&b->shape.type==ShapeType::TriangleMesh))return false;if(b->sensor!=value)m_impl->Wake(h.id&Impl::kSlotMask);b->sensor=value;return true;}
 bool PhysicsWorld::IsBodySensor(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->sensor;}
-bool PhysicsWorld::SetBodyEnabled(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;b->enabled=value;for(auto& j:m_impl->joints)if(j.state.settings.bodyA.id==h.id||j.state.settings.bodyB.id==h.id)j.warm.fill(0);return true;}
+bool PhysicsWorld::SetBodyEnabled(BodyHandle h,bool value){auto* b=m_impl->Get(h);if(!b)return false;if(b->enabled==value)return true;m_impl->Wake(h.id&Impl::kSlotMask);b->enabled=value;for(auto& j:m_impl->joints)if(j.state.settings.bodyA.id==h.id||j.state.settings.bodyB.id==h.id)j.warm.fill(0);return true;}
 bool PhysicsWorld::IsBodyEnabled(BodyHandle h) const {auto* b=m_impl->Get(h);return b&&b->enabled;}
 
 void PhysicsWorld::ClearTouchHistory(){m_impl->previousTouches.clear();m_impl->stepTouches.clear();m_impl->touchEvents.clear();}
@@ -2173,15 +2297,16 @@ JointHandle PhysicsWorld::CreateJoint(const JointSettings& settings) {
     auto* a=m_impl->Get(settings.bodyA);auto* b=m_impl->Get(settings.bodyB);
     if(!a||(settings.bodyB.IsValid()&&!b)||(b&&a==b)||(a->rigidBody.IsStatic()&&(!b||b->rigidBody.IsStatic())))return {};
     static std::atomic<std::uint64_t> next{1};JointHandle handle{next.fetch_add(1)};
+    Wake(settings.bodyA);Wake(settings.bodyB);
     m_impl->joints.push_back({handle,{settings,false,0,0},{}});return handle;
 }
-bool PhysicsWorld::DestroyJoint(JointHandle handle){if(!m_impl)return false;auto& joints=m_impl->joints;auto it=std::find_if(joints.begin(),joints.end(),[&](const auto& j){return j.handle.id==handle.id;});if(it==joints.end())return false;joints.erase(it);return true;}
+bool PhysicsWorld::DestroyJoint(JointHandle handle){JointState old;if(GetJoint(handle,old)){Wake(old.settings.bodyA);Wake(old.settings.bodyB);}if(!m_impl)return false;auto& joints=m_impl->joints;auto it=std::find_if(joints.begin(),joints.end(),[&](const auto& j){return j.handle.id==handle.id;});if(it==joints.end())return false;joints.erase(it);return true;}
 bool PhysicsWorld::GetJoint(JointHandle handle,JointState& state)const{if(!m_impl)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){if(!m_impl->Get(joint.state.settings.bodyA)||(joint.state.settings.bodyB.IsValid()&&!m_impl->Get(joint.state.settings.bodyB)))return false;state=joint.state;state.active=m_impl->JointActive(joint);return true;}return false;}
-bool PhysicsWorld::SetJoint(JointHandle handle,const JointSettings& settings){JointState previous;if(!GetJoint(handle,previous)||!ValidJointSettings(settings)||settings.bodyA.id!=previous.settings.bodyA.id||settings.bodyB.id!=previous.settings.bodyB.id)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){joint.state.settings=settings;joint.warm.fill(0);return true;}return false;}
+bool PhysicsWorld::SetJoint(JointHandle handle,const JointSettings& settings){JointState previous;if(!GetJoint(handle,previous)||!ValidJointSettings(settings)||settings.bodyA.id!=previous.settings.bodyA.id||settings.bodyB.id!=previous.settings.bodyB.id)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){m_impl->Wake(settings.bodyA.id&Impl::kSlotMask);if(m_impl->Get(settings.bodyB))m_impl->Wake(settings.bodyB.id&Impl::kSlotMask);joint.state.settings=settings;joint.warm.fill(0);return true;}return false;}
 
 bool PhysicsWorld::SetPairCollisionEnabled(BodyHandle a,BodyHandle b,bool enabled){
     if(!m_impl||a.id==b.id||!m_impl->Get(a)||!m_impl->Get(b))return false;
-    auto pair=std::minmax(a.id,b.id);if(enabled)m_impl->suppressedPairs.erase(pair);else m_impl->suppressedPairs.insert(pair);return true;
+    Wake(a);Wake(b);auto pair=std::minmax(a.id,b.id);if(enabled)m_impl->suppressedPairs.erase(pair);else m_impl->suppressedPairs.insert(pair);return true;
 }
 
 void PhysicsWorld::PersistTouches(SaveArchive& a,const std::function<uint64_t(BodyHandle)>& identity,const std::function<BodyHandle(uint64_t)>& resolve,const std::function<bool(BodyHandle)>& include){
@@ -2198,5 +2323,23 @@ void PhysicsWorld::PersistBodyForces(SaveArchive& archive,BodyHandle handle){
  auto* body=m_impl->Get(handle);archive.Require(body!=nullptr,"saved force body unavailable");archive(body->rigidBody.forceAccumulator,body->rigidBody.torqueAccumulator);
 }
 
-bool PhysicsWorld::SetMassDistribution(BodyHandle h,float mass,const glm::mat3& inertia){auto* b=m_impl->Get(h);if(!b||!b->isDynamic||!std::isfinite(mass)||mass<=0)return false;for(int i=0;i<3;++i)for(int j=0;j<3;++j)if(!std::isfinite(inertia[i][j])||std::abs(inertia[i][j]-inertia[j][i])>1e-5f)return false;if(inertia[0][0]<=0||inertia[0][0]*inertia[1][1]-inertia[0][1]*inertia[0][1]<=0||glm::determinant(inertia)<=0)return false;b->rigidBody.inverseMass=1/mass;b->rigidBody.inverseInertiaLocal=glm::inverse(inertia);return true;}
+bool PhysicsWorld::SetMassDistribution(BodyHandle h,float mass,const glm::mat3& inertia){auto* b=m_impl->Get(h);if(!b||!b->isDynamic||!std::isfinite(mass)||mass<=0)return false;for(int i=0;i<3;++i)for(int j=0;j<3;++j)if(!std::isfinite(inertia[i][j])||std::abs(inertia[i][j]-inertia[j][i])>1e-5f)return false;if(inertia[0][0]<=0||inertia[0][0]*inertia[1][1]-inertia[0][1]*inertia[0][1]<=0||glm::determinant(inertia)<=0)return false;Wake(h);b->rigidBody.inverseMass=1/mass;b->rigidBody.inverseInertiaLocal=glm::inverse(inertia);return true;}
 void PhysicsWorld::PersistJointSolverState(SaveArchive& a,JointHandle h){for(auto& j:m_impl->joints)if(j.handle.id==h.id){for(auto& x:j.warm){a(x);a.Require(std::isfinite(x),"nonfinite fracture joint history");}a(j.state.reactionImpulse,j.state.reactionAngularImpulse);for(auto v:{j.state.reactionImpulse,j.state.reactionAngularImpulse})for(int k=0;k<3;++k)a.Require(std::isfinite(v[k]),"nonfinite fracture reaction history");return;}throw std::runtime_error("stale fracture solver history");}
+
+BodyHandle PhysicsWorld::CreateQueryCapsule(float radius,float halfHeight,const BodyTransform& pose){
+ auto h=m_impl->AddBody(Shape::Capsule(radius,halfHeight),pose.position,pose.rotation,false,0,0,0);m_impl->Get(h)->queryOnly=true;return h;
+}
+void PhysicsWorld::ObserveQueryContact(BodyHandle h,const ShapeSweepHit& hit,const glm::vec3& velocity){
+ auto* a=m_impl->Get(h);auto* b=m_impl->Get(hit.hitBody);if(!a||!b||!a->enabled||!a->queryOnly||!m_impl->CanCollide(h.id&Impl::kSlotMask,hit.hitBody.id&Impl::kSlotMask))return;
+ a->rigidBody.linearVelocity=velocity;Contact c;c.point=hit.point;c.normal=hit.normal;
+ m_impl->Observe(h.id&Impl::kSlotMask,hit.hitBody.id&Impl::kSlotMask,c);
+}
+void PhysicsWorld::FinishQueryTouches(){if(m_impl->queryTouchesPending){m_impl->FinishTouches();m_impl->queryTouchesPending=false;}}
+
+bool PhysicsWorld::IsSleeping(BodyHandle h)const{auto* b=m_impl?m_impl->Get(h):nullptr;return b&&b->sleeping;}
+void PhysicsWorld::Wake(BodyHandle h){if(m_impl&&m_impl->Get(h))m_impl->Wake(h.id&Impl::kSlotMask);}
+void PhysicsWorld::SetSleepingEnabled(bool enabled){m_impl->sleepingEnabled=enabled;if(!enabled)for(auto i:m_impl->aliveSlots)m_impl->Wake(i);}
+void PhysicsWorld::PersistSleep(SaveArchive& a,BodyHandle h){auto* b=m_impl->Get(h);a.Require(b,"missing sleep body");a(b->sleeping,b->quietSeconds,b->lastAcceleration,b->deferredAcceleration);a.Require(std::isfinite(b->quietSeconds)&&b->quietSeconds>=0&&std::isfinite(b->lastAcceleration.x)&&std::isfinite(b->lastAcceleration.y)&&std::isfinite(b->lastAcceleration.z),"invalid settling state");}
+
+bool PhysicsWorld::GetPhysicalMaterial(BodyHandle h,std::string& id,float& friction,float& restitution)const{auto* b=m_impl?m_impl->Get(h):nullptr;if(!b)return false;id=b->physicalMaterial;friction=b->friction;restitution=b->restitution;return true;}
+bool PhysicsWorld::SetPhysicalMaterial(BodyHandle h,const std::string& id,float friction,float restitution){auto* b=m_impl?m_impl->Get(h):nullptr;if(!b||!std::isfinite(friction)||friction<0||!std::isfinite(restitution)||restitution<0||restitution>1)return false;if(b->physicalMaterial==id&&b->friction==friction&&b->restitution==restitution)return true;Wake(h);b->physicalMaterial=id;b->friction=friction;b->restitution=restitution;const auto slot=h.id&Impl::kSlotMask;auto remove=[&](auto& cache){cache.erase(std::remove_if(cache.begin(),cache.end(),[&](const auto& c){return c.key.slotA==slot||c.key.slotB==slot;}),cache.end());};remove(m_impl->contactCache);remove(m_impl->pendingCache);return true;}

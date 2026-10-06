@@ -1,0 +1,2 @@
+FRAMES 3
+EXPECT_AXIS nonexistent_axis 0 1

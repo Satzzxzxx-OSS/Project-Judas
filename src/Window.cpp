@@ -124,16 +124,20 @@ void Window::RefreshController(){
 }
 void Window::PollEvents(){
     m_input.BeginFrame();m_consumed.clear();
+    for(const auto& [control,value]:m_testPhysical){m_input.SetPhysical(control,value);}
+    m_testPhysical.clear();
     if(m_keyboardClaimed)m_input.ClearDevice("key:");
     if(m_mouseClaimed)m_input.ClearDevice("mouse:");
     SDL_Event event;
     while(SDL_PollEvent(&event)){
+        // Harness input is injected into InputSystem; real devices must not mix in.
+        if(m_testInputMode&&event.type!=SDL_QUIT&&event.type!=SDL_WINDOWEVENT)continue;
         if(m_eventHook)m_eventHook(event);
         if(event.type==SDL_QUIT)m_shouldClose=true;
         else if(event.type==SDL_WINDOWEVENT){
             if(event.window.event==SDL_WINDOWEVENT_CLOSE)m_shouldClose=true;
             if(event.window.event==SDL_WINDOWEVENT_SIZE_CHANGED){m_width=event.window.data1;m_height=event.window.data2;}
-            if(event.window.event==SDL_WINDOWEVENT_FOCUS_LOST){m_inputFocused=false;m_input.Reset();ClearPendingRequests();}
+            if(event.window.event==SDL_WINDOWEVENT_FOCUS_LOST&&!m_testInputMode){m_inputFocused=false;m_input.Reset();ClearPendingRequests();}
             if(event.window.event==SDL_WINDOWEVENT_FOCUS_GAINED){
                 m_inputFocused=true;
                 // SDL/compositor capture can disappear independently of the
@@ -149,8 +153,8 @@ void Window::PollEvents(){
         else if(event.type==SDL_MOUSEWHEEL&&!m_mouseClaimed){const float sign=event.wheel.direction==SDL_MOUSEWHEEL_FLIPPED?-1.f:1.f;m_input.AddDelta("mouse:wheelX",sign*event.wheel.x);m_input.AddDelta("mouse:wheelY",sign*event.wheel.y);}
     }
     // Restore held physical keys after UI ownership ends without stale edges.
-    if(!m_keyboardClaimed&&m_inputFocused){const auto* keys=SDL_GetKeyboardState(nullptr);for(int i=0;i<SDL_NUM_SCANCODES;++i)if(keys[i])m_input.SetPhysical(std::string("key:")+SDL_GetScancodeName(static_cast<SDL_Scancode>(i)),1);}
-    RefreshController();
+    if(!m_testInputMode&&!m_keyboardClaimed&&m_inputFocused){const auto* keys=SDL_GetKeyboardState(nullptr);for(int i=0;i<SDL_NUM_SCANCODES;++i)if(keys[i])m_input.SetPhysical(std::string("key:")+SDL_GetScancodeName(static_cast<SDL_Scancode>(i)),1);}
+    if(!m_testInputMode)RefreshController();
     // Requested capture and the backend's actual grab are separate state.
     // A compositor/backend release need not produce another FOCUS_GAINED
     // event. Reconcile while this window owns focus; never grab it back from
@@ -279,8 +283,11 @@ void Window::RequestTestInteract() {
 }
 
 void Window::SetTestInputMode(bool enabled) {
+    if(m_testInputMode!=enabled)m_input.Reset();
     m_testInputMode = enabled;
 }
+
+void Window::BeginTestFrame() { m_input.BeginFrame();m_consumed.clear(); }
 
 void Window::SetTestActionState(Action action, bool active) {
     m_testActionState[static_cast<int>(action)] = active;
@@ -341,6 +348,7 @@ bool Window::ConsumeUIClickRequest(int& outX, int& outY) {
 }
 
 void Window::GetMousePosition(int& outX, int& outY) const {
+    if(m_testInputMode){outX=m_uiClickX;outY=m_uiClickY;return;}
     if (m_testInputMode) {
         outX = 0;
         outY = 0;
@@ -376,3 +384,5 @@ void Window::GetLookDelta(float& x,float& y)const{
     x=m_mouseCaptured?m_input.Axis("look_x"):0;
     y=m_mouseCaptured?m_input.Axis("look_y"):0;
 }
+
+void Window::QueueTestPhysical(std::string control,float value){if(m_testInputMode)m_testPhysical.emplace_back(std::move(control),value);}

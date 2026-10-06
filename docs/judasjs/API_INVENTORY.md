@@ -1,10 +1,6 @@
 # Current public JudasJS inventory
 
-Current inventory through accepted M64 checkpoint
-`e452751ee98f6c1900a9f6b8dad3fe6bcdecb27b`. The M64 binding audit was based on
-starting checkpoint `b5676438ed12d9cb3d05c634eaf5f578d7216ada`; the machine manifest's
-`checkpoint` field and declaration header retain that audit provenance, not the
-current accepted HEAD identity. This documentation refresh changes no API symbols.
+M65 review of the registered virtual module based on starting checkpoint `19a53a42a9b363818e67c07d8b63e9fddcea2845`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -16,13 +12,16 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Animation.crossFade` | `animationFade` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.entityId` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.info` | `animationInfo` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.jointTransform` | `animationJointPose` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.layer` | `animationLayer` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.layers` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.limb` | `animationLimb` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.loop` | `animationSet` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.pause` | `animationPause` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.play` | `animationPlay` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.playing` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.removeLayer` | `animationRemoveLayer` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
+| `Animation.removeLimb` | `animationRemoveLimb` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.resume` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.seek` | `animationSeek` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
 | `Animation.speed` | `animationSet` | [declaration](../judas.d.ts) | [reference](animation-ragdolls.md) |
@@ -72,6 +71,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.character` | `characterExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.children` | `children` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.classification` | `classification` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.clearSocket` | `socketClear` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.collider` | `colliderInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.deformable` | `deformableExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -88,6 +88,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.navigationObstacle` | `navObstacleInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.parent` | `parent` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.pauseAudio` | `pauseAudio` | [declaration](../judas.d.ts) | [reference](audio.md) |
+| `Entity.physicalMaterial` | `physicalMaterialInfo` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.playAudio` | `playAudio` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.playAudioOneShot` | `audioOneShot` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.presentedTransform` | `presentedTransform` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -103,6 +104,9 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.setColliderEnabled` | `colliderEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setNavigationEnabled` | `navEnabled` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.setParticles` | `particles` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.setPhysicalMaterial` | `physicalMaterialSet` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.setSocket` | `socketSet` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.sleeping` | `sleeping` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.stopAudio` | `stopAudio` | [declaration](../judas.d.ts) | [reference](audio.md) |
 | `Entity.transform` | `setTransform`, `transform` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.valid` | `valid` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -118,7 +122,9 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Fracture.state` | `fractureState` | [declaration](../judas.d.ts) | [reference](fracture.md) |
 | `Fracture.valid` | `fractureValid` | [declaration](../judas.d.ts) | [reference](fracture.md) |
 | `Joint` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.configure` | `jointConfigure` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `Joint.destroy` | `jointDestroy` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.setEnabled` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.setLimits` | `jointSet` | [declaration](../judas.d.ts) | [reference](physics.md) |
@@ -226,6 +232,8 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `physics.boxCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.capsuleCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.closestPoint` | `closestPoint` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.createJoint` | `jointCreate` | [declaration](../judas.d.ts) | [reference](physics.md) |
+| `physics.gravity` | `gravitySample` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.joint` | `joint` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.raycast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `physics.sphereCast` | `cast` | [declaration](../judas.d.ts) | [reference](physics.md) |

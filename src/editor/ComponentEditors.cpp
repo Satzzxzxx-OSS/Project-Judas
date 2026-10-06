@@ -103,6 +103,7 @@ void DrawScripts(EditorDocument& doc,SceneObject& o,EditorPanelState& state){
                     for(auto& f:fields){bool changed=false;
                         if(f.type=="boolean")changed=ImGui::Checkbox(f.name.c_str(),&f.boolean);
                         else if(f.type=="number")changed=ImGui::InputDouble(f.name.c_str(),&f.number);
+                        else if(f.type=="entity"){SceneObjectId id=0;try{id=std::stoull(f.text);}catch(...){}const auto* target=doc.GetScene().Find(id);if(ImGui::BeginCombo(f.name.c_str(),target?target->name.c_str():"None / missing")){if(ImGui::Selectable("None",id==0)){f.text="0";changed=true;}for(auto& candidate:doc.GetScene().Objects())if(ImGui::Selectable((candidate.name+" ##"+std::to_string(candidate.id)).c_str(),candidate.id==id)){f.text=std::to_string(candidate.id);changed=true;}ImGui::EndCombo();}}
                         else {char value[1024];std::snprintf(value,sizeof(value),"%s",f.text.c_str());changed=ImGui::InputText(f.name.c_str(),value,sizeof(value));if(changed)f.text=value;}
                         if(changed){doc.BeginEdit();slot.properties=ScriptSystem::WriteProperties(fields);doc.CommitEdit();}
                     }
@@ -192,6 +193,7 @@ void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
         auto colour=resolved.baseColor;set(ImGui::ColorEdit4("Instance base colour (linear)",&colour.x),[&]{slot.overrides.baseColor=colour;});
         float rough=resolved.roughness;set(ImGui::SliderFloat("Instance roughness",&rough,0,1),[&]{slot.overrides.roughness=rough;});float metal=resolved.metallic;set(ImGui::SliderFloat("Instance metallic",&metal,0,1),[&]{slot.overrides.metallic=metal;});
         auto emission=resolved.emissive;set(ImGui::ColorEdit3("Instance emission (linear)",&emission.x),[&]{slot.overrides.emissive=emission;});float intensity=resolved.emissiveIntensity;set(ImGui::DragFloat("Instance emission intensity",&intensity,.05f,0,100000),[&]{slot.overrides.emissiveIntensity=intensity;});
+        auto uvScale=resolved.uvScale;set(ImGui::DragFloat2("Instance UV scale",&uvScale.x,.05f),[&]{slot.overrides.uvScale=uvScale;});auto uvOffset=resolved.uvOffset;set(ImGui::DragFloat2("Instance UV offset",&uvOffset.x,.01f),[&]{slot.overrides.uvOffset=uvOffset;});
         if(slot.overrides.baseColor||slot.overrides.roughness||slot.overrides.metallic||slot.overrides.emissive||slot.overrides.emissiveIntensity)ImGui::TextColored(ImVec4(1,.8f,.3f,1),"INSTANCE OVERRIDE (does not edit source)");
         if(ImGui::Button("Revert all slot overrides")){doc.BeginEdit();slot.overrides={};doc.CommitEdit();}ImGui::PopID();
     }
@@ -231,14 +233,36 @@ void DrawRender(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
     if (r.shape == SceneShape::Terrain) ImGui::TextDisabled("Geometry comes from the terrain body.");
 }
 
-void DrawAnimation(EditorDocument& doc,SceneObject& object,EditorPanelState&){
+void JointPicker(EditorDocument& doc,SceneObject& source,EditorPanelState& state,const char* label,std::string& key,bool optional=false){
+ std::shared_ptr<const SkeletalAsset> asset;if(source.render&&state.resources){state.resources->RequestMesh(source.render->meshAsset);asset=state.resources->TryGetSkeletal(source.render->meshAsset);}
+ if(ImGui::BeginCombo(label,key.empty()?"None / select imported joint":key.c_str())){
+  if(optional&&ImGui::Selectable("None",key.empty())){doc.BeginEdit();key.clear();doc.CommitEdit();}
+  if(asset)for(size_t i=0;i<asset->skeleton.names.size();++i){auto name=SkeletonJointKey(asset->skeleton,int(i));if(ImGui::Selectable(name.c_str(),name==key)){doc.BeginEdit();key=name;doc.CommitEdit();}}
+  else ImGui::TextDisabled("Select/load a skinned mesh first");
+  ImGui::EndCombo();
+ }
+ if(!key.empty()&&asset&&FindSkeletonJoint(asset->skeleton,key)<0)ImGui::TextColored(ImVec4(1,.4f,.2f,1),"Missing joint: %s",key.c_str());
+}
+void DrawSocket(EditorDocument& doc,SceneObject& object,EditorPanelState& state){
+ auto& s=*object.socket;auto* target=doc.GetScene().Find(s.target);
+ if(ImGui::BeginCombo("Skeleton entity",target?target->name.c_str():"Select skeleton")){for(auto& o:doc.GetScene().Objects())if(o.animation&&o.id!=object.id&&ImGui::Selectable((o.name+" ##"+std::to_string(o.id)).c_str(),o.id==s.target)){doc.BeginEdit();s.target=o.id;doc.CommitEdit();}ImGui::EndCombo();}
+ target=doc.GetScene().Find(s.target);if(target)JointPicker(doc,*target,state,"Socket joint",s.joint);
+ Checkbox(doc,"Socket enabled",s.enabled);DragVec3(doc,"Socket local offset",s.offset.position,.01f);auto angles=glm::degrees(glm::eulerAngles(s.offset.rotation));if(ImGui::DragFloat3("Socket local orientation",&angles.x,1))s.offset.rotation=glm::quat(glm::radians(angles));TrackEdit(doc);DragVec3(doc,"Socket local scale",s.offset.scale,.01f);
+ ImGui::TextWrapped("Visual/query attachment only. Dynamic physical attachment uses joints. Local X/Y/Z axes appear in viewport.");
+}
+void DrawAnimation(EditorDocument& doc,SceneObject& object,EditorPanelState& state){
     auto& a=*object.animation;Checkbox(doc,"Animation enabled",a.enabled);Checkbox(doc,"Play on start",a.playOnStart);Checkbox(doc,"Loop clip",a.loop);
     TextField(doc,"Clip name (empty = first)",a.clip);DragScalar(doc,"Playback speed",a.speed);DragScalar(doc,"Start time (seconds)",a.time,.05f,0,100000);
     if(ImGui::Button("Add pose layer")&&a.layers.size()<16){doc.BeginEdit();AnimationLayerSettings l;l.id="Layer "+std::to_string(a.layers.size()+1);a.layers.push_back(l);doc.CommitEdit();}
     for(size_t i=0;i<a.layers.size();++i){ImGui::PushID(int(i));auto& l=a.layers[i];if(ImGui::TreeNode(l.id.c_str())){
         TextField(doc,"Layer ID",l.id);TextField(doc,"Clip",l.clip);Checkbox(doc,"Enabled",l.enabled);Checkbox(doc,"Additive",l.additive);DragScalar(doc,"Weight",l.weight,.01f,0,1);DragScalar(doc,"Speed",l.speed);DragScalar(doc,"Time",l.time,.05f,0,100000);TextField(doc,"Reference clip (empty = rest)",l.referenceClip);DragScalar(doc,"Reference time",l.referenceTime,.05f,0,100000);
-        if(ImGui::Button("Add masked joint")){doc.BeginEdit();l.mask.push_back("Root");doc.CommitEdit();}for(size_t n=0;n<l.mask.size();++n){ImGui::PushID(int(n));TextField(doc,"Joint path/name",l.mask[n]);ImGui::SameLine();if(ImGui::Button("Remove")){doc.BeginEdit();l.mask.erase(l.mask.begin()+n);doc.CommitEdit();ImGui::PopID();break;}ImGui::PopID();}
+        if(ImGui::Button("Add masked joint")){doc.BeginEdit();l.mask.push_back("Root");doc.CommitEdit();}for(size_t n=0;n<l.mask.size();++n){ImGui::PushID(int(n));JointPicker(doc,object,state,"Masked joint",l.mask[n]);ImGui::SameLine();if(ImGui::Button("Remove")){doc.BeginEdit();l.mask.erase(l.mask.begin()+n);doc.CommitEdit();ImGui::PopID();break;}ImGui::PopID();}
         if(ImGui::Button("Remove layer")){doc.BeginEdit();a.layers.erase(a.layers.begin()+i);doc.CommitEdit();ImGui::TreePop();ImGui::PopID();break;}ImGui::TreePop();}ImGui::PopID();}
+    if(ImGui::Button("Add limb IK")&&a.limbs.size()<16){doc.BeginEdit();LimbIKSettings k;k.id="Limb "+std::to_string(a.limbs.size()+1);a.limbs.push_back(k);doc.CommitEdit();}
+    for(size_t i=0;i<a.limbs.size();++i){auto& k=a.limbs[i];ImGui::PushID(int(100+i));if(ImGui::TreeNode(k.id.c_str())){
+        TextField(doc,"Contributor ID",k.id);JointPicker(doc,object,state,"Root",k.root);JointPicker(doc,object,state,"Middle",k.middle);JointPicker(doc,object,state,"End",k.end);
+        DragVec3(doc,"Target (world metres)",k.target,.01f);DragVec3(doc,"Pole (world point)",k.pole,.01f);DragScalar(doc,"Weight",k.weight,.01f,0,1);Checkbox(doc,"Enabled",k.enabled);int order=k.order;if(ImGui::InputInt("Order 1..999",&order)){doc.BeginEdit();k.order=std::clamp(order,1,999);doc.CommitEdit();}
+        if(ImGui::Button("Remove limb")){doc.BeginEdit();a.limbs.erase(a.limbs.begin()+i);doc.CommitEdit();ImGui::TreePop();ImGui::PopID();break;}ImGui::TreePop();}ImGui::PopID();}
     ImGui::TextDisabled("Layers are resolved in list order; empty mask affects all joints.");
     ImGui::TextDisabled("Use a self-contained GLB/glTF mesh. Pose is independent of playback.");
     if(!object.render||object.render->shape!=SceneShape::Mesh)ImGui::TextColored(ImVec4(1,.3f,.2f,1),"Requires a mesh Render component");
@@ -251,7 +275,7 @@ void DrawRagdoll(EditorDocument& doc,SceneObject& object,EditorPanelState& state
     if(ImGui::Button("Add mapped bone")&&r.bones.size()<32){doc.BeginEdit();RagdollBone b;b.joint="Root";r.bones.push_back(b);doc.CommitEdit();}
     size_t remove=r.bones.size();
     for(size_t i=0;i<r.bones.size();++i){auto& b=r.bones[i];ImGui::PushID(int(i));if(ImGui::TreeNode("Mapped bone","%s",b.joint.c_str())){
-        TextField(doc,"Skeleton joint",b.joint);TextField(doc,"Physical parent key",b.parent);const char* shapes[]={"Box","Sphere"};Combo(doc,"Shape",b.shape,shapes,2);
+        JointPicker(doc,object,state,"Skeleton joint",b.joint);JointPicker(doc,object,state,"Physical parent key",b.parent,true);const char* shapes[]={"Box","Sphere"};Combo(doc,"Shape",b.shape,shapes,2);
         DragVec3(doc,"Shape offset",b.offset,.01f);frame("Shape orientation",b.orientation);DragVec3(doc,"Half extents",b.halfExtents,.01f);DragScalar(doc,"Radius",b.radius,.01f);DragScalar(doc,"Mass",b.mass,.1f);DragScalar(doc,"Friction",b.friction,.01f);DragScalar(doc,"Restitution",b.restitution,.01f);
         if(state.project){DrawCategoryLayer(doc,"Collision layer",b.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",b.collisionMask,state.project->Settings().classification.collision);}
         Checkbox(doc,"Suppress parent collision",b.suppressParentCollision);Checkbox(doc,"Capture anchors from current pose",b.autoAnchors);
@@ -366,8 +390,12 @@ void DrawBody(EditorDocument& doc, SceneObject& o, EditorPanelState& state) {
         Checkbox(doc, "Managed by fidelity policy (M29)", b.managed);
         if (!b.managed) ImGui::TextDisabled("Unmanaged: always fully simulated; the policy never touches it.");
     }
+    AssetField(doc,"Physical material (empty = legacy)",b.physicalMaterial,AssetType::PhysicalMaterial,true,state);
+    if(!b.physicalMaterial.empty())Checkbox(doc,"Override shared physical coefficients",b.physicalMaterialOverride);
+    if(b.physicalMaterial.empty()||b.physicalMaterialOverride){
     DragScalar(doc, "Friction", b.friction, 0.01f, 0.0f, 5.0f);
     DragScalar(doc, "Restitution", b.restitution, 0.01f, 0.0f, 1.0f);
+    }
 }
 
 void DrawGravity(EditorDocument& doc, SceneObject& o, EditorPanelState&) {
@@ -609,6 +637,7 @@ const std::vector<ComponentEditor>& ComponentEditorRegistry() {
         Make<SceneRenderComponent>("Render", 'R', &SceneObject::render, DrawRender),
         Make<CharacterMotorSettings>("Character motor",'M',&SceneObject::characterMotor,DrawCharacter),
         Make<SceneAnimationComponent>("Animation",'A',&SceneObject::animation,DrawAnimation),
+        Make<SceneSocketComponent>("Visual socket",'S',&SceneObject::socket,DrawSocket),
         Make<RagdollDefinition>("Ragdoll",'R',&SceneObject::ragdoll,DrawRagdoll),
         Make<SceneJointComponent>("Joint",'J',&SceneObject::joint,DrawJoint),
         Make<SceneBodyComponent>("Body", 'B', &SceneObject::body, DrawBody),

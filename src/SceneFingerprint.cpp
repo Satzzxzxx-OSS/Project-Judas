@@ -328,6 +328,7 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
         WriteObject(w, o);
     }
     size_t materialCount=0;for(const auto& o:scene.Objects())materialCount+=o.render&&!o.render->materials.empty();
+    if(s.backgroundColor!=glm::vec3(.08f,.09f,.11f)){w.Text("Judas.Background.1");w.Vector(s.backgroundColor);}
     if(materialCount||s.linearRendering||!s.environmentAsset.empty()){w.Text("Judas.Materials.1");w.Boolean(s.linearRendering);w.Number(s.exposure);w.Text(s.environmentAsset);w.Number(s.environmentIntensity);w.Quaternion(s.environmentRotation);w.Boolean(s.environmentBackground);w.U64(materialCount);for(const auto& o:scene.Objects())if(o.render&&!o.render->materials.empty()){w.U64(o.id);w.Text(EncodeMaterialSlots(o.render->materials));}}
     // Optional tagged extension: old scenes retain identical schema-5 bytes.
     // No pre-M37 baseline could contain this component; new configurations are
@@ -401,6 +402,10 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
         if(!o.render||o.render->shape!=SceneShape::Mesh||!std::isfinite(a.speed)||!std::isfinite(a.time)||a.time<0)w.Fail("invalid animation component");
         w.U64(o.id);w.Boolean(a.enabled);w.Boolean(a.playOnStart);w.Boolean(a.loop);w.Text(a.clip);w.Number(a.speed);w.Number(a.time);
     }}
+    for(const auto& o:scene.Objects()){
+        if(o.socket){const auto& k=*o.socket;w.Text("Judas.Socket.1");w.U64(o.id);w.U64(k.target);w.Text(k.joint);w.Boolean(k.enabled);w.Vector(k.offset.position);w.Quaternion(k.offset.rotation);w.Vector(k.offset.scale);}
+        if(o.animation&&!o.animation->limbs.empty()){w.Text("Judas.LimbIK.1");w.U64(o.id);w.U64(o.animation->limbs.size());for(const auto& k:o.animation->limbs){w.Text(k.id);w.Text(k.root);w.Text(k.middle);w.Text(k.end);w.Vector(k.target);w.Vector(k.pole);w.Number(k.weight);w.Boolean(k.enabled);w.Integer(k.order);}}
+    }
     bool layered=false;for(const auto& o:scene.Objects())layered|=o.animation&&!o.animation->layers.empty();
     size_t ragdolls=0;for(const auto& o:scene.Objects())ragdolls+=o.ragdoll.has_value();
     if(ragdolls){w.Text("Judas.Ragdoll.1");w.U64(ragdolls);for(const auto& o:scene.Objects())if(o.ragdoll){const auto& r=*o.ragdoll;std::string error;if(!ValidRagdollDefinition(r,error))w.Fail(error);if(!o.animation||!o.render||o.body)w.Fail("ragdoll needs an animated renderable without root collider");
@@ -417,6 +422,8 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
         w.Quaternion(s.frameA);w.Quaternion(s.frameB);w.Boolean(s.limits);w.Boolean(s.motor);w.Boolean(s.spring);
         w.Number(s.lower);w.Number(s.upper);w.Number(s.speed);w.Number(s.maxForce);w.Number(s.rest);w.Number(s.stiffness);w.Number(s.damping);
     }}
+    for(const auto& o:scene.Objects())if(o.body&&!o.body->physicalMaterial.empty()){w.Text("Judas.PhysicalMaterial.1");w.U64(o.id);w.Text(o.body->physicalMaterial);}
+    for(const auto& o:scene.Objects())if(o.body&&o.body->physicalMaterialOverride){w.Text("Judas.PhysicalMaterialOverride.1");w.U64(o.id);w.U64(1);}
     bool collisionExtension=false;for(const auto& o:scene.Objects())if(o.body){const auto& b=*o.body;collisionExtension|=!b.collisionAsset.empty()||b.shape==SceneShape::ConvexHull||b.shape==SceneShape::TriangleMesh;for(auto& c:b.compoundBoxes)collisionExtension|=c.rotation!=glm::quat(1,0,0,0)||c.type!=ShapeType::Box||!c.assetId.empty()||c.key;}
     if(collisionExtension){w.Text("Judas.CookedCollision.1");for(const auto& o:scene.Objects())if(o.body){const auto& b=*o.body;w.U64(o.id);w.Text(b.collisionAsset);w.U64(b.compoundBoxes.size());for(const auto& c:b.compoundBoxes){w.Quaternion(c.rotation);w.Enum(c.type,5,"compound child type");w.Number(c.radius);w.Text(c.assetId);w.U32(c.key);if(c.type!=ShapeType::Box&&c.type!=ShapeType::Sphere&&c.type!=ShapeType::ConvexHull)w.Fail("unsupported compound child");if(c.type==ShapeType::Sphere&&!(c.radius>0))w.Fail("compound sphere radius must be positive");if(c.type==ShapeType::ConvexHull&&c.assetId.empty())w.Fail("compound hull requires cooked asset");}if((b.shape==SceneShape::ConvexHull||b.shape==SceneShape::TriangleMesh||!b.collisionAsset.empty()||std::any_of(b.compoundBoxes.begin(),b.compoundBoxes.end(),[](const CompoundBox& c){return c.rotation!=glm::quat(1,0,0,0)||c.type!=ShapeType::Box;}))&&o.transform.scale!=glm::vec3(1))w.Fail("cooked collision instance requires unit scale; bake source scale");if(b.shape==SceneShape::TriangleMesh&&(b.motion==SceneBodyMotion::Dynamic||b.sensor))w.Fail("concave triangle surface cannot be dynamic or volume sensor");}}
     if (!w.Error().empty()) { outError = w.Error(); return false; }

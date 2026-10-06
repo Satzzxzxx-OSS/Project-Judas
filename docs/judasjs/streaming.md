@@ -100,3 +100,15 @@ region; releasing it permits suspension. Manifest reference fields use
 region is retained when live simulated node positions depend on it. Existing
 animation/ragdoll residency restrictions remain; M62 does not pretend a pinned
 region unloaded. See [Deformable](deformables.md) and [save slots](saves.md).
+
+## M65 visual and script dependencies
+
+Socket targets and typed entity properties use stable scene identity. Streaming
+remaps local references and accepts normal qualified manifest fields (`socket`,
+`script:<slot>:<property>`), rather than storing native handles. An external socket
+or typed reference pins its target region. Animated/IK/articulated regions still
+pin live pose state: M65 does not add lossless pose suspension. Adopt a complete
+hierarchical assembly into root ownership before releasing the residual region;
+partial socket/joint assemblies are rejected. Revisit reconstructs suspended rigid
+bodies/joints awake with fresh safe handles; adopted members do not duplicate.
+See [integration lifecycle proof](../evidence/m65/REPORT.md).

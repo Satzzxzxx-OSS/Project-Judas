@@ -75,3 +75,9 @@ application proof executes committed saves and fresh-process restores. Never tre
 
 - [Fracture](examples/fracture.js): physical part impulse, an explicitly labelled
   tool cut, coherent callback state, independent prefab and stale-handle rejection.
+
+## Developer integration (M65)
+
+[Executed example](examples/developer-integration.js): final joint reads, IK, visual
+socket, gravity sample, physical coefficients and generation-safe runtime joints.
+Fixture is the original rig in [current integration project](../../projects/m65_integration/m65_integration.judasproj).

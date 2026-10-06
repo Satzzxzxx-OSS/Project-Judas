@@ -376,7 +376,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
     const auto beforeStats = renderer.Stats();
     const SceneSettings& settings = world.Settings();
     if(world.Resources())world.Resources()->RequestEnvironment(settings.environmentAsset);
-    renderer.SetSceneAppearance(settings.linearRendering,settings.exposure,world.Resources()?world.Resources()->TryGetEnvironment(settings.environmentAsset):EnvironmentHandle{},settings.environmentIntensity,settings.environmentRotation,settings.environmentBackground);
+    renderer.SetSceneAppearance(settings.linearRendering,settings.exposure,world.Resources()?world.Resources()->TryGetEnvironment(settings.environmentAsset):EnvironmentHandle{},settings.environmentIntensity,settings.environmentRotation,settings.environmentBackground,settings.backgroundColor);
     renderer.SetLighting(glm::normalize(settings.sunDirection), settings.sunColor, settings.ambientColor);
     const std::vector<DynamicLight> lights = BuildWorldLights(world, session, alpha);
 
@@ -480,7 +480,7 @@ void RenderWorldFrame(Renderer& renderer, int width, int height, const RuntimeWo
 void DrawAuthoredScene(Renderer& r, const Scene& scene, ResourceManager& assets) {
     JUDAS_PROFILE_SCOPE("Editor authored submission");
     const auto& settings=scene.Settings();assets.RequestEnvironment(settings.environmentAsset);
-    r.SetSceneAppearance(settings.linearRendering,settings.exposure,assets.TryGetEnvironment(settings.environmentAsset),settings.environmentIntensity,settings.environmentRotation,settings.environmentBackground);
+    r.SetSceneAppearance(settings.linearRendering,settings.exposure,assets.TryGetEnvironment(settings.environmentAsset),settings.environmentIntensity,settings.environmentRotation,settings.environmentBackground,settings.backgroundColor);
     r.SetRenderMask(scene.Settings().mainCameraRenderMask);
     for (const SceneObject& o : scene.Objects()) {
         r.SetRenderLayer(o.renderLayer);

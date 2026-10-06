@@ -26,3 +26,13 @@ struct PoseMixer {
  void Clear(){outgoing.clear();elapsed=duration=0;}
  SkeletalPose Sample(const SkeletalAsset&,AnimationPlayback& target,float dt);
 };
+
+// Targets and poles are model-space here. RuntimeWorld converts authored world
+// intent before resolving. Direct three-node chains; bone lengths never change.
+struct LimbIKSettings {
+ std::string id="Limb",root,middle,end;
+ glm::vec3 target{0},pole{0,0,1};
+ float weight=1;bool enabled=true;int order=100;
+};
+bool ValidLimbIK(const LimbIKSettings&,std::string& error);
+bool SolveLimbIK(const Skeleton&,const SkeletalPose&,const LimbIKSettings&,SkeletalPose& output,float& error,std::string& diagnostic);

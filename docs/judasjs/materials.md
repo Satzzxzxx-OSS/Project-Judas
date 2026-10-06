@@ -26,3 +26,10 @@ Read a copied scene configuration or merge a patch and return `true`:
 Exposure is a linear multiplier (strictly positive ≤10000); environment intensity is 0–10000. Environment is an empty ID (no IBL) or a registered baked `.judasenv` asset. Rotation is a finite nonzero quaternion, normalized by Judas, independent of gravity/camera orientation. Boolean fields require booleans. Invalid configuration throws `TypeError`.
 
 `linearRendering` opts into floating-point lighting and display resolve; it does not change physics. Environment background visibility is independent of IBL. Settings are transient; reload restores authored settings. UI renders after display resolve and ignores exposure. Use `presentationUpdate` for camera pose, not material state persistence. Example: `world.setAppearance({exposure: 1.5})`.
+
+M65 instance overrides also accept `uvScale:{x,y}` and `uvOffset:{x,y}`. They reuse
+the existing material shader parameters: defaults scale1/offset0 remain unchanged.
+`world.setAppearance({backgroundColor:{x,y,z}})` / appearance.backgroundColor set
+linear scene clear colour. An enabled environment background takes precedence; HDR
+exposure/tone mapping applies, so these are not exact display RGB values.
+Physical contact materials are independent [resources](physics.md#gravity-physical-materials-and-runtime-joint-configuration-m65).

@@ -23,7 +23,17 @@ public:
     const std::string& Path() const { return m_path; }
     bool IsDirty() const { return m_dirty; }
     SceneObjectId Selected() const { return m_selected; }
-    void Select(SceneObjectId id) { m_selected = id; }
+    void Select(SceneObjectId id,bool toggle=false);
+    const std::vector<SceneObjectId>& Selection() const {return m_selection;}
+    bool IsSelected(SceneObjectId id)const;
+    void PruneSelection();
+    bool BatchProperties(const std::map<std::string,std::string>&,std::string& error);
+    bool BatchTransform(glm::vec3 translation,glm::quat rotation,glm::vec3 scale,std::string& error);
+    bool ReparentSelection(SceneObjectId parent,std::string& error);
+    bool GroupSelection(std::string& error);
+    bool DuplicateSelection(std::string& error);
+    void CopyComponent(const std::string& prefix);
+    bool PasteComponent(std::string& error);
     SceneObject* SelectedObject() { return m_scene.Find(m_selected); }
 
     void NewScene();
@@ -48,6 +58,9 @@ private:
     Scene m_scene;
     std::string m_path;
     bool m_dirty = false;
+    std::vector<SceneObjectId> m_selection;
+    std::map<std::string,std::string> m_componentClipboard;
+    std::string m_clipboardPrefix;
     SceneObjectId m_selected = kInvalidSceneObjectId;
     std::vector<Scene> m_undo;
     std::vector<Scene> m_redo;

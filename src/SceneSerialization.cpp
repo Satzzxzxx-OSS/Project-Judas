@@ -116,6 +116,10 @@ void WriteObject(Writer& w, const SceneObject& o) {
         if(!a.layers.empty()){w.Line("animation.layers",std::to_string(a.layers.size()));for(size_t i=0;i<a.layers.size();++i){const auto& l=a.layers[i];auto key="animation.layer."+std::to_string(i)+".";
             w.Line(key+"id",Quote(l.id));w.Line(key+"clip",Quote(l.clip));w.Line(key+"enabled",B(l.enabled));w.Line(key+"additive",B(l.additive));w.Line(key+"weight",F(l.weight));w.Line(key+"speed",F(l.speed));w.Line(key+"time",F(l.time));w.Line(key+"reference-clip",Quote(l.referenceClip));w.Line(key+"reference-time",F(l.referenceTime));w.Line(key+"mask-count",std::to_string(l.mask.size()));for(size_t n=0;n<l.mask.size();++n)w.Line(key+"mask."+std::to_string(n),Quote(l.mask[n]));}}
     }
+    if(o.body&&!o.body->physicalMaterial.empty())w.Line("body.physical-material",Quote(o.body->physicalMaterial));
+    if(o.body&&o.body->physicalMaterialOverride)w.Line("body.physical-material-override","true");
+    if(o.socket){const auto& k=*o.socket;w.Line("socket.target",std::to_string(k.target));w.Line("socket.joint",Quote(k.joint));w.Line("socket.enabled",B(k.enabled));w.Line("socket.position",V(k.offset.position));w.Line("socket.rotation",Q(k.offset.rotation));w.Line("socket.scale",V(k.offset.scale));}
+    if(o.animation&&!o.animation->limbs.empty()){w.Line("animation.limbs",std::to_string(o.animation->limbs.size()));for(size_t i=0;i<o.animation->limbs.size();++i){const auto& k=o.animation->limbs[i];auto key="animation.limb."+std::to_string(i)+".";w.Line(key+"id",Quote(k.id));w.Line(key+"root",Quote(k.root));w.Line(key+"middle",Quote(k.middle));w.Line(key+"end",Quote(k.end));w.Line(key+"target",V(k.target));w.Line(key+"pole",V(k.pole));w.Line(key+"weight",F(k.weight));w.Line(key+"enabled",B(k.enabled));w.Line(key+"order",std::to_string(k.order));}}
     if(o.ragdoll){const auto& r=*o.ragdoll;w.Line("ragdoll.enabled",B(r.enabled));w.Line("ragdoll.play-on-start",B(r.playOnStart));w.Line("ragdoll.self-collision",B(r.selfCollision));w.Line("ragdoll.bones",std::to_string(r.bones.size()));
         for(size_t i=0;i<r.bones.size();++i){const auto& b=r.bones[i];const auto& c=b.constraint;auto k="ragdoll.bone."+std::to_string(i)+".";
             w.Line(k+"joint",Quote(b.joint));w.Line(k+"parent",Quote(b.parent));w.Line(k+"shape",std::to_string(int(b.shape)));w.Line(k+"offset",V(b.offset));w.Line(k+"orientation",Q(b.orientation));w.Line(k+"half-extents",V(b.halfExtents));w.Line(k+"radius",F(b.radius));w.Line(k+"mass",F(b.mass));w.Line(k+"friction",F(b.friction));w.Line(k+"restitution",F(b.restitution));w.Line(k+"layer",std::to_string(b.collisionLayer));w.Line(k+"mask",std::to_string(b.collisionMask));w.Line(k+"suppress-parent",B(b.suppressParentCollision));w.Line(k+"auto-anchors",B(b.autoAnchors));
@@ -601,6 +605,7 @@ bool ParseSettings(Reader& reader, const Block& block, Scene& scene) {
     if (!p.Vec3("sun-direction", s.sunDirection)) return false;
     if (!p.Vec3("sun-color", s.sunColor)) return false;
     if (!p.Vec3("ambient", s.ambientColor)) return false;
+    if(p.Has("background-color")&&(!p.Vec3("background-color",s.backgroundColor)||glm::any(glm::lessThan(s.backgroundColor,glm::vec3(0)))||glm::any(glm::greaterThan(s.backgroundColor,glm::vec3(10000)))))return reader.Fail("background colour must be finite 0..10000");
     if((p.Has("linear-rendering")&&!p.Bool("linear-rendering",s.linearRendering))||(p.Has("exposure")&&!p.Float("exposure",s.exposure))||(p.Has("environment")&&!p.String("environment",s.environmentAsset))||(p.Has("environment-intensity")&&!p.Float("environment-intensity",s.environmentIntensity))||(p.Has("environment-rotation")&&!p.Quat("environment-rotation",s.environmentRotation))||(p.Has("environment-background")&&!p.Bool("environment-background",s.environmentBackground)))return false;
     if(!(s.exposure>0)||s.exposure>10000||s.environmentIntensity<0||s.environmentIntensity>10000||(!s.environmentAsset.empty()&&!IsValidAssetId(s.environmentAsset)))return reader.Fail("invalid display/environment settings");
     if (!p.Float("fluid-scale", s.fluidScale)) return false;
@@ -688,8 +693,11 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
             if(!p.String(key+"id",l.id)||!p.String(key+"clip",l.clip)||!p.Bool(key+"enabled",l.enabled)||!p.Bool(key+"additive",l.additive)||!p.Float(key+"weight",l.weight)||!p.Float(key+"speed",l.speed)||!p.Float(key+"time",l.time)||!p.String(key+"reference-clip",l.referenceClip)||!p.Float(key+"reference-time",l.referenceTime)||!p.Int(key+"mask-count",masks)||masks<0||masks>128)return false;
             for(int n=0;n<masks;++n){std::string joint;if(!p.String(key+"mask."+std::to_string(n),joint))return false;l.mask.push_back(joint);}a.layers.push_back(std::move(l));}
         }std::string layerError;if(!ValidAnimationLayers(a.layers,layerError))return reader.Fail(layerError);
+        if(p.Has("animation.limbs")){int count=0;if(!p.Int("animation.limbs",count)||count<0||count>16)return reader.Fail("16 IK contributor limit");std::set<std::string> ids;for(int i=0;i<count;++i){LimbIKSettings k;auto key="animation.limb."+std::to_string(i)+".";if(!p.String(key+"id",k.id)||!p.String(key+"root",k.root)||!p.String(key+"middle",k.middle)||!p.String(key+"end",k.end)||!p.Vec3(key+"target",k.target)||!p.Vec3(key+"pole",k.pole)||!p.Float(key+"weight",k.weight)||!p.Bool(key+"enabled",k.enabled)||!p.Int(key+"order",k.order))return false;std::string error;if(!ids.insert(k.id).second||!ValidLimbIK(k,error))return reader.Fail("invalid/duplicate IK: "+error);a.limbs.push_back(k);}}
         o.animation=a;
     }
+
+    if(p.Has("socket.target")){SceneSocketComponent k;if(!p.Id("socket.target",k.target)||!p.String("socket.joint",k.joint)||!p.Bool("socket.enabled",k.enabled)||!p.Vec3("socket.position",k.offset.position)||!p.Quat("socket.rotation",k.offset.rotation)||!p.Vec3("socket.scale",k.offset.scale)||!k.target||k.joint.empty())return reader.Fail("invalid visual socket");o.socket=k;}
     if(p.Has("ragdoll.enabled")){RagdollDefinition r;int count=0;
         if(!p.Bool("ragdoll.enabled",r.enabled)||!p.Bool("ragdoll.play-on-start",r.playOnStart)||!p.Bool("ragdoll.self-collision",r.selfCollision)||!p.Int("ragdoll.bones",count)||count<1||count>32)return reader.Fail("invalid ragdoll definition");
         for(int i=0;i<count;++i){RagdollBone b;auto& c=b.constraint;auto k="ragdoll.bone."+std::to_string(i)+".";int shape=0,type=0;
@@ -1042,6 +1050,8 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
             return reader.Fail("a compound/terrain render component needs a body of the same shape");
         }
     }
+    if(p.Has("body.physical-material-override")&&(!o.body||!p.Bool("body.physical-material-override",o.body->physicalMaterialOverride)))return reader.Fail("invalid physical material override");
+    if(p.Has("body.physical-material")){std::string asset;if(!o.body||!p.String("body.physical-material",asset)||(!asset.empty()&&!IsValidAssetId(asset)))return reader.Fail("invalid physical material identity");o.body->physicalMaterial=asset;}
     std::string liquidError;if(!ApplyLiquidProperties(liquidFields,o,liquidError))return reader.Fail(liquidError);
     return p.CheckNoUnknown();
 }
@@ -1097,6 +1107,7 @@ bool SaveSceneToString(const Scene& scene, std::string& outText) {
     w.Line("sun-direction", V(s.sunDirection));
     w.Line("sun-color", V(s.sunColor));
     w.Line("ambient", V(s.ambientColor));
+    if(s.backgroundColor!=glm::vec3(.08f,.09f,.11f))w.Line("background-color",V(s.backgroundColor));
     if(s.linearRendering||!s.environmentAsset.empty()){w.Line("linear-rendering",B(s.linearRendering));w.Line("exposure",F(s.exposure));w.Line("environment",Quote(s.environmentAsset));w.Line("environment-intensity",F(s.environmentIntensity));w.Line("environment-rotation",Q(s.environmentRotation));w.Line("environment-background",B(s.environmentBackground));}
     w.Line("fluid-scale", F(s.fluidScale));
     w.Line("fluid-update-rate-hz", F(s.fluidUpdateRateHz));

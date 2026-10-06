@@ -100,6 +100,8 @@ struct SceneBodyComponent {
     glm::vec3 halfExtents{0.5f};
     float radius = 0.5f;
     std::string collisionAsset;
+    std::string physicalMaterial; // shared identity; empty keeps legacy factors
+    bool physicalMaterialOverride=false; // explicit instance coefficients override shared defaults
     std::vector<CompoundBox> compoundBoxes;
     std::vector<SceneFluidCavity> fluidCavities;
     // Terrain: identifier of a surface the engine can construct (see
@@ -285,7 +287,9 @@ struct SceneScriptSlot {
     }
 };
 
-struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std::string clip;float speed=1,time=0;std::vector<AnimationLayerSettings> layers;};
+struct SceneAnimationComponent {bool enabled=true,playOnStart=true,loop=true;std::string clip;float speed=1,time=0;std::vector<AnimationLayerSettings> layers;std::vector<LimbIKSettings> limbs;};
+
+struct SceneSocketComponent {SceneObjectId target=0;std::string joint;SceneTransform offset;bool enabled=true;};
 
 struct SceneJointComponent {SceneObjectId bodyA=0,bodyB=0;JointSettings settings;};
 
@@ -304,6 +308,7 @@ struct SceneObject {
     std::optional<RagdollDefinition> ragdoll;
     std::optional<SceneJointComponent> joint;
     std::optional<SceneAnimationComponent> animation;
+    std::optional<SceneSocketComponent> socket;
     std::vector<SceneScriptSlot> scripts;
     std::optional<SceneUIComponent> ui;
     CategoryMask tags = 0;
@@ -342,6 +347,7 @@ enum class SceneFidelityPolicy { None, Distance };
 // Scene-wide authored settings.
 struct SceneSettings {
     bool linearRendering=false,environmentBackground=false;
+    glm::vec3 backgroundColor{.08f,.09f,.11f};
     float exposure=1,environmentIntensity=1;
     glm::quat environmentRotation{1,0,0,0};
     std::string environmentAsset;

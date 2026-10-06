@@ -1,6 +1,7 @@
 #include "SceneSession.h"
 #include "PerformanceProfiler.h"
 #include "RuntimeWorld.h"
+#include <glm/gtc/matrix_transform.hpp>
 #include "CollisionAuthoring.h"
 #include <fstream>
 #include <sstream>
@@ -134,6 +135,7 @@ bool RuntimeWorld::InstantiateEntityBody(EntityRecord& record, const EntityPhysi
     }
     // Reconstruction hands the body its retained pose AND velocities: no
     // reset to rest, no impulse.
+    if(!b.physicalMaterial.empty()){if(!m_assets){m_physics.DestroyBody(handle);if(outError)*outError="physical material requires project resources";return false;}std::string error;auto mat=m_assets->RequirePhysicalMaterial(b.physicalMaterial,error);if(!mat){m_physics.DestroyBody(handle);if(outError)*outError=error;return false;}m_physics.SetPhysicalMaterial(handle,b.physicalMaterial,b.physicalMaterialOverride?b.friction:mat->friction,b.physicalMaterialOverride?b.restitution:mat->restitution);}
     m_physics.SetCollisionFilter(handle,b.collisionLayer,b.collisionMask);
     m_physics.SetBodySensor(handle,b.sensor);m_physics.SetBodyEnabled(handle,b.enabled);
     m_physics.SetBodyTags(handle,TagsOf(record.id));
@@ -452,6 +454,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
         }
 
         if(bodyHandle.IsValid()&&o.body){
+            if(!o.body->physicalMaterial.empty()){std::string error;auto mat=m_assets?m_assets->RequirePhysicalMaterial(o.body->physicalMaterial,error):nullptr;if(!mat)return fail(o,"physical material: "+error);m_assets->AddRef(o.body->physicalMaterial);m_referencedAssets.push_back(o.body->physicalMaterial);m_physics.SetPhysicalMaterial(bodyHandle,o.body->physicalMaterial,o.body->physicalMaterialOverride?o.body->friction:mat->friction,o.body->physicalMaterialOverride?o.body->restitution:mat->restitution);}
             m_physics.SetCollisionFilter(bodyHandle,o.body->collisionLayer,o.body->collisionMask);
             m_physics.SetBodySensor(bodyHandle,o.body->sensor);m_physics.SetBodyEnabled(bodyHandle,o.body->enabled);
             m_physics.SetBodyTags(bodyHandle,o.tags);m_entityCategories[o.id].body=bodyHandle;
@@ -842,6 +845,7 @@ EntityRecord* RuntimeWorld::FindEntity(EntityId id) {
 }
 
 EntityId RuntimeWorld::EntityIdOfBody(BodyHandle handle) const {
+    for(const auto& [id,c]:m_characters)if(c.motor.observationBody.id==handle.id&&RuntimeDefinition(id))return id;
     unsigned layer=0;CategoryMask mask=0;
     if (!handle.IsValid() || !m_physics.GetCollisionFilter(handle,layer,mask)) return kInvalidSceneObjectId;
     for (const EntityRecord& e : m_entities) {
@@ -1171,6 +1175,15 @@ EntityId RuntimeWorld::SpawnPrefab(const AssetId& asset,const SceneTransform& pl
 }
 
 SceneTransform RuntimeWorld::PresentedTransform(SceneObjectId id,const SceneTransform& fallback,float alpha) const {
+    if(const auto* d=RuntimeDefinition(id);d&&d->socket&&d->socket->enabled){
+        const auto& socket=*d->socket;auto it=m_animationInstances.find(socket.target);
+        if(it!=m_animationInstances.end()&&it->second.asset){const auto& s=it->second.asset->skeleton;int n=FindSkeletonJoint(s,socket.joint);
+            if(n>=0&&size_t(n)<it->second.finalPose.local.size())if(const auto* target=RuntimeDefinition(socket.target)){
+                auto root=PresentedTransform(socket.target,target->transform,alpha);auto model=glm::translate(glm::mat4(1),root.position)*glm::mat4_cast(root.rotation)*glm::scale(glm::mat4(1),root.scale);auto matrix=model*PoseGlobalMatrices(s,it->second.finalPose)[n];JointTransform joint;std::string error;
+                if(DecomposeRigidPose(matrix,joint,error)){SceneTransform t;t.position=joint.translation+joint.rotation*(joint.scale*socket.offset.position);t.rotation=glm::normalize(joint.rotation*socket.offset.rotation);t.scale=joint.scale*socket.offset.scale;return t;}
+            }
+        }
+    }
     auto character=m_characters.find(id);
     if(character!=m_characters.end()){
         auto t=fallback;const auto& c=character->second;
@@ -1387,4 +1400,4 @@ bool RuntimeWorld::SetNavigationAgentSettings(EntityId id,const NavigationAgentS
 bool RuntimeWorld::SetNavigationEnabled(EntityId id,const std::string& kind,bool enabled){auto it=m_scriptDefinitions.find(id);if(it==m_scriptDefinitions.end())return false;auto& o=it->second;if(kind=="agent"&&o.navigationAgent)o.navigationAgent->enabled=enabled;else if(kind=="obstacle"&&o.navigationObstacle)o.navigationObstacle->enabled=enabled;else if(kind=="link"&&o.navigationLink)o.navigationLink->enabled=enabled;else return false;return true;}
 
 bool RuntimeWorld::SetMaterialSlot(EntityId id,unsigned slot,const MaterialSlot& value){auto* entity=FindEntity(id);if(!entity||entity->lifecycle==EntityLifecycle::Destroyed||!entity->definition.render||slot>=64)return false;std::string error;if(!ValidateMaterial(ApplyMaterialOverride(MaterialDefinition{},value.overrides),error))return false;if(!value.asset.empty()){auto* record=m_assets&&m_assets->Assets()?m_assets->Assets()->Find(value.asset):nullptr;if(!record||record->missing||record->type!=AssetType::Material)return false;if(std::find(m_referencedAssets.begin(),m_referencedAssets.end(),value.asset)==m_referencedAssets.end()){m_assets->AddRef(value.asset);m_referencedAssets.push_back(value.asset);}m_assets->RequestMaterial(value.asset);}auto& slots=entity->definition.render->materials;if(slots.size()<=slot)slots.resize(slot+1);slots[slot]=value;if(auto it=m_scriptDefinitions.find(id);it!=m_scriptDefinitions.end()&&it->second.render)it->second.render->materials=slots;for(auto& render:m_staticRenderables)if(render.id==id)render.render.materials=slots;for(auto& render:m_dynamicVisuals)if(render.id==id)render.render.materials=slots;return true;}
-bool RuntimeWorld::SetAppearance(const SceneSettings& s){if(!std::isfinite(s.exposure)||s.exposure<=0||s.exposure>10000||!std::isfinite(s.environmentIntensity)||s.environmentIntensity<0||s.environmentIntensity>10000||!std::isfinite(s.environmentRotation.w)||!std::isfinite(s.environmentRotation.x)||!std::isfinite(s.environmentRotation.y)||!std::isfinite(s.environmentRotation.z)||glm::length(s.environmentRotation)<1e-6f)return false;if(!s.environmentAsset.empty()){auto* r=m_assets&&m_assets->Assets()?m_assets->Assets()->Find(s.environmentAsset):nullptr;if(!r||r->missing||r->type!=AssetType::Environment)return false;if(std::find(m_referencedAssets.begin(),m_referencedAssets.end(),s.environmentAsset)==m_referencedAssets.end()){m_assets->AddRef(s.environmentAsset);m_referencedAssets.push_back(s.environmentAsset);}m_assets->RequestEnvironment(s.environmentAsset);}m_settings.linearRendering=s.linearRendering;m_settings.exposure=s.exposure;m_settings.environmentAsset=s.environmentAsset;m_settings.environmentIntensity=s.environmentIntensity;m_settings.environmentRotation=glm::normalize(s.environmentRotation);m_settings.environmentBackground=s.environmentBackground;return true;}
+bool RuntimeWorld::SetAppearance(const SceneSettings& s){for(int k=0;k<3;++k)if(!std::isfinite(s.backgroundColor[k])||s.backgroundColor[k]<0||s.backgroundColor[k]>10000)return false;if(!std::isfinite(s.exposure)||s.exposure<=0||s.exposure>10000||!std::isfinite(s.environmentIntensity)||s.environmentIntensity<0||s.environmentIntensity>10000||!std::isfinite(s.environmentRotation.w)||!std::isfinite(s.environmentRotation.x)||!std::isfinite(s.environmentRotation.y)||!std::isfinite(s.environmentRotation.z)||glm::length(s.environmentRotation)<1e-6f)return false;if(!s.environmentAsset.empty()){auto* r=m_assets&&m_assets->Assets()?m_assets->Assets()->Find(s.environmentAsset):nullptr;if(!r||r->missing||r->type!=AssetType::Environment)return false;if(std::find(m_referencedAssets.begin(),m_referencedAssets.end(),s.environmentAsset)==m_referencedAssets.end()){m_assets->AddRef(s.environmentAsset);m_referencedAssets.push_back(s.environmentAsset);}m_assets->RequestEnvironment(s.environmentAsset);}m_settings.backgroundColor=s.backgroundColor;m_settings.linearRendering=s.linearRendering;m_settings.exposure=s.exposure;m_settings.environmentAsset=s.environmentAsset;m_settings.environmentIntensity=s.environmentIntensity;m_settings.environmentRotation=glm::normalize(s.environmentRotation);m_settings.environmentBackground=s.environmentBackground;return true;}

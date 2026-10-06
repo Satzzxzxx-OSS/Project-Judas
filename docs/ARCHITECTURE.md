@@ -33,6 +33,8 @@ queries/solves, query-only motors and local navigation surfaces. Historical
 accounts below retain what was true at their checkpoints; their exclusions do
 not override later completed work. Current JS usage starts at [JUDASJS.md](JUDASJS.md).
 
+**M65 candidate (uncommitted, human review pending):** [developer integration](M65_INTEGRATION.md) adds motor contact events, resolved skeleton consumers/limb IK, island sleeping, runtime physics access and bulk/code-first authoring. The accepted checkpoint above remains the review baseline.
+
 ### Historical foundation through M43 and later legacy-fluid repair notes
 
 Checkpoint for the M43 foundation: `6f199eff9378270d7291a9dd8605fcfde5760569`.
@@ -9267,3 +9269,31 @@ M54/M55 cavity authority and liquid algorithms remain unchanged; unsupported
 hull/mixed/open-mesh fluid loading is rejected, not replaced with AABB buoyancy.
 See [M64 coverage, workflow and limitations](M64_COLLISION.md) and
 [JudasJS geometry queries](judasjs/physics.md).
+
+## M65 — developer integration (candidate; human review pending)
+
+CharacterMotor remains a massless sweep/slide motion primitive. Departure tests
+relative motion against current support separation, not an uphill gravity component.
+Query capsules and observed sweeps join the ordinary M42 filtered pair lifecycle;
+sensors use endpoint geometry and do not promise full crossing CCD.
+
+Resolved skeleton reads, visual sockets and a bounded two-bone IK producer consume
+M47 final poses. Stable keys/references use normal prefab, stream and save contracts.
+IK composes before physical pose authority; no solver writes GPU matrices or drives
+physical limbs. Visual sockets reject physical motion ownership and cycles.
+
+PhysicsWorld contact/joint islands can sleep after bounded settling. Sleeping retains
+spatial/query/event identity and wakes through meaningful loads, geometry, gravity
+and constraint changes. Normal force/impulse paths remain authoritative; shared static
+floors do not couple unrelated islands. M61 stores an optional version-1 sleep chunk;
+old saves reconstruct awake. Streamed animated state remains honestly pinned when
+it cannot be losslessly suspended; adoption requires the complete referenced assembly.
+
+Public gravity samples use the existing resolver. Shared physical-material resources
+supply existing friction/restitution laws; runtime joints use M45 and normal ownership.
+Editor batch operations use existing undo snapshots. Named developer authoring calls
+the normal scene/UI/input serializers. The harness runs actual InputSystem, scripts,
+presentation and UI, including paused captures. Canonical fingerprint schema stays 5;
+new content is conditional, so unchanged legacy content retains its identity.
+See [M65 workflow/limits](M65_INTEGRATION.md), [authoring](CONTENT_AUTHORING.md),
+[harness](TEST_HARNESS.md) and [current proof/closure table](evidence/m65/REPORT.md).

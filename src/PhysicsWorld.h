@@ -67,6 +67,7 @@ struct ShapeSweepHit {
     glm::vec3 normal{0.0f};     // meaningful only when `hit` is true; contact normal,
                                  // pointing back toward the caster — no default direction
                                  // is implied when there was no hit
+    glm::vec3 point{0}; // known point on the collided surface
     BodyHandle hitBody;         // meaningful only when `hit` is true; identifies what was
                                  // hit (added in Milestone 7-A so a caller can distinguish
                                  // static world geometry from a pushable dynamic body —
@@ -98,6 +99,8 @@ public:
     PhysicsWorld(const PhysicsWorld&) = delete;
     PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
+    bool SetPhysicalMaterial(BodyHandle,const std::string& identity,float friction,float restitution);
+    bool GetPhysicalMaterial(BodyHandle,std::string& identity,float& friction,float& restitution)const;
     JointHandle CreateJoint(const JointSettings& settings);
     bool DestroyJoint(JointHandle handle);
     bool GetJoint(JointHandle handle,JointState& state) const;
@@ -175,6 +178,10 @@ public:
     };
     const std::vector<TouchEvent>& LastStepTouchEvents() const;
     void ClearTouchHistory();
+    // Massless character geometry participates in queries/events, never rigid response.
+    BodyHandle CreateQueryCapsule(float radius,float halfHeight,const BodyTransform&);
+    void ObserveQueryContact(BodyHandle,const ShapeSweepHit&,const glm::vec3& velocity);
+    void FinishQueryTouches();
     void PersistTouches(class SaveArchive&,const std::function<uint64_t(BodyHandle)>&,const std::function<BodyHandle(uint64_t)>&,const std::function<bool(BodyHandle)>& include = {});
     void PersistBodyForces(class SaveArchive&,BodyHandle);
     bool SetBodySensor(BodyHandle handle,bool sensor);
@@ -192,6 +199,7 @@ public:
     struct StepStats {
         std::size_t bodies = 0;
         std::size_t dynamicBodies = 0;
+        std::size_t sleepingBodies=0,sleepingIslands=0,awakeBodies=0;
         std::size_t possiblePairs = 0;
         std::size_t candidatePairs = 0;
         std::size_t layerRejectedPairs = 0;
@@ -407,6 +415,10 @@ public:
     // applied this step compose into the same integration pass, in the
     // order they were applied, with no double-counting.
     void Step(float fixedDeltaTime);
+    bool IsSleeping(BodyHandle) const;
+    void Wake(BodyHandle);
+    void SetSleepingEnabled(bool enabled); // diagnostic reference; default enabled
+    void PersistSleep(class SaveArchive&,BodyHandle);
 
     BodyTransform GetTransform(BodyHandle handle) const;
     // Pose at the start of the most recent fixed step for dynamic bodies;

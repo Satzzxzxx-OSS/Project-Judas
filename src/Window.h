@@ -94,6 +94,9 @@ public:
     SDL_GLContext NativeGLContext() const { return m_glContext; }
 
     void SetTestInputMode(bool enabled);
+    void BeginTestFrame();
+    void QueueTestPhysical(std::string control,float value);
+    void SetTestPointer(int x,int y) { m_uiClickX=x;m_uiClickY=y; }
     void SetTestActionState(Action action, bool active);
     void QueueTestMouseDelta(int deltaX, int deltaY);
     void RequestTestJump();
@@ -144,6 +147,7 @@ private:
     int m_width = 0;
     int m_height = 0;
 
+    std::vector<std::pair<std::string,float>> m_testPhysical;
     bool m_testInputMode = false;
     bool m_testActionState[static_cast<int>(Action::Count)] = {};
     mutable int m_testMouseDeltaX = 0;

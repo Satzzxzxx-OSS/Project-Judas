@@ -30,7 +30,7 @@ struct CharacterMotionResult {
 // compatibility caller; new motors use finite bounded impulse transfer.
 void ResolveCharacterSlide(PhysicsWorld&,glm::vec3& center,const glm::quat&,glm::vec3 displacement,
     glm::vec3& velocity,const CharacterMotorSettings&,const PhysicsQueryFilter*,bool movingGeometry,
-    bool legacyPush,bool& collided);
+    bool legacyPush,bool& collided,BodyHandle observer={});
 class CharacterMotor {
 public:
     void Persist(class SaveArchive&);
@@ -39,6 +39,7 @@ public:
     glm::quat orientation{1,0,0,0};
     glm::vec3 acceleration{0}; // additional acceleration; reset after each step
     PhysicsQueryFilter filter;
+    BodyHandle observationBody; // massless geometry registration owned by RuntimeWorld
     CharacterMotionResult result;
     void Reset(glm::vec3 p,glm::quat q);
     // Once after the ordinary rigid step. Velocity is WORLD-space control

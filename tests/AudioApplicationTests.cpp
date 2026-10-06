@@ -1,6 +1,7 @@
 // M60 normal rendered project frames, actual device startup, public JS controls,
 // scene replacement and ordinary exporter. Listening acceptance belongs to the operator.
 #include "Application.h"
+#include "TestInput.h"
 #include "EngineHost.h"
 #include "InteractivePlay.h"
 #include "RuntimeWorld.h"
@@ -14,10 +15,10 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
-namespace {int checks=0,failures=0;void Check(bool b,const char* s){++checks;failures+=!b;std::printf("%s %s\n",b?"PASS":"FAIL",s);}void Key(SDL_Scancode key,bool down){SDL_Event e{};e.type=down?SDL_KEYDOWN:SDL_KEYUP;e.key.keysym.scancode=key;e.key.keysym.sym=SDL_GetKeyFromScancode(key);SDL_PushEvent(&e);}void Quit(){SDL_Event e{};e.type=SDL_QUIT;SDL_PushEvent(&e);}}
+namespace {int checks=0,failures=0;void Check(bool b,const char* s){++checks;failures+=!b;std::printf("%s %s\n",b?"PASS":"FAIL",s);}void Quit(){SDL_Event e{};e.type=SDL_QUIT;SDL_PushEvent(&e);}}
 int main(int argc,char** argv){std::string project=argc>1?argv[1]:"projects/audio_lab/audio_lab.judasproj";std::filesystem::path out=argc>2?argv[2]:"build/m60-app";bool device=argc>3&&std::string(argv[3])=="device";bool doorCheck=argc>3&&std::string(argv[3]).rfind("door",0)==0;bool isolateDoor=doorCheck&&std::string(argv[3])=="door-isolate";std::filesystem::create_directories(out);std::string error;int frames=0;AudioVoiceHandle oldMusic;double cursor=0;bool pendingReload=false;std::vector<double> work;auto start=std::chrono::steady_clock::now();ApplicationControl c;c.hidden=true;c.frameSeconds=[](float){return 1.f/60;};
  c.hostReady=[&](EngineHost& h){SDL_GL_SetSwapInterval(0);h.GetWindow().SetTestInputMode(true);Check(h.Audio().Init(error,!device),device?"actual desktop audio backend initialized":"production PCM graph without device");};
- c.beforeFrame=[&](EngineHost&,RuntimeWorld&,InteractivePlay&){start=std::chrono::steady_clock::now();if(frames==60||frames==61||frames==95||frames==96)Key(SDL_SCANCODE_ESCAPE,frames==60||frames==95);if(frames==110||frames==111)Key(SDL_SCANCODE_P,frames==110);if(frames==120||frames==121)Key(SDL_SCANCODE_B,frames==120);if(frames==130||frames==131)Key(SDL_SCANCODE_E,frames==130);};
+ c.beforeFrame=[&](EngineHost& h,RuntimeWorld&,InteractivePlay&){start=std::chrono::steady_clock::now();if(frames==60||frames==61||frames==95||frames==96)QueueTestKey(h.GetWindow(),SDL_SCANCODE_ESCAPE,frames==60||frames==95);if(frames==110||frames==111)QueueTestKey(h.GetWindow(),SDL_SCANCODE_P,frames==110);if(frames==120||frames==121)QueueTestKey(h.GetWindow(),SDL_SCANCODE_B,frames==120);if(frames==130||frames==131)QueueTestKey(h.GetWindow(),SDL_SCANCODE_E,frames==130);};
  c.afterFrame=[&](EngineHost& h,RuntimeWorld& w,InteractivePlay&){++frames;work.push_back(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());if(!device)h.Audio().AdvanceWithoutDevice(800);else std::this_thread::sleep_for(std::chrono::milliseconds(16));
   AudioVoiceHandle music;for(auto& e:w.AudioEmitters())if(e.id==20)music=e.voice;AudioVoiceSnapshot s;h.Audio().Snapshot(music,s);
   if(frames==50){Check(s.ready&&s.state==AudioPlaybackState::Playing&&s.positionSeconds>0,"long original music starts incrementally in actual project");oldMusic=music;cursor=s.positionSeconds;Check(w.Scripts()&&w.Scripts()->Diagnostics().empty(),"normal JS/UI/motor callbacks healthy");Check(h.Audio().Seek(music,45),"normal stream seek control");}
@@ -31,9 +32,9 @@ int main(int argc,char** argv){std::string project=argc>1?argv[1]:"projects/audi
  c.beforeShutdown=[&](EngineHost&,RuntimeWorld& w,InteractivePlay&){Check(w.Scripts()&&w.Scripts()->Diagnostics().empty(),"runtime script destroy ordering has a live audio service");};
  // Human follow-up: prove actual motion, not merely a healthy toggle callback.
  if(doorCheck){
-  c.beforeFrame=[&](EngineHost&,RuntimeWorld& w,InteractivePlay&){
+  c.beforeFrame=[&](EngineHost& h,RuntimeWorld& w,InteractivePlay&){
    if(frames==0&&isolateDoor)for(auto id:{1,30,31,32,42})w.Physics().SetBodyEnabled(w.RuntimeBody(id),false);
-   if(frames==30||frames==31||frames==210||frames==211||frames==390||frames==391||frames==570||frames==571)Key(SDL_SCANCODE_E,frames==30||frames==210||frames==390||frames==570);
+   if(frames==30||frames==31||frames==210||frames==211||frames==390||frames==391||frames==570||frames==571)QueueTestKey(h.GetWindow(),SDL_SCANCODE_E,frames==30||frames==210||frames==390||frames==570);
   };
   c.afterFrame=[&](EngineHost& h,RuntimeWorld& w,InteractivePlay&){
    ++frames;h.Audio().AdvanceWithoutDevice(800);

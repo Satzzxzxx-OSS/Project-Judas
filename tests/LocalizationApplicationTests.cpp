@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "TestInput.h"
 #include "EngineHost.h"
 #include "InteractivePlay.h"
 #include "RuntimeWorld.h"
@@ -73,7 +74,7 @@ export default class {
   c.worldReady=[&](EngineHost& h,RuntimeWorld& w,InteractivePlay&){w.Localization().Refresh();h.Resources().WaitForAll();w.Localization().Refresh();document=w.UI().Find(std::string(project)=="text_lab"?"text_lab":"range_ui");Check(document!=0,"registered UI document loads in real application");};
   c.beforeFrame=[&](EngineHost& h,RuntimeWorld& w,InteractivePlay& play){
    if(frame==10){w.Localization().SetLocale("ar",error);h.Resources().WaitForAll();w.Localization().Refresh();}
-   if(std::string(project)=="shooter_game"){if(frame==20||frame==21){SDL_Event e{};e.type=frame==20?SDL_KEYDOWN:SDL_KEYUP;e.key.keysym.scancode=SDL_SCANCODE_ESCAPE;e.key.keysym.sym=SDLK_ESCAPE;SDL_PushEvent(&e);}if(frame==23){pauseElapsed=play.FixedStepsSinceReset();before=w.Scripts()->Capture().front().json;w.Localization().SetLocale("ja",error);h.Resources().WaitForAll();w.Localization().Refresh();}if(frame==28||frame==29){SDL_Event e{};e.type=frame==28?SDL_KEYDOWN:SDL_KEYUP;e.key.keysym.scancode=SDL_SCANCODE_ESCAPE;e.key.keysym.sym=SDLK_ESCAPE;SDL_PushEvent(&e);}}
+   if(std::string(project)=="shooter_game"){if(frame==20||frame==21){SDL_Event e{};e.type=frame==20?SDL_KEYDOWN:SDL_KEYUP;e.key.keysym.scancode=SDL_SCANCODE_ESCAPE;e.key.keysym.sym=SDLK_ESCAPE;QueueTestKey(h.GetWindow(),e.key.keysym.scancode,e.type==SDL_KEYDOWN);}if(frame==23){pauseElapsed=play.FixedStepsSinceReset();before=w.Scripts()->Capture().front().json;w.Localization().SetLocale("ja",error);h.Resources().WaitForAll();w.Localization().Refresh();}if(frame==28||frame==29){SDL_Event e{};e.type=frame==28?SDL_KEYDOWN:SDL_KEYUP;e.key.keysym.scancode=SDL_SCANCODE_ESCAPE;e.key.keysym.sym=SDLK_ESCAPE;QueueTestKey(h.GetWindow(),e.key.keysym.scancode,e.type==SDL_KEYDOWN);}}
    if(frame==36){w.SceneControl()->Request(w.SceneControl()->Current(),error);reload=true;}
   };
   c.afterFrame=[&](EngineHost& h,RuntimeWorld& w,InteractivePlay& play){++frame;

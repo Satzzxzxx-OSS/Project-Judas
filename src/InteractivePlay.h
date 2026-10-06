@@ -59,7 +59,7 @@ public:
     // pause menu is open), and renders the presented world plus the HUD
     // and menu into the window. `drawHud` false skips the overlay (the
     // editor draws its own). Returns the presentation alpha used.
-    float Frame(Window& window, Renderer& renderer, float frameDeltaTime, bool drawHud = true);
+    float Frame(Window& window, Renderer& renderer, float frameDeltaTime, bool drawHud = true, bool render = true);
 
     GameSession& Session() { return m_session; }
     const GameSession& Session() const { return m_session; }

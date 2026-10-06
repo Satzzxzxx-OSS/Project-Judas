@@ -1,0 +1,2 @@
+FRAMES 3
+EXPECT_PAUSED 0 1 extra

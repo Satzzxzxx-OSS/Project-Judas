@@ -41,7 +41,13 @@ departure retains world momentum. Displacement includes steps/recovery/carry;
 it isn't necessarily `velocity*dt`. Force APIs on Entity are for rigid bodies;
 Character velocity/extra acceleration are its separate intent path.
 
-Current limits: query-only motors don't block each other or generate M42 events;
+Motors have queryable capsules. Public physics casts can hit the caller's own
+motor, including an initial overlap at distance zero. For environment probes
+(walls, ledges, headroom), pass `{ignored: [entity]}` to each cast. The motor's
+`ignore(entities)` setting affects its movement solver, not separate public queries.
+
+Current limits: query-only motors don't physically block each other; endpoint sensors and coalesced
+sweep/support contacts now produce normal M42 events without fabricated mass/impulse;
 unit entity scale, no simultaneous root rigid body/ragdoll, bounded recovery/slide,
 short lip probe can add up to0.08m reported travel, approximate capped dynamic push,
 teleported supports aren't continuous motion. Skeleton/animation is independent.
@@ -58,3 +64,28 @@ PBF field, to implement buoyancy/drag/propulsion in project JS. Existing
 coarse production liquid limitations still apply; do not turn the motor into a
 hardcoded swim mode. Copyable [motor example](examples/character.js), current full
 project [character demo](../../projects/character_demo/character_demo.judasproj).
+
+## Inclined support and touch events (M65)
+
+Tangent uphill motion may have a positive gravity-up component and still remain
+supported. Departure tests relative motion against current separation normal with
+a tangential-travel/skin-scaled tolerance, including this step's net acceleration.
+Gentle purely outward acceleration can therefore release support. `supportNormal` is contact/separation normal, not necessarily
+a mesh face normal at edges. A separately known mesh-face normal is not exposed.
+Keep desired motion separate from support classification; let sweep-and-slide resolve
+blocked components instead of projecting every intended vector onto noisy corners.
+
+```js
+fixedUpdate() {
+  const c = this.entity.character;
+  if (!c) return;
+  // The project decides desired world motion; engine resolves contacts.
+  c.velocity = this.desiredVelocity;
+  this.state.supported = c.supported;
+}
+onTriggerEnter(event) { if (event.other?.valid) { /* project checkpoint policy */ } }
+```
+
+Events dispatch after all motors move at the fixed boundary. Thin sensors crossed
+entirely between endpoints have no full CCD guarantee. Disable/resize/teleport and
+destruction retire pairs through the same safe-handle lifecycle.

@@ -13,7 +13,7 @@ glm::quat Align(glm::vec3 a,glm::vec3 b){
 }
 void ResolveCharacterSlide(PhysicsWorld& physics,glm::vec3& center,const glm::quat& rotation,
     glm::vec3 remaining,glm::vec3& velocity,const CharacterMotorSettings& s,
-    const PhysicsQueryFilter* filter,bool movingGeometry,bool legacyPush,bool& collided){
+    const PhysicsQueryFilter* filter,bool movingGeometry,bool legacyPush,bool& collided,BodyHandle observer){
     float bodyMotionTime=0;
     float pushBudget=s.maxPushImpulse;
     for(int i=0;i<4;++i){
@@ -21,6 +21,7 @@ void ResolveCharacterSlide(PhysicsWorld& physics,glm::vec3& center,const glm::qu
         auto hit=legacyPush?physics.SweepPlayerShape(center,rotation,remaining,movingGeometry,bodyMotionTime,1):
             physics.SweepCapsuleMotion(s.radius,s.halfHeight,center,rotation,remaining,movingGeometry,bodyMotionTime,1,filter,s.collisionLayer,s.collisionMask);
         if(!hit.hit){center+=remaining;break;}collided=true;
+        if(observer.IsValid())physics.ObserveQueryContact(observer,hit,velocity);
         if(physics.IsDynamicBody(hit.hitBody)){
             auto direction=-hit.normal;auto objectVelocity=physics.GetLinearVelocity(hit.hitBody);
             float speed=legacyPush ? glm::dot(velocity,direction)-glm::dot(objectVelocity,direction)
@@ -56,9 +57,28 @@ void CharacterMotor::Step(PhysicsWorld& physics,const GravityField& gravity,floa
     auto sweep=[&](glm::vec3 p,glm::vec3 d,bool interpolate=false,float start=0,float end=1){return physics.SweepCapsuleMotion(settings.radius,settings.halfHeight,p,orientation,d,interpolate,start,end,&filter,settings.collisionLayer,settings.collisionMask);};
     // Recover using signed actual geometry, not a skin-only displacement.
     for(int i=0;i<8;++i){auto hit=sweep(center,{0,0,0},true,0,0);if(!hit.hit||hit.penetration<=1e-5f)break;center+=hit.normal*(hit.penetration+settings.skin);result.recovered=true;}
-    bool departing=glm::dot(velocity-previous.supportVelocity,intentUp)>1e-4f;
-    if(departing||glm::dot(supportOrigin-center,up)>settings.stepHeight)followingSupport=false;
     auto ground=sweep(center,-up*settings.supportDistance,true,0,0);
+    // Departure is separation from contact, not ascent against gravity. A
+    // ramp tangent may have a large gravity-up component and still be supported.
+    glm::vec3 supportMotion=previous.supportVelocity;
+    if(ground.hit&&physics.IsDynamicBody(ground.hitBody)){
+        const auto t=physics.GetPreviousTransform(ground.hitBody);
+        supportMotion=physics.GetLinearVelocity(ground.hitBody)+glm::cross(physics.GetAngularVelocity(ground.hitBody),ground.point-t.position);
+    }
+    const auto departureNormal=ground.hit?ground.normal:(previous.supported?previous.supportNormal:up);
+    const auto netAcceleration=result.gravity*settings.gravityScale+acceleration;
+    const auto relativeMotion=velocity+netAcceleration*dt-supportMotion;
+    // Skin defines the resolution at which departure is observable. Curvature
+    // and capsule/edge normals can rotate within it. Uphill/downhill following
+    // is preserved unless intent ascends AND separates beyond that tolerance.
+    const float normalSpeed=glm::dot(relativeMotion,departureNormal);
+    const float tangentSpeed=glm::length(relativeMotion-departureNormal*normalSpeed);
+    // Bound contact-normal drift by tangential travel and skin/radius. A fixed
+    // deadband would swallow gentle purely outward acceleration every step.
+    const float departureTolerance=std::min(settings.skin*.1f,tangentSpeed*dt*settings.skin/settings.radius);
+    bool departing=glm::dot(relativeMotion,up)>1e-4f&&
+        normalSpeed*dt>std::max(1e-6f,departureTolerance);
+    if(departing||glm::dot(supportOrigin-center,up)>settings.stepHeight)followingSupport=false;
     const float slope=std::cos(glm::radians(settings.maxSlopeDegrees));
     bool supported=!departing&&ground.hit&&glm::dot(ground.normal,up)>slope;
     auto shape=Shape::Capsule(settings.radius,settings.halfHeight);
@@ -78,15 +98,15 @@ void CharacterMotor::Step(PhysicsWorld& physics,const GravityField& gravity,floa
         velocity+=carryVelocity-previous.supportVelocity;
         float inward=glm::dot(velocity-carryVelocity,ground.normal);if(inward<0)velocity-=ground.normal*inward;
     }
-    velocity+=(result.gravity*settings.gravityScale+acceleration)*dt;acceleration={0,0,0};
+    velocity+=netAcceleration*dt;acceleration={0,0,0};
     auto remaining=(velocity-carryVelocity)*dt;
     if(supported&&!departing){glm::vec3 stepped;auto tangent=remaining-up*glm::dot(remaining,up);
         if(TryStepMove(physics,center,orientation,up,tangent,settings.stepHeight,slope,settings.skin,stepped,&shape,&filter,settings.collisionLayer,settings.collisionMask)){center=stepped;remaining={0,0,0};result.stepped=true;}}
-    ResolveCharacterSlide(physics,center,orientation,remaining,velocity,settings,&filter,!supported,false,result.collided);
+    ResolveCharacterSlide(physics,center,orientation,remaining,velocity,settings,&filter,!supported,false,result.collided,observationBody);
     position=center-orientation*settings.offset;
     // End-of-step support reports the current pose, rather than yesterday's ground.
     auto final=sweep(center,-up*settings.supportDistance);
     result.supported=!departing&&final.hit&&glm::dot(final.normal,up)>slope;
-    if(result.supported){result.support=final.hitBody;result.supportNormal=final.normal;result.supportVelocity=carryVelocity;}
+    if(result.supported){if(observationBody.IsValid())physics.ObserveQueryContact(observationBody,final,velocity);result.support=final.hitBody;result.supportNormal=final.normal;result.supportVelocity=carryVelocity;}
     result.velocity=velocity;result.displacement=position-oldPosition;
 }

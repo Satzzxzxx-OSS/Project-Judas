@@ -67,3 +67,57 @@ cleans articulation; mapped transient entities are not independently saved.
 **Historical M46–M60 persistence limitation:** active ragdoll and mixer state were not persisted by legacy deltas. [M61 slots](saves.md) now preserve active articulation and mixer state through the shared pose/physics path. Uniform positive mapped scale
 only, no owner rigid collider; partial active physical control is not provided.
 See [mapping/lifecycle limits](../RAGDOLLS.md).
+
+## Resolved joint reads, visual sockets and limb IK (M65)
+
+`animation.jointTransform(key, space='world', presented=false) → Transform|null`
+reads the final M47-resolved pose, including layers/IK/M48 physics. Missing/unready
+joints return null; stale entity throws. Space is local (parent-relative), model
+(skeleton-relative), or world (composed entity pose). Invalid space throws TypeError.
+In presentationUpdate, presented=true interpolates the entity root exactly as the
+renderer does; joint-local samples are the actual currently evaluated skinning pose,
+with no invented bone interpolation. Simulation reads never use presentation roots.
+
+`animation.limb(id, settings) → boolean` adds/patches a two-bone contributor:
+root/middle/end stable keys, world target/pole Vec3 positions, weight 0..1, enabled,
+order 1..999. Up to16, sorted (order,id), after clip contributions and before physical
+pose at1000. Direct hierarchy and positive uniform chain scale are required.
+`removeLimb(id)` retires it. Invalid settings throw; unavailable asset returns false.
+Unreachable targets preserve bone lengths and retain an honest endpoint error;
+straight/folded chains use the input bend or deterministic model-space fallback.
+No foot orientation, whole-body balancing or dynamic bone-driving is promised.
+Authored/runtime settings persist; solver caches do not.
+
+`entity.setSocket(target, joint, offset={}) → true` assigns a visual-only attachment.
+Target is a safe animated Entity; null removes the socket. Offset is partial local
+position/rotation/scale relative to that joint. Reads are ordinary transform /
+presentedTransform. Missing joints/invalid cycles/conflicting physics ownership
+throw; no fallback to guessed clip or bind transforms. Target-first evaluation
+handles chains, and normal prefab/stream/save reference remapping applies. Socket
+owners cannot have bodies/motors/ragdolls/deformables: use physics joints for an
+actual physical attachment. Asset replacement makes unavailable reads safely null.
+
+```js
+presentationUpdate() {
+  const hand = this.entity.animation?.jointTransform('Hand', 'world', true);
+  if (hand) this.marker.transform = {position: hand.position};
+}
+```
+
+[Integration project and authoring](../M65_INTEGRATION.md) shows two independent
+foot targets on a tilting board and a hand socket through interrupted crossfades
+and ragdoll output. Scripts no longer need transitionFraction to estimate bones.
+
+### Imported joint frames and observed motion
+
+The editor's stable-key skeleton picker and rest-pose axis overlay show each imported
+joint's **local** axes. M45 hinge/slider frame X is the constraint axis; orient the
+frame to the intended imported joint axis rather than assuming humanoid names or Y.
+The picker is not an automatic physical mapping/fitter. See [authoring](../M65_INTEGRATION.md).
+
+Ragdoll entry uses recent evaluated world-joint samples and their simulation sample
+interval when available, plus entity motion. Body-free scripted transform changes
+between samples therefore contribute observed motion; they are not proof of a
+continuous physical trajectory. Presentation-only placement should not be treated
+as authoritative velocity. Large/teleported deltas need project policy; M65 does not
+add a get-up controller or change the existing motion-inheritance model.

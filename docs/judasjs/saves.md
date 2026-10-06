@@ -98,3 +98,14 @@ native handles and solver caches rebuild. These guarantees belong to explicit
 modern slot save/load, not ordinary reload or the legacy `.judasstate` path.
 Composed projects use the same service with qualified resident/retained region
 records; the legacy delta restriction does not disable modern slot saves.
+
+## M65 participant compatibility
+
+Authored/runtime limb IK settings, visual socket identity, typed entity properties,
+physical-material selection/overrides and runtime-created joints use the existing
+entity/pose/ownership records. An optional `sleep` participant (version 1) stores
+settling state by stable entity identity. Old slots without it reconstruct awake;
+new slots include it, with conditional deformable state still checked separately.
+The SaveApplication participant assertion changes from 11 to 12 for this additional
+chunk, rather than relaxing required participants. Cached GPU matrices/layouts are
+not save data. Current integration includes a separate-process save/load check.

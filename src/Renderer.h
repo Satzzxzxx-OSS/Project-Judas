@@ -80,7 +80,7 @@ public:
     EnvironmentHandle CreateEnvironment(const EnvironmentData&);
     void DestroyEnvironment(EnvironmentHandle);
     void SetMaterialBindings(const std::vector<MaterialBinding>& slots){m_materialBindings=slots;}
-    void SetSceneAppearance(bool linear,float exposure,EnvironmentHandle environment,float intensity,const glm::quat& rotation,bool background);
+    void SetSceneAppearance(bool linear,float exposure,EnvironmentHandle environment,float intensity,const glm::quat& rotation,bool background,const glm::vec3& colour={.08f,.09f,.11f});
     void FlushMaterialBlends();
     unsigned TextureUnitLimit()const{return m_textureUnitLimit;}
     std::size_t AppearanceBytes()const;

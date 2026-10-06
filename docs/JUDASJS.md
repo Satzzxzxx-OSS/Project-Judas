@@ -102,3 +102,7 @@ independent one-shots, authored groups/fades and approximate spatial effects.
 [Project slots, durable references and restore lifecycle](judasjs/saves.md) | [Subsystem participation and storage](M61_SAVES.md).
 
 M64 adds [collider snapshots / closest surface queries](M64_COLLISION.md) through the existing physics/entity APIs.
+
+M65 adds resolved joints/limb IK/visual sockets, gravity samples, shared physical
+materials/runtime joints and ordinary motor touch events. [Integration](M65_INTEGRATION.md)
+and [named authoring](CONTENT_AUTHORING.md) provide current examples.

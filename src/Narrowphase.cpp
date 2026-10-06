@@ -113,6 +113,15 @@ namespace {
 ContactManifold ComputeContacts(const Shape& shapeA, const RigidBody& bodyA, const Shape& shapeB,
 const RigidBody& bodyB, float margin) {
     ContactManifold manifold;
+    if(shapeA.type==ShapeType::Capsule||shapeB.type==ShapeType::Capsule){
+        const bool flip=shapeB.type==ShapeType::Capsule;const auto& capsule=flip?shapeB:shapeA;const auto& cb=flip?bodyB:bodyA;const auto& other=flip?shapeA:shapeB;const auto& ob=flip?bodyA:bodyB;
+        const auto axis=cb.orientation*glm::vec3(0,capsule.halfHeight,0);CapsuleDistance d;
+        if(other.type==ShapeType::Box)d=CapsuleDistanceToBox(cb.position-axis,cb.position+axis,capsule.radius,ob.position,ob.orientation,other.halfExtents);
+        else if(other.type==ShapeType::Sphere)d=CapsuleDistanceToSphere(cb.position-axis,cb.position+axis,capsule.radius,ob.position,other.radius);
+        else if(other.asset){const auto x=SegmentGeometry(glm::dvec3(cb.position-axis),glm::dvec3(cb.position+axis),capsule.radius,PrimitiveAt(other,ob,0));if(!x.valid)return manifold;d={float(x.gap),glm::vec3(x.normal),glm::vec3(x.point)};}
+        else return manifold;
+        if(d.distance<=margin){Contact c;c.hit=true;c.point=d.otherPoint;c.normal=flip?-d.normal:d.normal;c.penetration=-d.distance;manifold.Add(c);}return manifold;
+    }
     if (shapeA.type == ShapeType::Terrain) {
         return TerrainVsPrimitive(shapeA, bodyA, shapeB, bodyB, margin);
     }
@@ -131,7 +140,7 @@ const RigidBody& bodyB, float margin) {
 ContactManifold ComputeContacts(const PrimitivePose& a, const PrimitivePose& b, float margin,
                                 const ContactPreparedOrientation* preparedA,
                                 const ContactPreparedOrientation* preparedB) {
-    if (a.shape.type == ShapeType::Terrain || b.shape.type == ShapeType::Terrain)
+    if (a.shape.type==ShapeType::Capsule||b.shape.type==ShapeType::Capsule||a.shape.type == ShapeType::Terrain || b.shape.type == ShapeType::Terrain)
     return ComputeContacts(a.shape, a.body, b.shape, b.body, margin);
     if(a.shape.asset||b.shape.asset)return CookedContacts(a,b,margin);
     const auto identity=[](glm::quat q){return q==glm::quat(1,0,0,0);};

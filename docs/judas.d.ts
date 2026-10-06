@@ -42,17 +42,18 @@ declare module "judas" {
   export const audio:{group(name:string):AudioGroup|null;setGroup(name:string,settings:Partial<AudioGroup>,fadeSeconds?:number):boolean|null;readonly diagnostics:AudioDiagnostics|null};
   export interface ParticleSettingsPatch { enabled?: boolean; rate?: number }
   export interface CastHit {
+    physicalMaterial:AssetId|null;
     entity: Entity | null; entityId: EntityId; bodyId: number;
     point: Vec3; normal: Vec3; distance: number; fraction: number;
-    primitiveIndex: number; initialOverlap: boolean; shape: "sphere" | "box" | "terrain" | "hull" | "triangle-mesh";
+    primitiveIndex: number; initialOverlap: boolean; shape: "capsule" | "sphere" | "box" | "terrain" | "hull" | "triangle-mesh";
     childKey:number;feature:number|null;
   }
   export interface LegacySweepHit { hit: boolean; distance: number; normal: Vec3; entityId: EntityId }
   export interface FluidSample { immersion: number; density: number; velocity: Vec3; acceleration: Vec3 }
   /** Plain wrappers reacquire native state. Treat the writable ID as opaque. */
-  export interface Appearance {linearRendering:boolean;exposure:number;environmentAsset:AssetId;environmentIntensity:number;environmentRotation:Quat;environmentBackground:boolean}
-  export interface MaterialParameters {baseColor?:Vec3 & {a:number};metallic?:number;roughness?:number;emissive?:Vec3;emissiveIntensity?:number}
-  export interface MaterialState {asset:AssetId;ready:boolean;model:"legacy"|"pbr"|"unlit";alphaMode:"opaque"|"mask"|"blend";baseColor:Vec3 & {a:number};metallic:number;roughness:number;emissive:Vec3;emissiveIntensity:number;overridden:boolean}
+  export interface Appearance {backgroundColor:Vec3;linearRendering:boolean;exposure:number;environmentAsset:AssetId;environmentIntensity:number;environmentRotation:Quat;environmentBackground:boolean}
+  export interface MaterialParameters {uvScale?:{x:number;y:number};uvOffset?:{x:number;y:number};baseColor?:Vec3 & {a:number};metallic?:number;roughness?:number;emissive?:Vec3;emissiveIntensity?:number}
+  export interface MaterialState {uvScale:{x:number;y:number};uvOffset:{x:number;y:number};asset:AssetId;ready:boolean;model:"legacy"|"pbr"|"unlit";alphaMode:"opaque"|"mask"|"blend";baseColor:Vec3 & {a:number};metallic:number;roughness:number;emissive:Vec3;emissiveIntensity:number;overridden:boolean}
   export class Material {
     constructor(entityId:EntityId,slot?:number);
     entityId:EntityId;slot:number;
@@ -62,8 +63,8 @@ declare module "judas" {
     clearOverrides():boolean;
   }
   export interface ColliderShapeInfo {
-    type:"box"|"sphere"|"compound"|"hull"|"triangle-mesh"|"terrain";
-    key:number;position:Vec3;rotation:Quat;halfExtents:Vec3|null;radius:number|null;
+    type:"box"|"sphere"|"compound"|"hull"|"triangle-mesh"|"terrain"|"capsule";
+    key:number;position:Vec3;rotation:Quat;halfExtents:Vec3|null;radius:number|null;halfHeight:number|null;
     asset:AssetId|null;vertexCount:number;triangleCount:number;twoSided:boolean;
   }
   export interface ColliderInfo extends ColliderShapeInfo {
@@ -76,6 +77,11 @@ declare module "judas" {
   }
   export class Entity {
     readonly collider:ColliderInfo|null;
+    readonly sleeping:boolean;
+    readonly physicalMaterial:{asset:AssetId|null;friction:number;restitution:number};
+    setPhysicalMaterial(asset?:AssetId|null,parameters?:{friction?:number;restitution?:number}):boolean;
+    setSocket(target:Entity,joint:string,offset?:TransformPatch):boolean;
+    clearSocket():boolean;
     material(slot?:number):Material;
     readonly liquid:LiquidVolume|null;
     constructor(id: string | number | bigint);
@@ -268,6 +274,7 @@ declare module "judas" {
     clip?: string; referenceClip?: string; weight?: number; speed?: number; time?: number;
     referenceTime?: number; enabled?: boolean; additive?: boolean; mask?: string[];
   }
+  export interface LimbIKPatch {root?:string;middle?:string;end?:string;target?:Vec3;pole?:Vec3;weight?:number;enabled?:boolean;order?:number}
   export class Animation {
     constructor(entityId: EntityId);
     entityId: EntityId;
@@ -286,19 +293,27 @@ declare module "judas" {
     readonly layers: AnimationLayerInfo[];
     layer(id: string, settings: AnimationLayerPatch): boolean;
     removeLayer(id: string): boolean;
+    jointTransform(key:string,space?:"local"|"model"|"world",presented?:boolean):Transform|null;
+    limb(id:string,settings:LimbIKPatch):boolean;
+    removeLimb(id:string):boolean;
   }
   export interface JointState { active: boolean; enabled: boolean; coordinate: number; motorImpulse: number; type: 0 | 1 | 2 | 3 }
+  export interface JointConfiguration {type?:"fixed"|"hinge"|"ball"|"slider";anchorA?:Vec3;anchorB?:Vec3;frameA?:Quat;frameB?:Quat;enabled?:boolean;limits?:boolean;motor?:boolean;spring?:boolean;lower?:number;upper?:number;speed?:number;maxForce?:number;rest?:number;stiffness?:number;damping?:number}
   export class Joint {
     constructor(id: string | number | bigint);
     id: string;
     readonly valid: boolean;
     readonly state: JointState;
+    configure(settings:JointConfiguration):boolean;
+    destroy():boolean;
     setEnabled(enabled: boolean): boolean;
     setLimits(lower: number, upper: number, limits?: boolean): boolean;
     setMotor(speed: number, maxForce: number, motor?: boolean): boolean;
     setSpring(rest: number, stiffness: number, damping: number, spring?: boolean): boolean;
   }
   export const physics: {
+    gravity(point:Vec3):Vec3;
+    createJoint(owner:Entity,settings:JointConfiguration & {bodyA:Entity;bodyB?:Entity|null}):Joint;
     closestPoint(point:Vec3,maximum:number,filter?:QueryFilter):ClosestPointHit|null;
     joint(owner: Entity): Joint | null;
     raycast(origin: Vec3, direction: Vec3, maximum: number, filter?: QueryFilter): CastHit | null;
@@ -380,8 +395,8 @@ declare module "judas" {
     debugOverlayVisible: boolean;
   };
   export interface UIEvent { document: string; element: string; type: "click" | "change" | "focus" | "back"; value: number }
-  export interface ContactEvent { other: Entity | null; point: Vec3; normal: Vec3; relativeVelocity: Vec3; normalImpulse: number | null }
-  export type ScriptProperties = Record<string, number | boolean | string>;
+  export interface ContactEvent { other: Entity | null; point: Vec3; normal: Vec3; relativeVelocity: Vec3; physicalMaterial:AssetId|null; normalImpulse: number | null }
+  export type ScriptProperties = Record<string, number | boolean | string | Entity | null>;
   export type PropertySchema = Record<string,
     { type: "number"; default?: number } | { type: "boolean"; default?: boolean } | { type: "string"; default?: string }>;
   export interface SaveOptions { name?: string; metadata?: { [key: string]: JSONValue } | JSONValue[] }

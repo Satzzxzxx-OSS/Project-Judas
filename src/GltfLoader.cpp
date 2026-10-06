@@ -25,7 +25,9 @@ bool ParseGltfMesh(const void* bytes,size_t size,MeshData& result,std::string& e
   // independent of unregistered auxiliary files or arbitrary external paths.
   for(size_t i=0;i<data->buffers_count;++i)if(data->buffers[i].uri&&std::string(data->buffers[i].uri).rfind("data:",0)!=0)throw std::runtime_error("external glTF buffers unsupported; embed buffers or use GLB");
   if(cgltf_load_buffers(&options,data.get(),nullptr)!=cgltf_result_success||cgltf_validate(data.get())!=cgltf_result_success)throw std::runtime_error("invalid glTF buffers/accessors");
-  if(data->skins_count>1||data->nodes_count>128||(data->skins_count&&(data->skins[0].joints_count==0||data->skins[0].joints_count>48)))throw std::runtime_error("requires one skin, 1..48 skin joints and <=128 hierarchy nodes");
+  if(data->skins_count>1)throw std::runtime_error("multiple skins unsupported: export a single skinned mesh/skin; separate characters into assets");
+  if(data->nodes_count>128)throw std::runtime_error("hierarchy limit is 128 nodes; remove/export unused rig/control nodes");
+  if(data->skins_count&&(data->skins[0].joints_count==0||data->skins[0].joints_count>48))throw std::runtime_error("skin joint limit is 1..48; prune nondeforming joints before export");
   auto asset=std::make_shared<SkeletalAsset>();auto& skeleton=asset->skeleton;auto nodeIndex=[&](const cgltf_node* n){return int(n-data->nodes);};
   std::vector<unsigned char> visited(data->nodes_count,0);
   std::function<void(int)> visit=[&](int i){if(i<0||size_t(i)>=data->nodes_count)throw std::runtime_error("invalid hierarchy reference");if(visited[i]==1)throw std::runtime_error("cyclic skeleton");if(visited[i]==2)return;visited[i]=1;auto& n=data->nodes[i];if(n.parent)visit(nodeIndex(n.parent));visited[i]=2;skeleton.order.push_back(i);};

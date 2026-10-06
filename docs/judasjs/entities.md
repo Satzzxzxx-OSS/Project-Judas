@@ -111,3 +111,16 @@ for (const child of collider?.children ?? []) {
 ```
 
 See [queries](physics.md#physicsclosestpoint) and [collision assets](../M64_COLLISION.md).
+
+## M65 references and physical/presentation consumers
+
+`setSocket(target,joint,offset={})` creates/removes a visual attachment; see
+[resolved pose/socket semantics](animation-ragdolls.md#resolved-joint-reads-visual-sockets-and-limb-ik-m65).
+`physicalMaterial`, `setPhysicalMaterial` and read-only `sleeping` use
+[normal physical state](physics.md#gravity-physical-materials-and-runtime-joint-configuration-m65).
+
+Inspector schemas now accept `{type:"entity",default:null}`. Authored properties
+store null or `{entity:"decimal-stable-id"}`; scripts receive null or normal safe
+Entity wrappers. Existing primitives retain their meanings. References remap through
+prefab/duplication/region/save paths; a missing target is an invalid safe wrapper,
+not a guessed entity. Never store raw body handles in authoring data.

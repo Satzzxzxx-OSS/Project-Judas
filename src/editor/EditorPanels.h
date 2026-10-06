@@ -109,6 +109,7 @@ struct EditorPanelState {
     UIElement textElement;
     std::string previewLocale;
     glm::vec2 textPreviewPosition{0},textPreviewSize{0};
+    std::string hierarchySearch;
     std::string status;
     std::string pathInput;  // Open / Save As text field
     std::vector<std::string> terrainSurfaces;

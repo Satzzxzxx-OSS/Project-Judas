@@ -269,8 +269,8 @@ target_link_libraries(judas_editor PRIVATE judas_engine judas_imgui judas_naviga
 target_compile_options(judas_editor PRIVATE -Wall -Wextra)
 
 # Milestone 30: the scene authoring tool that writes the shipped demonstration
-# scenes and the tiny game scene (tools/SceneAuthor.cpp).
-add_executable(judas_scene_author tools/SceneAuthor.cpp)
+# scenes and the tiny game scene (tools/SceneAuthor.cpp tools/StructuredAuthor.cpp).
+add_executable(judas_scene_author tools/SceneAuthor.cpp tools/StructuredAuthor.cpp)
 target_link_libraries(judas_scene_author PRIVATE judas_engine)
 target_compile_options(judas_scene_author PRIVATE -Wall -Wextra)
 
@@ -1267,3 +1267,18 @@ target_link_libraries(judas_collision_cook PRIVATE judas_engine)
 
 add_executable(judas_collision_application_tests tests/CollisionApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_collision_application_tests PRIVATE judas_engine)
+
+add_executable(judas_developer_integration_tests tests/DeveloperIntegrationTests.cpp)
+target_link_libraries(judas_developer_integration_tests PRIVATE judas_engine)
+target_compile_options(judas_developer_integration_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(judas_developer_author tools/DeveloperIntegrationAuthor.cpp)
+target_link_libraries(judas_developer_author PRIVATE judas_engine)
+target_compile_options(judas_developer_author PRIVATE -Wall -Wextra -Wpedantic)
+target_sources(judas_developer_integration_tests PRIVATE src/editor/EditorHistory.cpp)
+add_executable(judas_developer_application_tests tests/DeveloperApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_developer_application_tests PRIVATE judas_engine)
+target_compile_options(judas_developer_application_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(judas_developer_authoring_tests tests/DeveloperAuthoringTests.cpp tools/StructuredAuthor.cpp)
+target_include_directories(judas_developer_authoring_tests PRIVATE tools)
+target_link_libraries(judas_developer_authoring_tests PRIVATE judas_engine)
+target_compile_options(judas_developer_authoring_tests PRIVATE -Wall -Wextra -Wpedantic)

@@ -165,7 +165,8 @@ void DrawHierarchyPanel(EditorDocument& doc, EditorPanelState& state, EditorRequ
     if (!ImGui::Begin("Hierarchy")) { ImGui::End(); return; }
     const bool editing = state.mode == EditorMode::Edit;
     Scene& scene = doc.GetScene();
-    ImGui::TextDisabled("%zu objects   (double-click renames)", scene.Objects().size());
+    char search[256];CopyToBuffer(state.hierarchySearch,search,sizeof(search));if(ImGui::InputText("Search",search,sizeof(search)))state.hierarchySearch=search;
+    ImGui::TextDisabled("%zu objects / %zu selected; Ctrl-click adds", scene.Objects().size(),doc.Selection().size());
     ImGui::Separator();
     SceneObjectId toDelete = kInvalidSceneObjectId;
     int move = 0;
@@ -173,7 +174,8 @@ void DrawHierarchyPanel(EditorDocument& doc, EditorPanelState& state, EditorRequ
     ImGui::BeginChild("list", ImVec2(0.0f, -32.0f));
     for (const SceneObject& o : scene.Objects()) {
         ImGui::PushID(static_cast<int>(o.id));
-        const bool selected = o.id == doc.Selected();
+        const bool selected = doc.IsSelected(o.id);
+        if(!state.hierarchySearch.empty()&&o.name.find(state.hierarchySearch)==std::string::npos){ImGui::PopID();continue;}
         if (editing && state.renamingId == o.id) {
             char buffer[256];
             CopyToBuffer(state.renameBuffer, buffer, sizeof(buffer));
@@ -211,7 +213,7 @@ void DrawHierarchyPanel(EditorDocument& doc, EditorPanelState& state, EditorRequ
         label += "##" + std::to_string(o.id);
         if (broken) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.3f, 1.0f));
         if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
-            doc.Select(o.id);
+            doc.Select(o.id,ImGui::GetIO().KeyCtrl);
             if (editing && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 state.renamingId = o.id;
                 state.renameBuffer = o.name;
@@ -238,7 +240,8 @@ void DrawHierarchyPanel(EditorDocument& doc, EditorPanelState& state, EditorRequ
     if (editing) {
         if (ImGui::Button("Delete") && doc.Selected() != kInvalidSceneObjectId) toDelete = doc.Selected();
         ImGui::SameLine();
-        if (ImGui::Button("Duplicate") && doc.Selected() != kInvalidSceneObjectId) requests.duplicateId = doc.Selected();
+        if(ImGui::Button("Duplicate selection")){std::string error;if(!doc.DuplicateSelection(error))state.status=error;}
+        ImGui::SameLine();if(ImGui::Button("Group")){std::string error;if(!doc.GroupSelection(error))state.status=error;}
         ImGui::SameLine();
         if (ImGui::Button("Focus")) requests.focusSelection = true;
     }
@@ -261,6 +264,23 @@ void DrawInspectorPanel(EditorDocument& doc, EditorPanelState& state) {
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 400.0f, 24.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(400.0f, ImGui::GetIO().DisplaySize.y - 24.0f - 28.0f), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Inspector")) { ImGui::End(); return; }
+    doc.PruneSelection();
+    if(state.mode==EditorMode::Edit&&doc.Selection().size()>1){
+        ImGui::Text("%zu selected (local transforms)",doc.Selection().size());static glm::vec3 delta(0),angles(0),factor(1);
+        ImGui::DragFloat3("Translation delta",&delta.x,.05f);ImGui::DragFloat3("Rotation delta degrees",&angles.x,1);ImGui::DragFloat3("Scale multiplier",&factor.x,.01f);
+        if(ImGui::Button("Apply transform delta")){std::string error;if(!doc.BatchTransform(delta,glm::quat(glm::radians(angles)),factor,error))state.status=error;else{delta=angles=glm::vec3(0);factor=glm::vec3(1);}}
+        if(ImGui::BeginCombo("Parent all (keep world pose)","Choose parent")){if(ImGui::Selectable("None")){std::string error;if(!doc.ReparentSelection(0,error))state.status=error;}for(auto& p:doc.GetScene().Objects())if(!doc.IsSelected(p.id)&&ImGui::Selectable((p.name+" ##"+std::to_string(p.id)).c_str())){std::string error;if(!doc.ReparentSelection(p.id,error))state.status=error;}ImGui::EndCombo();}
+        auto common=ObjectProperties(*doc.SelectedObject());std::set<std::string> mixed;for(auto id:doc.Selection()){auto properties=ObjectProperties(*doc.GetScene().Find(id));for(auto it=common.begin();it!=common.end();){auto found=properties.find(it->first);if(found==properties.end())it=common.erase(it);else{if(found->second!=it->second)mixed.insert(it->first);++it;}}}
+        ImGui::TextWrapped("Common authored fields: mixed values change only after Apply. Values use normal record notation.");
+        static std::string field;static char value[2048]{};
+        if(ImGui::BeginCombo("Common property",field.c_str())){for(auto& [key,v]:common)if(key!="_name"&&ImGui::Selectable((key+(mixed.count(key)?" (mixed)":"")).c_str(),field==key)){field=key;CopyToBuffer(mixed.count(key)?"":v,value,sizeof(value));}ImGui::EndCombo();}
+        ImGui::InputText("New value",value,sizeof(value));if(ImGui::Button("Apply field")&&!field.empty()&&common.count(field)){std::string error;if(!doc.BatchProperties({{field,value}},error))state.status=error;}
+    }
+    if(state.mode==EditorMode::Edit&&doc.SelectedObject()){
+        static int component=0;const char* names[]={"render","body","animation","socket","motor","audio","particle","joint","ragdoll","scripts"};ImGui::Combo("Component clipboard",&component,names,10);
+        if(ImGui::Button("Copy component"))doc.CopyComponent(names[component]);
+        ImGui::SameLine();if(ImGui::Button("Paste to selection")){std::string error;if(!doc.PasteComponent(error))state.status=error;}
+    }
     SceneObject* o = doc.SelectedObject();
     if (!o) {
         ImGui::TextDisabled("Nothing selected. Click an object in the viewport or the hierarchy.");
@@ -412,7 +432,7 @@ void DrawSceneSettingsPanel(EditorDocument& doc, EditorPanelState& state) {
     ColorEdit(doc, "Ambient", s.ambientColor);
     Checkbox(doc,"Linear HDR world rendering",s.linearRendering);DragScalar(doc,"Manual exposure",s.exposure,.01f,.001f,10000);
     std::vector<std::string> names,ids;if(state.assets)for(const auto& [id,a]:state.assets->Records())if(a.type==AssetType::Environment){names.push_back(a.relativePath);ids.push_back(id);}LabelledCombo(doc,"Environment lighting",s.environmentAsset,names,ids,true);
-    DragScalar(doc,"Environment intensity",s.environmentIntensity,.01f,0,10000);Checkbox(doc,"Environment background",s.environmentBackground);
+    DragScalar(doc,"Environment intensity",s.environmentIntensity,.01f,0,10000);Checkbox(doc,"Environment background",s.environmentBackground);ColorEdit(doc,"Background colour (linear in HDR)",s.backgroundColor);
     auto angles=glm::degrees(glm::eulerAngles(s.environmentRotation));if(ImGui::DragFloat3("Environment rotation degrees",&angles.x,.5f)){doc.BeginEdit();s.environmentRotation=glm::quat(glm::radians(angles));doc.CommitEdit();}
     ImGui::TextDisabled("Background is independent of lighting. Colour factors are linear; UI ignores world exposure.");
     DragScalar(doc, "Fluid scale", s.fluidScale, 0.1f, 0.01f, 1000.0f);
@@ -710,7 +730,11 @@ void DrawProjectSettingsPanel(EditorDocument& doc, EditorPanelState& state, Edit
     }
     ImGui::Text("Assets: %s   Scenes: %s   Saves: %s", s.assetsDir.c_str(), s.scenesDir.c_str(), s.savesDir.c_str());
     ImGui::TextWrapped("Runtime scenes: saved .judas files in the project scene directory, plus the startup scene. Scripts load them by project-relative path. Export includes this same set.");
-    for(const auto& scene:state.sceneFiles)ImGui::BulletText("%s",scene.c_str());
+    if(ImGui::CollapsingHeader("Export scene selection")){
+        bool explicitSet=!s.exportScenes.empty();if(ImGui::Checkbox("Explicit inclusion list",&explicitSet)){if(explicitSet)s.exportScenes=state.sceneFiles;else s.exportScenes.clear();}
+        for(const auto& scene:state.sceneFiles){ImGui::PushID(scene.c_str());bool included=s.exportScenes.empty()||std::find(s.exportScenes.begin(),s.exportScenes.end(),scene)!=s.exportScenes.end();bool excluded=std::find(s.excludeScenes.begin(),s.excludeScenes.end(),scene)!=s.excludeScenes.end();ImGui::TextUnformatted(scene.c_str());if(!s.exportScenes.empty()&&ImGui::Checkbox("Include",&included)){s.exportScenes.erase(std::remove(s.exportScenes.begin(),s.exportScenes.end(),scene),s.exportScenes.end());if(included)s.exportScenes.push_back(scene);}ImGui::SameLine();if(ImGui::Checkbox("Exclude",&excluded)){s.excludeScenes.erase(std::remove(s.excludeScenes.begin(),s.excludeScenes.end(),scene),s.excludeScenes.end());if(excluded)s.excludeScenes.push_back(scene);}ImGui::PopID();}
+        ImGui::TextWrapped("Startup and world-manifest regions must be included. Registered assets stay available for dynamic ID loading. Save project before export.");
+    }
     if (ImGui::Button("Save project")) requests.saveProject = true;
     ImGui::SameLine();
     if (ImGui::Button("Run project")) requests.runProject = true;
@@ -945,6 +969,7 @@ SceneObjectId CreateObjectOfKind(EditorDocument& doc, const std::string& kind, c
 }
 
 SceneObjectId DuplicateObject(EditorDocument& doc, SceneObjectId id) {
+    if(doc.Selection().size()>1){std::string error;return doc.DuplicateSelection(error)?doc.Selected():kInvalidSceneObjectId;}
     Scene& scene = doc.GetScene();
     const SceneObject* source = scene.Find(id);
     if (!source) return kInvalidSceneObjectId;

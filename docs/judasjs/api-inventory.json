@@ -1,5 +1,5 @@
 {
-  "checkpoint": "b5676438ed12d9cb3d05c634eaf5f578d7216ada",
+  "checkpoint": "19a53a42a9b363818e67c07d8b63e9fddcea2845",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -61,6 +61,17 @@
       "reference": "docs/judasjs/animation-ragdolls.md"
     },
     {
+      "symbol": "Animation.jointTransform",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "animationJointPose"
+      ],
+      "type": "docs/judas.d.ts:Animation.jointTransform",
+      "reference": "docs/judasjs/animation-ragdolls.md"
+    },
+    {
       "symbol": "Animation.layer",
       "kinds": [
         "call"
@@ -78,6 +89,17 @@
       ],
       "native": [],
       "type": "docs/judas.d.ts:Animation.layers",
+      "reference": "docs/judasjs/animation-ragdolls.md"
+    },
+    {
+      "symbol": "Animation.limb",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "animationLimb"
+      ],
+      "type": "docs/judas.d.ts:Animation.limb",
       "reference": "docs/judasjs/animation-ragdolls.md"
     },
     {
@@ -132,6 +154,17 @@
         "animationRemoveLayer"
       ],
       "type": "docs/judas.d.ts:Animation.removeLayer",
+      "reference": "docs/judasjs/animation-ragdolls.md"
+    },
+    {
+      "symbol": "Animation.removeLimb",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "animationRemoveLimb"
+      ],
+      "type": "docs/judas.d.ts:Animation.removeLimb",
       "reference": "docs/judasjs/animation-ragdolls.md"
     },
     {
@@ -647,6 +680,17 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.clearSocket",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "socketClear"
+      ],
+      "type": "docs/judas.d.ts:Entity.clearSocket",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
       "symbol": "Entity.collider",
       "kinds": [
         "get"
@@ -817,6 +861,17 @@
       "reference": "docs/judasjs/audio.md"
     },
     {
+      "symbol": "Entity.physicalMaterial",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "physicalMaterialInfo"
+      ],
+      "type": "docs/judas.d.ts:Entity.physicalMaterial",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
       "symbol": "Entity.playAudio",
       "kinds": [
         "call"
@@ -982,6 +1037,39 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.setPhysicalMaterial",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "physicalMaterialSet"
+      ],
+      "type": "docs/judas.d.ts:Entity.setPhysicalMaterial",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.setSocket",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "socketSet"
+      ],
+      "type": "docs/judas.d.ts:Entity.setSocket",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Entity.sleeping",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "sleeping"
+      ],
+      "type": "docs/judas.d.ts:Entity.sleeping",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
       "symbol": "Entity.stopAudio",
       "kinds": [
         "call"
@@ -1141,12 +1229,34 @@
       "reference": "docs/judasjs/physics.md"
     },
     {
+      "symbol": "Joint.configure",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "jointConfigure"
+      ],
+      "type": "docs/judas.d.ts:Joint.configure",
+      "reference": "docs/judasjs/physics.md"
+    },
+    {
       "symbol": "Joint.constructor",
       "kinds": [
         "call"
       ],
       "native": [],
       "type": "docs/judas.d.ts:Joint.constructor",
+      "reference": "docs/judasjs/physics.md"
+    },
+    {
+      "symbol": "Joint.destroy",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "jointDestroy"
+      ],
+      "type": "docs/judas.d.ts:Joint.destroy",
       "reference": "docs/judasjs/physics.md"
     },
     {
@@ -2288,6 +2398,28 @@
       "reference": "docs/judasjs/physics.md"
     },
     {
+      "symbol": "physics.createJoint",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "jointCreate"
+      ],
+      "type": "docs/judas.d.ts:physics.createJoint",
+      "reference": "docs/judasjs/physics.md"
+    },
+    {
+      "symbol": "physics.gravity",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "gravitySample"
+      ],
+      "type": "docs/judas.d.ts:physics.gravity",
+      "reference": "docs/judasjs/physics.md"
+    },
+    {
       "symbol": "physics.joint",
       "kinds": [
         "call"
@@ -2950,10 +3082,13 @@
     "animationExists",
     "animationFade",
     "animationInfo",
+    "animationJointPose",
     "animationLayer",
+    "animationLimb",
     "animationPause",
     "animationPlay",
     "animationRemoveLayer",
+    "animationRemoveLimb",
     "animationSeek",
     "animationSet",
     "animationStop",
@@ -3011,12 +3146,16 @@
     "fractureRemove",
     "fractureState",
     "fractureValid",
+    "gravitySample",
     "hasTag",
     "held",
     "impulse",
     "impulseAtPoint",
     "inertiaWorld",
     "joint",
+    "jointConfigure",
+    "jointCreate",
+    "jointDestroy",
     "jointSet",
     "jointState",
     "jointValid",
@@ -3064,6 +3203,8 @@
     "parent",
     "particles",
     "pauseAudio",
+    "physicalMaterialInfo",
+    "physicalMaterialSet",
     "playAudio",
     "pointerCapture",
     "presentedTransform",
@@ -3113,6 +3254,9 @@
     "setTransform",
     "setVelocity",
     "setView",
+    "sleeping",
+    "socketClear",
+    "socketSet",
     "spawn",
     "stopAudio",
     "sweep",
