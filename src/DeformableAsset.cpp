@@ -264,21 +264,24 @@ bool PrepareDeformableAsset(DeformableAsset& a,std::string& error){
             }if(std::abs(sum-1)>1e-8)return fail("render binding must sum to one");
         }
     for(auto p:a.render.primitives)if(p.first>a.render.indices.size()||p.count>a.render.indices.size()-p.first||p.count%3)return fail("invalid render material range");
-    return true;
+    return PrepareFractureCook(a,error);
 }
 std::string EncodeDeformableAsset(const DeformableAsset& input){auto a=input;
     std::string error;
     if(!PrepareDeformableAsset(a,error))throw std::invalid_argument(error);
     SaveArchive ar;
     payload(ar,a);
+    if(a.fracture){a.fracture->Save(ar);return "JudasDeformable2\n"+ar.bytes;}
     return "JudasDeformable1\n"+ar.bytes;
     }
 bool DecodeDeformableAsset(const std::vector<unsigned char>& bytes,DeformableAsset& out,std::string& error){try{std::string b(bytes.begin(),bytes.end());
         const std::string magic="JudasDeformable1\n";
-        if(b.rfind(magic,0)!=0)throw std::runtime_error("invalid deformable asset version");
+        bool fracture=b.rfind("JudasDeformable2\n",0)==0;
+        if(!fracture&&b.rfind(magic,0)!=0)throw std::runtime_error("invalid deformable asset version");
         DeformableAsset a;
         SaveArchive ar(b.substr(magic.size()));
         payload(ar,a);
+        if(fracture){a.fracture=std::make_shared<FractureCook>();a.fracture->Save(ar);}
         ar.Finish();
         if(!PrepareDeformableAsset(a,error))return false;
         out=std::move(a);

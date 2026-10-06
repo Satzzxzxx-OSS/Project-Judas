@@ -1,5 +1,5 @@
 {
-  "checkpoint": "9e281d6ed57a7f88bc0a8fa48cd9c3cec6984961",
+  "checkpoint": "29845bbdb911d2129a2d2b995fed22a1448594e7",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -678,6 +678,17 @@
       "reference": "docs/judasjs/entities.md"
     },
     {
+      "symbol": "Entity.fracture",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "fractureExists"
+      ],
+      "type": "docs/judas.d.ts:Entity.fracture",
+      "reference": "docs/judasjs/entities.md"
+    },
+    {
       "symbol": "Entity.hasTag",
       "kinds": [
         "call"
@@ -1006,6 +1017,108 @@
       ],
       "type": "docs/judas.d.ts:Entity.velocity",
       "reference": "docs/judasjs/entities.md"
+    },
+    {
+      "symbol": "Fracture",
+      "kinds": [
+        "class"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Fracture",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.constructor",
+      "kinds": [
+        "call"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Fracture.constructor",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.epoch",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Fracture.epoch",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.force",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "fractureForce"
+      ],
+      "type": "docs/judas.d.ts:Fracture.force",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.id",
+      "kinds": [
+        "field"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:Fracture.id",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.impulse",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "fractureImpulse"
+      ],
+      "type": "docs/judas.d.ts:Fracture.impulse",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.release",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "fractureRelease"
+      ],
+      "type": "docs/judas.d.ts:Fracture.release",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.remove",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "fractureRemove"
+      ],
+      "type": "docs/judas.d.ts:Fracture.remove",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.state",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "fractureState"
+      ],
+      "type": "docs/judas.d.ts:Fracture.state",
+      "reference": "docs/judasjs/fracture.md"
+    },
+    {
+      "symbol": "Fracture.valid",
+      "kinds": [
+        "get"
+      ],
+      "native": [
+        "fractureValid"
+      ],
+      "type": "docs/judas.d.ts:Fracture.valid",
+      "reference": "docs/judasjs/fracture.md"
     },
     {
       "symbol": "Joint",
@@ -2867,6 +2980,13 @@
     "fixed",
     "fluidSample",
     "force",
+    "fractureExists",
+    "fractureForce",
+    "fractureImpulse",
+    "fractureRelease",
+    "fractureRemove",
+    "fractureState",
+    "fractureValid",
     "hasTag",
     "held",
     "impulse",
@@ -2986,6 +3106,7 @@
     "viewRay"
   ],
   "callbacks": [
+    "onFracture",
     "start",
     "restore",
     "update",

@@ -15,7 +15,7 @@ public:
  bool Empty()const{return m_rows.empty();}
 private:
  struct Row {RigidBody* a;RigidBody* b;glm::vec3 linearA,linearB,angularA,angularB;glm::mat3 inertiaA,inertiaB;
-  float mass,bias,gamma,low,high,impulse;float* cache=nullptr;float* motor=nullptr;};
+  float mass,bias,gamma,low,high,impulse;float* cache=nullptr;float* motor=nullptr;JointState* observation=nullptr;};
  void Apply(Row& r,float impulse);
  std::vector<Row> m_rows;std::vector<RigidBody*> m_bodies;
 };

@@ -76,3 +76,9 @@ See [lifecycle](lifecycle.md), [physics](physics.md),
 [animation](animation-ragdolls.md), [saves](saves.md) and [streaming](streaming.md).
 The full physical support envelope and current candidate results belong in the
 M62 implementation document, not in gameplay examples.
+
+## M63 fracture cooks
+
+An optional partition uses this same resource/component. See [Fracture](fracture.md)
+for irreversible interfaces, rigid/deformable representation, interior materials,
+topology-aware picks, support release and the restrictions on reset/material/attach.

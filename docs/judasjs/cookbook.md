@@ -72,3 +72,6 @@ in a registered project with supported modern components. Default policy queues 
 save and polls later; the focused fixture cancels before capture. The separate M61
 application proof executes committed saves and fresh-process restores. Never treat
 `queued` as success, and wait for `completed` before exiting. [Save API](saves.md).
+
+- [Fracture](examples/fracture.js): physical part impulse, an explicitly labelled
+  tool cut, coherent callback state, independent prefab and stale-handle rejection.

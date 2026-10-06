@@ -151,6 +151,13 @@ void Window::PollEvents(){
     // Restore held physical keys after UI ownership ends without stale edges.
     if(!m_keyboardClaimed&&m_inputFocused){const auto* keys=SDL_GetKeyboardState(nullptr);for(int i=0;i<SDL_NUM_SCANCODES;++i)if(keys[i])m_input.SetPhysical(std::string("key:")+SDL_GetScancodeName(static_cast<SDL_Scancode>(i)),1);}
     RefreshController();
+    // Requested capture and the backend's actual grab are separate state.
+    // A compositor/backend release need not produce another FOCUS_GAINED
+    // event. Reconcile while this window owns focus; never grab it back from
+    // another application, and leave an uncaptured menu alone.
+    if(m_mouseCaptured && (SDL_GetWindowFlags(m_window)&SDL_WINDOW_INPUT_FOCUS) &&
+       (!SDL_GetRelativeMouseMode() || !SDL_GetWindowGrab(m_window)))
+        SetMouseCaptured(true);
 }
 bool Window::ConsumeNamedAction(const std::string& name){return m_input.Action(name).pressed&&m_consumed.insert(name).second;}
 

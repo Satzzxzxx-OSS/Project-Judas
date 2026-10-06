@@ -1,5 +1,6 @@
 #pragma once
 #include "Classification.h"
+#include "FractureTypes.h"
 #include "MeshData.h"
 #include "PhysicsWorld.h"
 #include "GravityField.h"
@@ -56,6 +57,7 @@ struct DeformableTet {
 struct DeformableBend {unsigned a=0,b=0;double rest=0;};
 struct DeformableAsset {
     DeformableKind kind=DeformableKind::Cloth;
+    std::shared_ptr<FractureCook> fracture;
     std::vector<glm::dvec3> nodes;
     std::vector<double> massWeights; // positive nodal mass multiplier
     std::vector<glm::uvec3> triangles;
@@ -80,7 +82,7 @@ DeformableAsset MakeDeformableSheet(unsigned columns,unsigned rows,double width,
 DeformableAsset MakeDeformableBlock(glm::uvec3 cells,glm::dvec3 size);
 bool ImportDeformableCloth(const MeshData&,DeformableAsset&,std::string&);
 
-struct DeformableLocation {uint64_t generation=0;unsigned triangle=0;glm::dvec3 weights{1,0,0};};
+struct DeformableLocation {uint64_t generation=0;unsigned triangle=0;glm::dvec3 weights{1,0,0};uint64_t topologyRevision=0;};
 struct DeformableHit {bool hit=false;double distance=0;glm::dvec3 point{0},normal{0};DeformableLocation location;};
 struct DeformableStats {size_t nodes=0,triangles=0,tets=0,contacts=0,candidates=0;unsigned substeps=0,iterations=0;double minimumJacobian=1,maximumStrain=0;bool capacityExceeded=false;};
 
@@ -98,6 +100,11 @@ public:
     bool sleeping=false;double quietSeconds=0;
     std::string error;
     DeformableStats stats;
+    FractureState fracture;
+    double NodeMass(unsigned n)const{return mass.at(n);}
+    bool PartLoad(unsigned part,glm::dvec3 value,bool impulse);
+    bool FaceVisible(unsigned face)const{return !asset->fracture||fracture.FaceVisible(*asset,face);}
+    void Cohesive(double h);
     void Initialize(std::shared_ptr<const DeformableAsset>,const DeformableSettings&,const glm::dmat4&,uint64_t);
     void Reset(const glm::dmat4&);
     bool SetMaterial(const DeformableMaterial&,std::string&);

@@ -9098,3 +9098,22 @@ wetting, fluid change, IK, fracture/tearing or M63 work was introduced.
 
 See [M62 implementation/limits](M62_DEFORMABLES.md),
 [JudasJS contract](judasjs/deformables.md) and [combined evidence](evidence/m62/RESULTS.md).
+
+## M63 — structural fracture and physical fragments (review candidate)
+
+An optional bounded material partition extends M62 `.judasdeform` assets. One
+RuntimeWorld family graph owns irreversible interfaces, connected components and
+material tombstones. Soft cells use M62 XPBD cohesive traction and retain current
+plastic state; rigid cells are ordinary M45-connected PhysicsWorld bodies. Solved
+tensile/shear demand drives failure, separately from stiffness/yield and explicit
+project cuts. Publication occurs at the authoritative fixed boundary before JS
+notifications. The logical owner has no duplicate collider/mass; Renderer consumes
+mapped final geometry and revealed interiors. Normal rigid queries, motor contacts,
+M42 events and audio see the surviving physical cells.
+
+M61 persists topology/plastic state and owned joint history; M59 exposes live-family
+pins and ordinary adoption/tombstones. Navigation remains an advisory consumer of
+project-updated obstacles. Liquid-bearing fracture is explicitly unsupported. No
+fluid solver, general mesh-collision system or second destruction solver was added.
+See [M63 contracts, authoring and limitations](M63_FRACTURE.md),
+[Fracture JS API](judasjs/fracture.md), and [candidate evidence](evidence/m63/RESULTS.md).

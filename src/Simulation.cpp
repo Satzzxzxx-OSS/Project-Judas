@@ -178,6 +178,7 @@ void StepPlayedWorld(GameSession& session, const Window& window, float fixedDelt
     world.AdvanceSimulationTime(fixedDeltaTime);
 
     world.DispatchPhysicsEvents(&window.Input(),fixedDeltaTime);
+    world.DispatchFractureEvents();
 
     // Milestone 29: the scene's fidelity policy runs last, over the settled
     // step, with gameplay's pins (a held object, the player's support) kept

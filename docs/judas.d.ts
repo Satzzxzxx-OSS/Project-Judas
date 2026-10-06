@@ -84,6 +84,7 @@ declare module "judas" {
     readonly navigationLink: NavigationLinkInfo | null;
     setNavigationEnabled(component: "agent" | "obstacle" | "link", enabled: boolean): boolean;
     readonly character: Character | null;
+    readonly fracture:Fracture|null;
     readonly deformable: Deformable | null;
     readonly ragdoll: Ragdoll | null;
     readonly audio: AudioInfo | null;
@@ -185,10 +186,23 @@ declare module "judas" {
     damping?:number;thickness?:number;friction?:number;airDrag?:number;airVelocity?:Vec3;
     yieldStrain?:number;plasticRate?:number;maximumPlasticStrain?:number;
   }
-  export interface DeformableLocation {epoch:string;triangle:number;weights:Vec3}
+  export interface DeformableLocation {epoch:string;triangle:number;weights:Vec3;revision:number}
   export interface DeformableHit {point:Vec3;normal:Vec3;distance:number;location:DeformableLocation}
   export interface DeformableState {enabled:boolean;sleeping:boolean;error:string;mass:number;minimum:Vec3;maximum:Vec3;nodes:number;contacts:number;minimumJacobian:number;maximumStrain:number;groups:string[]}
   export interface DeformableAttachmentOptions {kind:'world'|'body'|'bone';target?:Entity;joint?:string;offset?:Vec3}
+  export interface FracturePartState {key:string;index:number;component:number|null;removed:boolean;entity:Entity|null;mass:number}
+  export interface FractureInterfaceState {key:string;a:number;b:number;broken:boolean;cause:'physical'|'explicit'|null;tension:number;shear:number}
+  export interface FractureState {revision:number;rigid:boolean;error:string;parts:FracturePartState[];interfaces:FractureInterfaceState[];tensileStrength:number;shearStrength:number}
+  export interface FractureEvent {revision:number;interfaces:{key:string;cause:'physical'|'explicit'}[]}
+  export class Fracture {
+    constructor(id:EntityId,epoch:string);
+    id:EntityId;epoch:string;
+    readonly valid:boolean;readonly state:FractureState;
+    release(interfaceKey:string,revision:number):boolean;
+    remove(part:number,revision:number):boolean;
+    force(part:number,value:Vec3):boolean;
+    impulse(part:number,value:Vec3):boolean;
+  }
   export class Deformable {
     constructor(id:EntityId,epoch:string);
     id:EntityId;epoch:string;
@@ -394,6 +408,7 @@ declare module "judas" {
     presentationUpdate?(dt: number, alpha: number): void;
     destroy?(dt: number): void;
     onUI?(event: UIEvent): void;
+    onFracture?(event:FractureEvent):void;
     onCollisionEnter?(event: ContactEvent): void;
     onCollisionStay?(event: ContactEvent): void;
     onCollisionExit?(event: ContactEvent): void;

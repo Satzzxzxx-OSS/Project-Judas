@@ -100,7 +100,7 @@ struct EditorPanelState {
     DebugLineList navigationPreview;
     DebugLineList liquidPreview;
     DebugLineList deformablePreview;
-    std::string deformableDestination="deformable.judasdeform",deformableSource,deformableGroup="selection";
+    std::string deformableDestination="deformable.judasdeform",deformableSource,deformableGroup="selection",fractureInterface;
     glm::vec3 deformableSelectionMin{-1,-1,-1},deformableSelectionMax{1,1,1};
     int deformableColumns=12,deformableRows=16,deformableSubdivision=2;
     glm::vec3 deformableSize{2,3,1};

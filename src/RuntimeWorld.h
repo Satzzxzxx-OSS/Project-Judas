@@ -58,6 +58,7 @@ class ProductionFluidCoupling;
 // see src/Simulation.h — and issues no draw calls — see
 // src/WorldPresentation.h. It is the inventory of a running scene, not
 // the loop that runs it.
+class SaveArchive;
 class RuntimeWorld {
 public:
     // Project execution policy, retained across Build/Destroy; not simulation state.
@@ -327,14 +328,22 @@ public:
     AnimationInstance* RuntimeAnimation(EntityId);
     const std::vector<glm::mat4>* AnimationSkin(EntityId) const;
     void UpdateAnimations(float dt);
-    struct DeformableRecord {DeformableInstance simulation;std::vector<DeformableTarget> targets;mutable MeshData presentation;mutable MeshHandle mesh;uint64_t revision=0;mutable uint64_t mappedRevision=~uint64_t(0);mutable float mappedAlpha=-1;};
+    struct FractureRigidState {std::vector<EntityId> parts;std::vector<JointHandle> bonds,supports;bool initialized=false;};
+    struct DeformableRecord {FractureRigidState rigid;mutable uint64_t meshTopology=0;DeformableInstance simulation;std::vector<DeformableTarget> targets;mutable MeshData presentation;mutable MeshHandle mesh;uint64_t revision=0;mutable uint64_t mappedRevision=~uint64_t(0);mutable float mappedAlpha=-1;};
     DeformableInstance* RuntimeDeformable(EntityId,std::string& error,bool staged=false);
     void UpdateDeformables(double dt);
+    bool PrepareRigidFracture(EntityId,std::string&);
+    void UpdateRigidFracture(EntityId,double);
+    void PersistRigidFracture(EntityId,SaveArchive&);
+    void DispatchFractureEvents();
+    bool LoadFracturePart(EntityId,unsigned,glm::vec3,bool impulse);
+    EntityId FracturePartEntity(EntityId,unsigned,bool includeDisabled=false)const;
     void DrawDeformables(Renderer&,float alpha)const;
     void RemoveDeformable(EntityId);
     void ClearDeformables();
     bool RestoreDeformable(EntityId,const std::string&,std::string&,bool staged=false);
     bool CaptureDeformable(EntityId,std::string&,std::string&);
+    void SetDeformableEnabled(EntityId,bool);
     bool ResetDeformable(EntityId,std::string&);
     void InvalidateDeformableTargets(EntityId);
     bool SetFinalPose(EntityId,const SkeletalPose&,std::string& error);

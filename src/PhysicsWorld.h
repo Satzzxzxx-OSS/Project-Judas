@@ -271,6 +271,8 @@ public:
     // remember which handles it created dynamic vs. static itself.
     bool IsDynamicBody(BodyHandle handle) const;
     float GetMass(BodyHandle handle) const;
+    bool SetMassDistribution(BodyHandle,float,const glm::mat3&);
+    void PersistJointSolverState(SaveArchive&,JointHandle);
     void ApplyLinearImpulse(BodyHandle handle, const glm::vec3& impulse);    void ApplyImpulseAtPoint(BodyHandle handle, const glm::vec3& impulse,
                              const glm::vec3& worldPoint);
 

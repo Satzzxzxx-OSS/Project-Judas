@@ -98,6 +98,8 @@ target_include_directories(judas_materials PUBLIC src)
 target_link_libraries(judas_materials PUBLIC ${JUDAS_GLM} judas_profiler)
 
 add_library(judas_engine STATIC
+    src/WorldFracture.cpp
+    src/Fracture.cpp
     src/DeformableAsset.cpp
     src/Deformable.cpp
     src/WorldDeformables.cpp
@@ -1234,5 +1236,18 @@ add_executable(judas_deformable_application_tests tests/DeformableApplicationTes
 target_link_libraries(judas_deformable_application_tests PRIVATE judas_engine)
 
 foreach(target judas_deformable_tests judas_deformable_bake judas_deformable_application_tests judas_deformable_performance_tests)
+  target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+endforeach()
+
+add_executable(judas_fracture_tests tests/FractureTests.cpp)
+target_link_libraries(judas_fracture_tests PRIVATE judas_engine)
+
+add_executable(judas_fracture_application_tests tests/FractureApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_fracture_application_tests PRIVATE judas_engine)
+
+add_executable(judas_fracture_performance_tests tests/FracturePerformanceTests.cpp)
+target_link_libraries(judas_fracture_performance_tests PRIVATE judas_engine)
+
+foreach(target judas_fracture_tests judas_fracture_application_tests judas_fracture_performance_tests)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()

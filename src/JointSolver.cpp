@@ -5,7 +5,7 @@ void JointSolver::Apply(Row& r,float p){r.a->linearVelocity+=r.linearA*(p*r.a->i
  r.a->angularVelocity+=r.inertiaA*r.angularA*p;r.b->angularVelocity+=r.inertiaB*r.angularB*p;}
 void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool warm,bool impact){
  m_rows.clear();m_bodies.clear();const float inf=std::numeric_limits<float>::infinity();
- for(auto& input:inputs){auto& s=input.state->settings;auto& a=*input.a;auto& b=*input.b;if(!impact)input.state->motorImpulse=0;
+ for(auto& input:inputs){auto& s=input.state->settings;auto& a=*input.a;auto& b=*input.b;if(!impact){input.state->motorImpulse=0;input.state->reactionImpulse={0,0,0};input.state->reactionAngularImpulse={0,0,0};}
   for(auto* body:{&a,&b})if(std::find(m_bodies.begin(),m_bodies.end(),body)==m_bodies.end())m_bodies.push_back(body);
   glm::quat qa=glm::normalize(a.orientation),qb=glm::normalize(b.orientation),fa=qa*glm::normalize(s.frameA),fb=qb*glm::normalize(s.frameB);
   auto basis=glm::mat3_cast(fa);auto ra=qa*s.anchorA,rb=qb*s.anchorB,delta=(b.position-a.position)+rb-ra;
@@ -17,8 +17,8 @@ void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool wa
    float k=a.inverseMass*glm::dot(la,la)+b.inverseMass*glm::dot(lb,lb)+glm::dot(aa,ia*aa)+glm::dot(ab,ib*ab);
    if(k+gamma<=0)return;
    float* cache=impact?nullptr:&(*input.warm)[index];float lambda=warm&&cache?std::clamp(*cache,low,high):0;
-   m_rows.push_back({&a,&b,la,lb,aa,ab,ia,ib,1/(k+gamma),bias,gamma,low,high,lambda,cache,motor?&input.state->motorImpulse:nullptr});++index;
-   if(lambda!=0)Apply(m_rows.back(),lambda);
+   m_rows.push_back({&a,&b,la,lb,aa,ab,ia,ib,1/(k+gamma),bias,gamma,low,high,lambda,cache,motor?&input.state->motorImpulse:nullptr,input.state});++index;
+   if(lambda!=0){Apply(m_rows.back(),lambda);input.state->reactionImpulse+=la*lambda;input.state->reactionAngularImpulse+=aa*lambda;}
   };
   auto linear=[&](glm::vec3 n,float error,float low=-std::numeric_limits<float>::infinity(),float high=std::numeric_limits<float>::infinity(),bool soft=false,bool motor=false){row(-n,n,-glm::cross(ra,n)+glm::cross(n,delta),glm::cross(rb,n),error,low,high,soft,motor);};
   auto angular=[&](glm::vec3 n,float error,float low=-std::numeric_limits<float>::infinity(),float high=std::numeric_limits<float>::infinity(),bool soft=false,bool motor=false){row({0,0,0},{0,0,0},-n,n,error,low,high,soft,motor);};
@@ -58,5 +58,5 @@ void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool wa
  }
 }
 void JointSolver::SolveIteration(){for(auto& r:m_rows){float velocity=glm::dot(r.linearA,r.a->linearVelocity)+glm::dot(r.linearB,r.b->linearVelocity)+glm::dot(r.angularA,r.a->angularVelocity)+glm::dot(r.angularB,r.b->angularVelocity);
- float total=std::clamp(r.impulse-(velocity+r.bias+r.gamma*r.impulse)*r.mass,r.low,r.high),change=total-r.impulse;r.impulse=total;Apply(r,change);if(r.cache)*r.cache=total;if(r.motor)*r.motor=total;}}
+ float total=std::clamp(r.impulse-(velocity+r.bias+r.gamma*r.impulse)*r.mass,r.low,r.high),change=total-r.impulse;r.impulse=total;Apply(r,change);r.observation->reactionImpulse+=r.linearA*change;r.observation->reactionAngularImpulse+=r.angularA*change;if(r.cache)*r.cache=total;if(r.motor)*r.motor=total;}}
 void JointSolver::ResetImpulses(){for(auto& r:m_rows)r.impulse=0;}

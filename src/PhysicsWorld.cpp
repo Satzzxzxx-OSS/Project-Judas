@@ -2151,3 +2151,6 @@ void PhysicsWorld::PersistTouches(SaveArchive& a,const std::function<uint64_t(Bo
 void PhysicsWorld::PersistBodyForces(SaveArchive& archive,BodyHandle handle){
  auto* body=m_impl->Get(handle);archive.Require(body!=nullptr,"saved force body unavailable");archive(body->rigidBody.forceAccumulator,body->rigidBody.torqueAccumulator);
 }
+
+bool PhysicsWorld::SetMassDistribution(BodyHandle h,float mass,const glm::mat3& inertia){auto* b=m_impl->Get(h);if(!b||!b->isDynamic||!std::isfinite(mass)||mass<=0)return false;for(int i=0;i<3;++i)for(int j=0;j<3;++j)if(!std::isfinite(inertia[i][j])||std::abs(inertia[i][j]-inertia[j][i])>1e-5f)return false;if(inertia[0][0]<=0||inertia[0][0]*inertia[1][1]-inertia[0][1]*inertia[0][1]<=0||glm::determinant(inertia)<=0)return false;b->rigidBody.inverseMass=1/mass;b->rigidBody.inverseInertiaLocal=glm::inverse(inertia);return true;}
+void PhysicsWorld::PersistJointSolverState(SaveArchive& a,JointHandle h){for(auto& j:m_impl->joints)if(j.handle.id==h.id){for(auto& x:j.warm){a(x);a.Require(std::isfinite(x),"nonfinite fracture joint history");}a(j.state.reactionImpulse,j.state.reactionAngularImpulse);for(auto v:{j.state.reactionImpulse,j.state.reactionAngularImpulse})for(int k=0;k<3;++k)a.Require(std::isfinite(v[k]),"nonfinite fracture reaction history");return;}throw std::runtime_error("stale fracture solver history");}

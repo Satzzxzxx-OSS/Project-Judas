@@ -12,7 +12,7 @@ struct JointSettings {
     bool enabled=true,limits=false,motor=false,spring=false;
     float lower=-1,upper=1,speed=0,maxForce=10,rest=0,stiffness=10,damping=1;
 };
-struct JointState {JointSettings settings;bool active=false;float coordinate=0,motorImpulse=0;};
+struct JointState {JointSettings settings;bool active=false;float coordinate=0,motorImpulse=0;glm::vec3 reactionImpulse{0},reactionAngularImpulse{0};};
 inline bool ValidJointSettings(const JointSettings& s){
  auto finite=[](glm::vec3 v){return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);};
  auto quat=[&](glm::quat q){return finite({q.x,q.y,q.z})&&std::isfinite(q.w)&&glm::dot(q,q)>1e-12f&&std::isfinite(glm::dot(q,q));};

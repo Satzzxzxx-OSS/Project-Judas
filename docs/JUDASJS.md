@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M62)
+# JudasJS — current API reference (M63)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through the M62 candidate, based on
-accepted checkpoint `9e281d6ed57a7f88bc0a8fa48cd9c3cec6984961` plus the uncommitted M62 additions. It is not an
+This reference describes the public virtual `judas` module through the M63 candidate, based on
+accepted checkpoint `29845bbdb911d2129a2d2b995fed22a1448594e7` plus the uncommitted M63 additions. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
@@ -19,6 +19,7 @@ M59 added optional additive residency through [scenes streaming](judasjs/streami
 | Topic | Reference |
 |---|---|
 | Imports, properties, start/update/fixedUpdate/presentationUpdate/uiUpdate/destroy | [Lifecycle](judasjs/lifecycle.md) |
+| Fracture, physical parts, interface failure and explicit removal | [Fracture](judasjs/fracture.md) |
 | Deformable, cloth/solid forces, attachments and current-surface picking | [Deformables](judasjs/deformables.md) |
 | Entity, transform, tags, spawnPrefab | [Entities/prefabs](judasjs/entities.md) |
 | profiler.scope / profiler.counter | [Custom diagnostics](judasjs/profiling.md) |

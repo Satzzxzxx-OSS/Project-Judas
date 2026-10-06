@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M62 review of the registered virtual module based on starting checkpoint `9e281d6ed57a7f88bc0a8fa48cd9c3cec6984961`.
+M63 review of the registered virtual module based on starting checkpoint `29845bbdb911d2129a2d2b995fed22a1448594e7`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -71,6 +71,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.deformable` | `deformableExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.destroy` | `destroy` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Entity.fracture` | `fractureExists` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.hasTag` | `hasTag` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.inertiaWorld` | `inertiaWorld` | [declaration](../judas.d.ts) | [reference](entities.md) |
@@ -101,6 +102,16 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `Entity.transform` | `setTransform`, `transform` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.valid` | `valid` | [declaration](../judas.d.ts) | [reference](entities.md) |
 | `Entity.velocity` | `setVelocity`, `velocity` | [declaration](../judas.d.ts) | [reference](entities.md) |
+| `Fracture` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.epoch` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.force` | `fractureForce` | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.impulse` | `fractureImpulse` | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.release` | `fractureRelease` | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.remove` | `fractureRemove` | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.state` | `fractureState` | [declaration](../judas.d.ts) | [reference](fracture.md) |
+| `Fracture.valid` | `fractureValid` | [declaration](../judas.d.ts) | [reference](fracture.md) |
 | `Joint` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.constructor` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
 | `Joint.id` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](physics.md) |
@@ -273,7 +284,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 
 ## Lifecycle and dynamic exceptions
 
-`start`, `restore`, `update`, `fixedUpdate`, `uiUpdate`, `presentationUpdate`, `destroy`, `onUI`, `onCollisionEnter`, `onCollisionStay`, `onCollisionExit`, `onTriggerEnter`, `onTriggerStay`, `onTriggerExit` are structural ScriptBehaviour callbacks, not module exports.
+`onFracture`, `start`, `restore`, `update`, `fixedUpdate`, `uiUpdate`, `presentationUpdate`, `destroy`, `onUI`, `onCollisionEnter`, `onCollisionStay`, `onCollisionExit`, `onTriggerEnter`, `onTriggerStay`, `onTriggerExit` are structural ScriptBehaviour callbacks, not module exports.
 
 - **globalThis.__judas**: Internal native dispatcher; unsupported, not a public API declaration.
 - **globalThis.console**: Alias of exported console; no extra API.

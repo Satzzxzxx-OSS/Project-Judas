@@ -102,6 +102,7 @@ void DeformableInstance::Initialize(std::shared_ptr<const DeformableAsset> data,
     contactReference.resize(n);contactStartReference.resize(n);
     selfFacePairs.reserve(std::min<size_t>(524288,asset->nodes.size()*64));selfEdgePairs.reserve(std::min<size_t>(524288,asset->edges.size()*64));
     rigidCandidates.reserve(256);
+    if(asset->fracture)fracture.Initialize(*asset->fracture);
     Reset(transform);
 }
 void DeformableInstance::Reset(const glm::dmat4& transform){
@@ -117,7 +118,7 @@ void DeformableInstance::Reset(const glm::dmat4& transform){
     std::fill(released.begin(),released.end(),false);
     Wake();
 }
-bool DeformableInstance::SetMaterial(const DeformableMaterial& m,std::string& e){auto s=settings;
+bool DeformableInstance::SetMaterial(const DeformableMaterial& m,std::string& e){if(asset->fracture&&asset->fracture->rigid){e="rigid fracture material is authored; reload to change mass/contact properties";return false;}auto s=settings;
     s.material=m;
     if(!ValidDeformableSettings(s,e))return false;
     // Preflight before changing any runtime material/mass state.
@@ -129,15 +130,16 @@ bool DeformableInstance::SetMaterial(const DeformableMaterial& m,std::string& e)
     return true;
     }
 double DeformableInstance::Mass()const{double total=0;
-    for(double m:mass)total+=m;
+    for(unsigned n=0;n<mass.size();++n)if(!asset->fracture||!fracture.removed[asset->fracture->nodePart[n]])total+=mass[n];
     return total;
     }
+bool DeformableInstance::PartLoad(unsigned part,V value,bool impulse){if(!asset->fracture||part>=asset->fracture->parts.size()||fracture.removed[part]||!finite(value)||!settings.enabled)return false;const auto& nodes=asset->fracture->parts[part].nodes;double total=0;for(auto n:nodes)total+=mass[n];for(auto n:nodes)if(impulse)velocities[n]+=value/total;else forces[n]+=value*mass[n]/total;Wake();return true;}
 bool DeformableInstance::Impulse(const std::string& group,V impulse){if(!finite(impulse))return false;
     auto it=asset->groups.find(group);
     if(!group.empty()&&it==asset->groups.end())return false;
     double total=0;
-    for(unsigned i=0;i<mass.size();++i)if(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end())total+=mass[i];
-    for(unsigned i=0;i<mass.size();++i)if(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end())velocities[i]+=impulse/total;
+    for(unsigned i=0;i<mass.size();++i)if((!asset->fracture||!fracture.removed[asset->fracture->nodePart[i]])&&(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end()))total+=mass[i];
+    for(unsigned i=0;i<mass.size();++i)if((!asset->fracture||!fracture.removed[asset->fracture->nodePart[i]])&&(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end()))velocities[i]+=impulse/total;
     Wake();
     return true;
     }
@@ -145,12 +147,12 @@ bool DeformableInstance::Force(const std::string& group,V force){if(!settings.en
     auto it=asset->groups.find(group);
     if(!group.empty()&&it==asset->groups.end())return false;
     double total=0;
-    for(unsigned i=0;i<mass.size();++i)if(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end())total+=mass[i];
-    for(unsigned i=0;i<mass.size();++i)if(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end())forces[i]+=force*mass[i]/total;
+    for(unsigned i=0;i<mass.size();++i)if((!asset->fracture||!fracture.removed[asset->fracture->nodePart[i]])&&(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end()))total+=mass[i];
+    for(unsigned i=0;i<mass.size();++i)if((!asset->fracture||!fracture.removed[asset->fracture->nodePart[i]])&&(group.empty()||std::find(it->second.begin(),it->second.end(),i)!=it->second.end()))forces[i]+=force*mass[i]/total;
     Wake();
     return true;
     }
-bool DeformableInstance::Impulse(const DeformableLocation& hit,V impulse){if(hit.generation!=generation||hit.triangle>=asset->triangles.size()||!finite(hit.weights)||!finite(impulse)||glm::any(glm::lessThan(hit.weights,V(0)))||std::abs(hit.weights.x+hit.weights.y+hit.weights.z-1)>1e-7)return false;
+bool DeformableInstance::Impulse(const DeformableLocation& hit,V impulse){if(hit.generation!=generation||(asset->fracture&&hit.topologyRevision!=fracture.revision)||hit.triangle>=asset->triangles.size()||!FaceVisible(hit.triangle)||!finite(hit.weights)||!finite(impulse)||glm::any(glm::lessThan(hit.weights,V(0)))||std::abs(hit.weights.x+hit.weights.y+hit.weights.z-1)>1e-7)return false;
     auto f=asset->triangles[hit.triangle];
     for(int k=0;k<3;++k)velocities[f[k]]+=impulse*hit.weights[k]/mass[f[k]];
     Wake();
@@ -171,6 +173,16 @@ V DeformableInstance::Maximum()const{V b(-std::numeric_limits<double>::max());
     return b;
     }
 
+void DeformableInstance::Cohesive(double h){
+    if(!asset->fracture||asset->fracture->rigid)return;
+    JUDAS_PROFILE_SCOPE("Fracture cohesive constraints");
+    const auto& c=*asset->fracture;
+    for(unsigned b=0;b<c.bonds.size();++b){const auto& bond=c.bonds[b];if(fracture.broken[b]||fracture.removed[bond.a]||fracture.removed[bond.b])continue;
+        for(unsigned pair=0;pair<bond.pairs.size();++pair){auto ids=bond.pairs[pair];double alpha=c.compliance*bond.pairs.size()/(bond.area*h*h),den=inverseMass[ids.x]+inverseMass[ids.y]+alpha;if(den<=0)continue;
+            auto& lambda=fracture.multipliers[b*16+pair];V delta=positions[ids.y]-positions[ids.x],dl=(-delta-alpha*lambda)/den;lambda+=dl;positions[ids.x]-=dl*inverseMass[ids.x];positions[ids.y]+=dl*inverseMass[ids.y];
+        }
+    }
+}
 void DeformableInstance::Internal(double h){
     JUDAS_PROFILE_SCOPE("Deformable internal constraints");
     const auto& m=settings.material;
@@ -191,6 +203,7 @@ void DeformableInstance::Internal(double h){
         }
     }
     for(size_t index=0;index<asset->solids.size();++index){auto& t=asset->solids[index];
+        if(asset->fracture&&fracture.removed[asset->fracture->nodePart[t.nodes.x]]){row+=6;continue;}
         unsigned ids[4]={t.nodes.x,t.nodes.y,t.nodes.z,t.nodes.w};
         M inv=glm::inverse(plasticRest[index]);
         for(unsigned a=0;a<3;++a)for(unsigned b=a;b<3;++b){M f=columns(positions,t.nodes)*inv;
@@ -217,7 +230,7 @@ void DeformableInstance::Internal(double h){
 void DeformableInstance::Plastic(double h){
     JUDAS_PROFILE_SCOPE("Deformable plastic flow");
     auto& m=settings.material;
-    for(size_t i=0;i<plasticRest.size();++i){M ds=columns(positions,asset->solids[i].nodes),f=ds*glm::inverse(plasticRest[i]);
+    for(size_t i=0;i<plasticRest.size();++i){if(asset->fracture&&fracture.removed[asset->fracture->nodePart[asset->solids[i].nodes.x]])continue;M ds=columns(positions,asset->solids[i].nodes),f=ds*glm::inverse(plasticRest[i]);
         M strain=glm::transpose(f)*f-M(1);
         double norm=std::sqrt(glm::dot(strain[0],strain[0])+glm::dot(strain[1],strain[1])+glm::dot(strain[2],strain[2]))*.5;
         stats.maximumStrain=std::max(stats.maximumStrain,norm);
@@ -243,7 +256,7 @@ void DeformableInstance::Attach(double h,double fraction,PhysicsWorld& physics,c
         auto group=asset->groups.find(attachment.group);
         if(group==asset->groups.end())continue;
         const auto& t=targets[a];
-        for(unsigned n:group->second){V local=asset->nodes[n]+attachment.offset,destination=target(t.previous,local)*(1-fraction)+target(t.current,local)*fraction;
+        for(unsigned n:group->second){if(asset->fracture&&fracture.removed[asset->fracture->nodePart[n]])continue;V local=asset->nodes[n]+attachment.offset,destination=target(t.previous,local)*(1-fraction)+target(t.current,local)*fraction;
             if(!t.body.IsValid()||!physics.IsDynamicBody(t.body)){positions[n]=destination;
                 continue;
                 }
@@ -272,6 +285,7 @@ void DeformableInstance::RigidContacts(double h,double fraction,PhysicsWorld& ph
     // face centroids, bounding the supported thin-surface sampling envelope.
     stats.candidates+=rigidCandidates.size();
     auto sample=[&](glm::uvec3 nodes,V weights,BodyHandle body,const Shape& shape,const BodyTransform& pose){
+        if(asset->fracture&&fracture.removed[asset->fracture->nodePart[nodes.x]])return;
         V p(0),old(0);
         for(int k=0;k<3;++k){p+=positions[nodes[k]]*weights[k];
             old+=start[nodes[k]]*weights[k];
@@ -335,7 +349,7 @@ void DeformableInstance::RigidContacts(double h,double fraction,PhysicsWorld& ph
         pose.rotation=glm::slerp(prev.rotation,pose.rotation,float(fraction));
         for(unsigned n=0;n<positions.size();++n)sample(glm::uvec3(n),V(1,0,0),body,shape,pose);
         for(auto edge:asset->edges)sample({edge.x,edge.y,edge.y},V(.5,.5,0),body,shape,pose);
-        for(auto f:asset->triangles)sample(f,V(1./3),body,shape,pose);
+        for(unsigned f=0;f<asset->triangles.size();++f)if(FaceVisible(f))sample(asset->triangles[f],V(1./3),body,shape,pose);
     }
 }
 // Balanced trees use rest-space primitive centres only to choose topology. Refit
@@ -406,7 +420,9 @@ void DeformableInstance::SurfaceContacts(DeformableInstance& a,DeformableInstanc
     if(self)a.PrepareSelfCandidates();else b.BuildSurfaceTree();
     double thickness=a.settings.material.thickness+b.settings.material.thickness;
     {JUDAS_PROFILE_SCOPE("Deformable vertex face contacts");
-    auto contact=[&](unsigned n,unsigned t){auto f=b.asset->triangles[t];
+    auto contact=[&](unsigned n,unsigned t){if(!b.FaceVisible(t))return;auto f=b.asset->triangles[t];
+            if(a.asset->fracture&&a.fracture.removed[a.asset->fracture->nodePart[n]])return;
+            if(self&&a.asset->fracture){const auto& c=*a.asset->fracture;if(a.fracture.component[c.nodePart[n]]==a.fracture.component[c.nodePart[f.x]])return;}
             ++a.stats.candidates;
             V p=a.positions[n],x=b.positions[f.x],y=b.positions[f.y],z=b.positions[f.z],normal=glm::cross(y-x,z-x);
             double len=glm::length(normal);
@@ -445,7 +461,7 @@ void DeformableInstance::SurfaceContacts(DeformableInstance& a,DeformableInstanc
     // every edge. Identical subtree pairs visit only their upper triangle.
     if(!self){b.BuildSurfaceTree();a.BuildSurfaceTree();}
     auto contact=[&](unsigned e,unsigned j){if(self){if(e==j)return;if(e>j)std::swap(e,j);const auto& exclusions=a.asset->excludedEdges[e];if(std::binary_search(exclusions.begin(),exclusions.end(),j))return;}
-        auto v=a.asset->edges[e],w=b.asset->edges[j];++a.stats.candidates;
+        auto v=a.asset->edges[e],w=b.asset->edges[j];if(a.asset->fracture&&a.fracture.removed[a.asset->fracture->nodePart[v.x]])return;if(b.asset->fracture&&b.fracture.removed[b.asset->fracture->nodePart[w.x]])return;if(self&&a.asset->fracture){const auto& c=*a.asset->fracture;auto p=c.nodePart[v.x],q=c.nodePart[w.x];if(a.fracture.removed[p]||a.fracture.removed[q]||a.fracture.component[p]==a.fracture.component[q])return;}++a.stats.candidates;
             auto [s,t]=segments(a.positions[v.x],a.positions[v.y],b.positions[w.x],b.positions[w.y]);
             V delta=glm::mix(a.positions[v.x],a.positions[v.y],s)-glm::mix(b.positions[w.x],b.positions[w.y],t);
             double d=glm::length(delta);
@@ -517,7 +533,7 @@ void DeformableInstance::Step(double dt,PhysicsWorld& physics,const GravityField
     for(unsigned sub=0;sub<settings.substeps;++sub){
         {JUDAS_PROFILE_SCOPE("Deformable force prediction");
             start=positions;
-            for(size_t n=0;n<positions.size();++n){V g=gravity.Sample(glm::vec3(positions[n]));
+            for(size_t n=0;n<positions.size();++n){if(asset->fracture&&fracture.removed[asset->fracture->nodePart[n]]){velocities[n]=V(0);continue;}V g=gravity.Sample(glm::vec3(positions[n]));
                 V acceleration=g+forces[n]/mass[n];
                 velocities[n]+=acceleration*h;
                 double air=1-std::exp(-settings.material.airDrag*h);
@@ -525,6 +541,7 @@ void DeformableInstance::Step(double dt,PhysicsWorld& physics,const GravityField
                 velocities[n]*=std::exp(-settings.material.damping*h);
                 positions[n]+=velocities[n]*h;
                 }}
+        if(asset->fracture)fracture.BeginSubstep();
         std::fill(lambda.begin(),lambda.end(),0);
         std::fill(volumeLambda.begin(),volumeLambda.end(),0);
         double fraction=double(sub+1)/settings.substeps;
@@ -532,12 +549,20 @@ void DeformableInstance::Step(double dt,PhysicsWorld& physics,const GravityField
             filter.includeLayers=settings.collisionMask;
             physics.QueryBodiesInAabbInto(glm::vec3(Minimum()-V(settings.material.thickness+asset->cellSize)),glm::vec3(Maximum()+V(settings.material.thickness+asset->cellSize)),rigidCandidates,filter);
             }
-        for(unsigned iteration=0;iteration<settings.iterations;++iteration){Internal(h);
+        for(unsigned iteration=0;iteration<settings.iterations;++iteration){Internal(h);Cohesive(h);
             RigidContacts(h,fraction,physics);
             SurfaceContacts(*this,*this,h);
             Attach(h,fraction,physics,targets);
             }
-        for(size_t i=0;i<asset->solids.size();++i){double J=glm::determinant(columns(positions,asset->solids[i].nodes)*glm::inverse(plasticRest[i]));if(!std::isfinite(J)||J<=0){error="deformable element inversion; outside supported deformation envelope; instance stopped";return;}}
+        for(size_t i=0;i<asset->solids.size();++i){if(asset->fracture&&fracture.removed[asset->fracture->nodePart[asset->solids[i].nodes.x]])continue;double J=glm::determinant(columns(positions,asset->solids[i].nodes)*glm::inverse(plasticRest[i]));if(!std::isfinite(J)||J<=0){error="deformable element inversion; outside supported deformation envelope; instance stopped";return;}}
+        if(asset->fracture){const auto& c=*asset->fracture;
+            for(unsigned b=0;b<c.bonds.size();++b){auto& bond=c.bonds[b];auto& part=c.parts[bond.a];auto tet=asset->solids[part.tets.front()];M rotation=columns(positions,tet.nodes)*tet.inverseRest;
+                for(int k=0;k<5;++k)rotation=.5*(rotation+glm::transpose(glm::inverse(rotation)));
+                V normal=glm::normalize(rotation*bond.normal),force(0);
+                for(unsigned p=0;p<bond.pairs.size();++p){V demand=-fracture.multipliers[b*16+p]/(h*h);force+=demand;fracture.Observe(c,b,demand*double(bond.pairs.size()),normal);}
+                fracture.Observe(c,b,force,normal);
+            }
+        }
         Plastic(h);
         for(size_t n=0;n<positions.size();++n){if(!finite(positions[n])){error="nonfinite deformable solve; instance stopped";
                 return;
@@ -560,6 +585,7 @@ void DeformableInstance::MapRender(double alpha,MeshData& mesh)const{
     JUDAS_PROFILE_SCOPE("Deformable render mapping");
     if(mesh.vertices.size()!=asset->render.vertices.size())mesh=asset->render;
     alpha=std::clamp(alpha,0.,1.);
+    if(asset->fracture){mesh.indices.clear();mesh.primitives.clear();for(int material=0;material<2;++material){unsigned first=unsigned(mesh.indices.size());for(unsigned f=0;f<asset->triangles.size();++f)if(FaceVisible(f)&&(asset->fracture->faceBond[f]<0?0:1)==material)for(unsigned k=0;k<3;++k)mesh.indices.push_back(f*3+k);unsigned count=unsigned(mesh.indices.size())-first;if(count)mesh.primitives.push_back({first,count,material});}}
     for(size_t i=0;i<mesh.vertices.size();++i){auto b=asset->binding[i];
         V p(0);
         for(int k=0;k<4;++k)p+=glm::mix(previous[b.nodes[k]],positions[b.nodes[k]],alpha)*b.weights[k];
@@ -590,7 +616,7 @@ DeformableHit DeformableInstance::Raycast(V origin,V direction,double maximum)co
     if(!settings.enabled||!finite(origin)||!finite(direction)||!std::isfinite(maximum)||maximum<0||glm::length(direction)<1e-12)return hit;
     direction=glm::normalize(direction);
     double best=maximum;
-    for(unsigned t=0;t<asset->triangles.size();++t){auto f=asset->triangles[t];
+    for(unsigned t=0;t<asset->triangles.size();++t){if(!FaceVisible(t))continue;auto f=asset->triangles[t];
         V a=positions[f.x],e1=positions[f.y]-a,e2=positions[f.z]-a,p=glm::cross(direction,e2);
         double det=glm::dot(e1,p);
         if(std::abs(det)<1e-12)continue;
@@ -608,10 +634,11 @@ DeformableHit DeformableInstance::Raycast(V origin,V direction,double maximum)co
         hit.point=origin+direction*d;
         hit.normal=glm::normalize(glm::cross(e1,e2));
         if(glm::dot(hit.normal,direction)>0)hit.normal=-hit.normal;
-        hit.location={generation,t,V(1-u-v,u,v)};
+        hit.location={generation,t,V(1-u-v,u,v),asset->fracture?fracture.revision:0};
     }return hit;
 }
 void DeformableInstance::Persist(SaveArchive& ar){
+    if(asset->fracture)fracture.Persist(ar,*asset->fracture);
     ar(settings.enabled,sleeping,quietSeconds);
     settings.material.Save(ar);
     std::string validation;

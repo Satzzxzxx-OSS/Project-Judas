@@ -1020,6 +1020,13 @@ int EditorApplication::Run(int argc, char** argv) {
         if(const char* source=std::getenv("JUDAS_EDITOR_AUTOTEST_DEFORMABLE_SOURCE")){m_panels.deformableSource=source;m_panels.deformableDestination="deformables/editor-import.judasdeform";bool imported=BakeEditorDeformable(m_document,501,m_panels,3);std::fprintf(stderr,"[editor autotest] deformable indexed import authoring: %s: %s\n",imported?"PASS":"FAIL",m_panels.status.c_str());}
 
     }
+    if(autotest&&std::getenv("JUDAS_EDITOR_AUTOTEST_FRACTURE")){
+        m_panels.deformableColumns=3;m_panels.deformableRows=1;m_panels.deformableSubdivision=1;m_panels.deformableSize={3,1,1};
+        m_panels.deformableDestination="deformables/editor-fracture-rigid.judasdeform";bool rigid=BakeEditorDeformable(m_document,100,m_panels,5);
+        m_panels.deformableDestination="deformables/editor-fracture-soft.judasdeform";bool soft=BakeEditorDeformable(m_document,200,m_panels,4);
+        m_panels.deformableDestination="deformables/editor-fracture-import.judasdeform";m_panels.deformableSource="deformables/L-partition.source";bool imported=BakeEditorDeformable(m_document,450,m_panels,6);
+        std::fprintf(stderr,"[editor autotest] fracture rigid/soft/partition authoring: %s / %s / %s: %s\n",rigid?"PASS":"FAIL",soft?"PASS":"FAIL",imported?"PASS":"FAIL",m_panels.status.c_str());
+    }
     if (autotest) SaveSceneToString(m_document.GetScene(), autotestBaseline);
     const auto screenshot = [&](const std::string& path) {
         std::vector<unsigned char> pixels;
