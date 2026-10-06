@@ -22,7 +22,17 @@ void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool wa
   };
   auto linear=[&](glm::vec3 n,float error,float low=-std::numeric_limits<float>::infinity(),float high=std::numeric_limits<float>::infinity(),bool soft=false,bool motor=false){row(-n,n,-glm::cross(ra,n)+glm::cross(n,delta),glm::cross(rb,n),error,low,high,soft,motor);};
   auto angular=[&](glm::vec3 n,float error,float low=-std::numeric_limits<float>::infinity(),float high=std::numeric_limits<float>::infinity(),bool soft=false,bool motor=false){row({0,0,0},{0,0,0},-n,n,error,low,high,soft,motor);};
-  if(s.type==JointType::Slider){for(int k=1;k<3;++k)linear(basis[k],glm::dot(delta,basis[k]));}
+  if(s.type==JointType::Slider){
+   // Perpendicular rows measured at B's anchor give body A a lever arm |delta| that
+   // grows with travel; Gauss-Seidel against the orientation rows then converges too
+   // slowly and long-travel sliders diverged. Adding the (bilateral) orientation rows,
+   // weighted by c = n x delta, is an equivalent constraint set that moves that lever
+   // arm onto the body that resists rotation most (all of it onto a static/world anchor).
+   auto fq=glm::normalize(fb*glm::inverse(fa));if(fq.w<0)fq=-fq;glm::vec3 fv(fq.x,fq.y,fq.z);float fl=glm::length(fv);
+   auto orientationError=fl>1e-7f?fv*(2*std::atan2(fl,fq.w)/fl):2.f*fv;
+   float ta=ia[0][0]+ia[1][1]+ia[2][2],tb=ib[0][0]+ib[1][1]+ib[2][2],share=ta+tb>0?ta/(ta+tb):.5f;
+   for(int k=1;k<3;++k){auto n=basis[k];auto c=glm::cross(n,delta);
+    row(-n,n,-glm::cross(ra,n)+(1-share)*c,glm::cross(rb,n)+share*c,glm::dot(delta,n)+share*glm::dot(c,orientationError));}}
   else for(int k=0;k<3;++k)linear(basis[k],glm::dot(delta,basis[k]));
   if(s.type==JointType::Fixed||s.type==JointType::Slider){auto q=glm::normalize(fb*glm::inverse(fa));if(q.w<0)q=-q;glm::vec3 v(q.x,q.y,q.z);float length=glm::length(v);auto error=length>1e-7f?v*(2*std::atan2(length,q.w)/length):2.f*v;
    for(int k=0;k<3;++k)angular(basis[k],glm::dot(error,basis[k]));}
@@ -37,8 +47,12 @@ void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool wa
    index=7;if(!impact&&s.spring)axisRow(coordinate-s.rest,-inf,inf,true);
    index=8;if(!impact&&s.motor)axisRow(0,-s.maxForce*dt,s.maxForce*dt,false,true);
    index=6;
-   if(s.limits){if(coordinate<=s.lower||(!impact&&coordinate+velocity*dt<s.lower))axisRow(coordinate<s.lower?coordinate-s.lower:5*(coordinate-s.lower),0,inf);
-    else if(coordinate>=s.upper||(!impact&&coordinate+velocity*dt>s.upper))axisRow(coordinate>s.upper?coordinate-s.upper:5*(coordinate-s.upper),-inf,0);}
+   // A violated limit is corrected through the 0.2/dt velocity bias; uncapped, that bias
+   // becomes rebound velocity proportional to the violation (e.g. a limit enabled past its
+   // range). Cap the correction speed (m/s for sliders, rad/s for hinges).
+   const float maxCorrection=.5f*dt/.2f;
+   if(s.limits){if(coordinate<=s.lower||(!impact&&coordinate+velocity*dt<s.lower))axisRow(coordinate<s.lower?std::max(coordinate-s.lower,-maxCorrection):5*(coordinate-s.lower),0,inf);
+    else if(coordinate>=s.upper||(!impact&&coordinate+velocity*dt>s.upper))axisRow(coordinate>s.upper?std::min(coordinate-s.upper,maxCorrection):5*(coordinate-s.upper),-inf,0);}
 
   }
  }

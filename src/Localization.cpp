@@ -74,7 +74,11 @@ std::vector<std::shared_ptr<const TextFont>> LocalizationSession::Fonts(){Refres
 std::string LocalizationSession::Format(const std::string& key,const MessageArguments& args,std::string& error){
  JUDAS_PROFILE_SCOPE("Localization format");Refresh();if(key.empty()||key.size()>128||args.size()>32){error="message argument/key limits";return "["+key+"]";}
  std::string pattern,locale;for(auto& tag:m->Chain(m->current)){auto c=m->catalogs.find(tag);if(c==m->catalogs.end())continue;auto p=c->second->messages.find(key);if(p!=c->second->messages.end()){pattern=p->second;locale=tag;break;}}
- if(locale.empty()){error="missing localization key "+key;static unsigned warnings=0;if(warnings++<16)std::fprintf(stderr,"Localization: %s\n",error.c_str());return "["+key+"]";}
+ // Catalogs publish asynchronously; until the whole chain is published a lookup miss is
+ // not evidence that the key is absent, so report it distinctly and without a warning.
+ if(locale.empty()){bool published=true;for(auto& tag:m->Chain(m->current))if(!m->catalogs.count(tag))published=false;
+  if(!published){error="localization catalog not yet published for key "+key;return "["+key+"]";}
+  error="missing localization key "+key;static unsigned warnings=0;if(warnings++<16)std::fprintf(stderr,"Localization: %s\n",error.c_str());return "["+key+"]";}
  auto it=m->messages.find(key);if(it==m->messages.end()||it->second.pattern!=pattern||it->second.locale!=locale){if(m->messages.size()>=512)m->messages.clear();Impl::Compiled c;c.pattern=pattern;c.locale=locale;UErrorCode e=U_ZERO_ERROR;auto l=icu::Locale::forLanguageTag(locale,e);c.value=std::make_unique<icu::MessageFormat>(US(pattern),l,e);if(!PatternArguments(pattern,c.arguments,error))return "["+key+"!]";
   if(U_FAILURE(e)){error=u_errorName(e);return "["+key+"!]";}it=m->messages.insert_or_assign(key,std::move(c)).first;
  }
