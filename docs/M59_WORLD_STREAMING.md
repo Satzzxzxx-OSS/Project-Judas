@@ -177,3 +177,11 @@ and region retention. Editor diagnostics can request/release any declared fixtur
 
 Evidence and exact scope: `docs/evidence/m59/`. Operator must still validate visual
 travel, carry, targets, locale/pause, liquid retention, preview and moved package.
+
+## Later disk persistence — M61
+
+The runtime suspension/pinning limits above remain. [M61 slots](M61_SAVES.md) now
+store resident state, retained records, tombstones and adopted qualified identity
+across process exit, including pinned liquid/articulation families. This replaces
+the prior absence of composed-world disk persistence; it does not relax eviction
+policy or turn a pin into a save.

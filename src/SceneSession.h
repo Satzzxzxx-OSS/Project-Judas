@@ -8,6 +8,7 @@ class RuntimeWorld;
 class WorldStreaming;
 class ResourceManager;
 class InteractivePlay;
+class SaveService;
 // Project/session lifetime, independent of scene-owned JS heaps and entities.
 class SceneSession {
 public:
@@ -30,9 +31,15 @@ public:
     // replace the live world. First accepted request wins until this boundary.
     bool Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& play,
                ResourceManager& resources,std::string& error);
+    SaveService* Saves(ResourceManager&);
+    void AdvanceSaves(std::unique_ptr<RuntimeWorld>&,InteractivePlay&,ResourceManager&,std::string&);
+    void SetEditorSaveIsolation(bool editor){m_editorSaves=editor;}
     bool Pending() const { return !m_pending.empty(); }
     void EnableSaves(bool enabled) { m_saves=enabled; }
 private:
+    friend class SaveService;
+    std::unique_ptr<SaveService> m_saveService;
+    bool m_editorSaves=false;
     std::unique_ptr<WorldStreaming> m_streaming;
     RuntimeWorld* m_streamWorld=nullptr;
     std::string m_streamError;

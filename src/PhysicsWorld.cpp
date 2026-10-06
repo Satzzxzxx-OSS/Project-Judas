@@ -1,5 +1,6 @@
 #include "PerformanceProfiler.h"
 #include "PhysicsWorld.h"
+#include "SaveArchive.h"
 #include "PhysicsCastGeometry.h"
 
 #include <algorithm>
@@ -135,6 +136,7 @@ struct ClosestBodyResult {
 };
 
 struct PhysicsWorld::Impl {
+    const uint64_t worldToken=[](){static std::atomic<uint64_t> next{1};return next.fetch_add(1);}();
     struct PoseBound {
         glm::vec3 position{0};
         glm::quat orientation{1,0,0,0};
@@ -802,7 +804,7 @@ struct PhysicsWorld::Impl {
         const auto& b=bodies[slot]; if(!b.enabled||(b.sensor&&!filter.includeSensors))return false; const auto bit=CategoryBit(b.collisionLayer);
         if(!(filter.includeLayers&bit)||(filter.excludeLayers&bit)||
            (b.tags&filter.requiredTags)!=filter.requiredTags||(b.tags&filter.excludedTags))return false;
-        for(const auto handle:filter.ignoredBodies)if(handle.id==MakeHandle(slot).id)return false;
+        for(const auto handle:filter.ignoredBodies)if(Get(handle)&&handle.id==MakeHandle(slot).id)return false;
         return true;
     }
     void GenerateCandidatePairs() {
@@ -826,7 +828,7 @@ struct PhysicsWorld::Impl {
 
     BodyHandle MakeHandle(unsigned int slot) const {
         BodyHandle handle;
-        handle.id = slot | (bodies[slot].generation << kSlotBits);
+        handle.id = slot | (bodies[slot].generation << kSlotBits);handle.world=worldToken;
         return handle;
     }
 
@@ -914,7 +916,7 @@ struct PhysicsWorld::Impl {
     }
 
     Body* Get(BodyHandle handle) {
-        if (!handle.IsValid()) return nullptr;
+        if (!handle.IsValid()||(handle.world&&handle.world!=worldToken)) return nullptr;
         const unsigned int slot = handle.id & kSlotMask;
         if (slot >= bodies.size() || !bodies[slot].alive ||
             bodies[slot].generation != (handle.id >> kSlotBits)) {
@@ -923,7 +925,7 @@ struct PhysicsWorld::Impl {
         return &bodies[slot];
     }
     const Body* Get(BodyHandle handle) const {
-        if (!handle.IsValid()) return nullptr;
+        if (!handle.IsValid()||(handle.world&&handle.world!=worldToken)) return nullptr;
         const unsigned int slot = handle.id & kSlotMask;
         if (slot >= bodies.size() || !bodies[slot].alive ||
             bodies[slot].generation != (handle.id >> kSlotBits)) {
@@ -2132,4 +2134,18 @@ bool PhysicsWorld::SetJoint(JointHandle handle,const JointSettings& settings){Jo
 bool PhysicsWorld::SetPairCollisionEnabled(BodyHandle a,BodyHandle b,bool enabled){
     if(!m_impl||a.id==b.id||!m_impl->Get(a)||!m_impl->Get(b))return false;
     auto pair=std::minmax(a.id,b.id);if(enabled)m_impl->suppressedPairs.erase(pair);else m_impl->suppressedPairs.insert(pair);return true;
+}
+
+void PhysicsWorld::PersistTouches(SaveArchive& a,const std::function<uint64_t(BodyHandle)>& identity,const std::function<BodyHandle(uint64_t)>& resolve,const std::function<bool(BodyHandle)>& include){
+ std::vector<TouchEvent> live;if(!a.reading)for(const auto& [_,event]:m_impl->previousTouches)if(m_impl->Get(event.a)&&m_impl->Get(event.b)&&(!include||(include(event.a)&&include(event.b))))live.push_back(event);
+ uint32_t count=uint32_t(live.size());a(count);a.Require(count<=8192,"saved contact-pair limit");if(a.reading)ClearTouchHistory();
+ for(uint32_t i=0;i<count;++i){uint64_t first=0,second=0;TouchEvent event;if(!a.reading){event=live.at(i);first=identity(event.a);second=identity(event.b);}
+  a.Require(a.reading||(first&&second),"saved contact has unowned required body");
+  a(first,second,event.sensor,event.point,event.normal,event.relativeVelocity,event.impulseAvailable,event.normalImpulse);
+  if(a.reading){event.a=resolve(first);event.b=resolve(second);a.Require(event.a.IsValid()&&event.b.IsValid()&&event.a.id!=event.b.id,"saved contact body unavailable");if(event.a.id>event.b.id){std::swap(event.a,event.b);event.normal=-event.normal;event.relativeVelocity=-event.relativeVelocity;}event.phase=TouchPhase::Stay;a.Require(m_impl->previousTouches.emplace(std::make_pair(event.a.id,event.b.id),event).second,"duplicate saved contact pair");}
+ }
+}
+
+void PhysicsWorld::PersistBodyForces(SaveArchive& archive,BodyHandle handle){
+ auto* body=m_impl->Get(handle);archive.Require(body!=nullptr,"saved force body unavailable");archive(body->rigidBody.forceAccumulator,body->rigidBody.torqueAccumulator);
 }

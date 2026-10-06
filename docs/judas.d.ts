@@ -1,5 +1,5 @@
-/** Current JudasJS through M60; reviewed against ScriptSystem.cpp based on M59 icon
- * 277e67d2b0811644b2122bae27a4301d6dd3c96b. Tooling only, no TS runtime.
+/** Current JudasJS through M61; reviewed against ScriptSystem.cpp based on M60
+ * a9c6cd780b8c93db6355b791c6fdb34afec7cf53. Tooling only, no TS runtime.
  * See JUDASJS.md. Ordinary returned objects are detached snapshots.
  */
 declare module "judas" {
@@ -333,11 +333,39 @@ declare module "judas" {
   export type ScriptProperties = Record<string, number | boolean | string>;
   export type PropertySchema = Record<string,
     { type: "number"; default?: number } | { type: "boolean"; default?: boolean } | { type: "string"; default?: string }>;
-  export interface ScriptContext<P extends ScriptProperties = ScriptProperties> { entity: Entity; properties: P }
+  export interface SaveOptions { name?: string; metadata?: { [key: string]: JSONValue } | JSONValue[] }
+  export interface SaveSlot {
+    readonly id: string; readonly name: string; readonly scene: string; readonly timestamp: number;
+    readonly metadata: JSONValue; readonly status: "compatible" | "incompatible" | "corrupt";
+    readonly error: string; readonly recovered: boolean;
+  }
+  export interface SaveRequest {
+    readonly id: number; readonly operation: "save" | "load" | "delete" | "list"; readonly slot: string;
+    readonly state: "queued" | "writing" | "reading" | "working" | "preparing" | "restoring" | "completed" | "failed" | "cancelled";
+    readonly error: string; readonly recovered: boolean; readonly captureMs: number; readonly workerMs: number;
+    readonly restoreMs: number; readonly bytes: number;
+  }
+  export const saves: {
+    save(slot: string, options?: SaveOptions): number;
+    load(slot: string): number;
+    delete(slot: string): number;
+    refresh(): number;
+    /** Cached metadata; refresh or a completed operation updates it asynchronously. */
+    list(): SaveSlot[];
+    exists(slot: string): boolean;
+    status(request: number): SaveRequest | null;
+    cancel(request: number): boolean;
+    exclude(entity: Entity, excluded?: boolean): boolean;
+    reference(entity: Entity): string | null;
+    resolve(key: string): Entity | null;
+  };
+  export interface ScriptContext<P extends ScriptProperties = ScriptProperties> { entity: Entity; properties: P; readonly restored: boolean }
   /** Structural tooling interface, not a runtime-exported base class. */
   export interface ScriptBehaviour {
     state?: JSONValue;
     start?(dt: number): void;
+    /** Runs INSTEAD of start after modern slot load; state is already restored. */
+    restore?(dt: number): void;
     update?(dt: number): void;
     fixedUpdate?(dt: number): void;
     uiUpdate?(dt: number): void;

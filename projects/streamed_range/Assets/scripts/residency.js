@@ -1,9 +1,11 @@
 // Travel gates and loading UI are GAME policy. Judas only reports residency.
-import {scenes,input,world,physics,localization} from 'judas';
+import {scenes,input,world,physics,localization,saves} from 'judas';
 import {add,mul,sub,length} from './math.js';
 export default class Residency {
  constructor(player){this.player=player;this.manual=new Map();this.held=null;this.waiting=false;this.next=1;this.counter=0;}
  start(){this.manual.set('gallery-0',scenes.requestRegion('gallery-0'));}
+ snapshot(){return {names:[...this.manual.keys()],held:this.held?.valid?saves.reference(this.held):null,next:this.next};}
+ restore(state){for(const token of this.manual.values())scenes.releaseRegion(token);this.manual.clear();for(const name of state?.names||[])this.manual.set(name,scenes.requestRegion(name));this.held=state?.held?saves.resolve(state.held):null;this.next=state?.next||1;}
  update(){const pose=this.player.entity.transform;
   scenes.setInterest('range-travel',pose.position,{load:22,retain:34,priority:20});
   if(input.pressed('region_load')){const name='gallery-'+(this.next++%6);if(!this.manual.has(name))this.manual.set(name,scenes.requestRegion(name));}

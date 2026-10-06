@@ -18,7 +18,7 @@ void Check(bool ok,const std::string& label){++checks;failures+=!ok;std::printf(
 int main(int argc,char** argv){
  fs::path out=argc>1?argv[1]:"build/m50-results";fs::create_directories(out);std::string only=argc>2?argv[2]:"";
  std::string error;EngineHost host;Check(host.Init("M50 cookbook",640,360,false,error),"real EngineHost");if(failures)return 1;host.Audio().Init(error,true);
- const char* names[]={"streaming","localization","materials","profiling","liquid-surface","liquid","navigation","surface","presentation","impulse-point","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
+ const char* names[]={"saves","streaming","localization","materials","profiling","liquid-surface","liquid","navigation","surface","presentation","impulse-point","physical-control","minimal","input-motion","spawn","queries","contacts","trigger","audio","particles","ui","scene-session","joint","animation","ragdoll","character","stale-handle"};
  for(auto name:names){if(!only.empty()&&only!=name)continue;
   std::string n=name,project=n=="streaming"?"streamed_range":n=="localization"?"text_lab":n=="liquid-surface"?"liquid_surface_demo":n=="liquid"?"liquid_reservoir_demo":n=="navigation"?"shooter_game":n=="audio"?"script_demo":n=="joint"?"joint_demo":n=="animation"||n=="ragdoll"?"ragdoll_demo":"character_demo";
   auto root=fs::absolute(fs::path("build/m50-examples")/n);fs::remove_all(root);fs::create_directories(root);fs::copy("projects/"+project,root,fs::copy_options::recursive);
@@ -36,7 +36,7 @@ int main(int argc,char** argv){
   if(n=="contacts"||n=="trigger"){for(auto& o:scene.Objects()){o.joint.reset();if(o.id!=1&&o.id!=owner)o.body.reset();}def->transform.position={0,.4,0};def->body->halfExtents={.4,.4,.4};def->body->sensor=n=="trigger";}
   if(n=="materials"&&!def->render)def->render=SceneRenderComponent{};
   if(n=="particles")def->particleEmitter=ParticleEmitterSettings{};
-  def->scripts.push_back({1,script.id,true,"{}"});
+  def->scripts.push_back({1,script.id,true,n=="saves"?"{\"cancelForFixture\":true}":"{}"});
   auto& resources=host.Resources();resources.WaitForAll();RuntimeWorld world;
   Check(world.Build(scene,&resources,error,&p.Settings().classification,&p.Settings().navigation),n+" runtime builds");if(!world.IsBuilt()){std::puts(error.c_str());continue;}
   auto session=std::make_shared<SceneSession>(p,p.StartupScenePath());world.SetSceneControl(session);
@@ -62,7 +62,7 @@ int main(int argc,char** argv){
   std::string state;for(const auto& s:world.Scripts()->Capture())if(s.entity==owner&&s.slot==1)state=s.json;
   std::printf("EXAMPLE %s %s\n",name,state.c_str());std::ofstream(out/(n+".json"))<<state;
   auto yes=[&](const char* key){return state.find(std::string("\"")+key+"\":true")!=std::string::npos;};
-  bool ok=n=="streaming"?yes("active")&&session->Get("streamExample")=="1":n=="localization"?yes("supplementary")&&yes("plural")&&yes("named")&&yes("invalid")&&yes("nul")&&yes("keyLimit")&&yes("textWins"):n=="materials"?yes("changed")&&yes("reverted")&&yes("appearance")&&yes("stale"):n=="profiling"?yes("error")&&yes("invalid")&&state.find("\"value\":42")!=std::string::npos&&state.find("\"calls\":102")!=std::string::npos:n=="liquid-surface"?yes("ready")&&yes("conserved")&&yes("impulse")&&yes("presented"):n=="liquid"?yes("ready")&&yes("transferred")&&yes("conserved")&&yes("sample"):n=="navigation"?yes("sample")&&yes("path")&&yes("controlled"):n=="surface"?state.find("Entity.destroy")!=std::string::npos:
+  bool ok=n=="saves"?yes("resolved")&&yes("queued")&&yes("cancelled")&&yes("invalidTokens")&&session->Get("save_example")!="null":n=="streaming"?yes("active")&&session->Get("streamExample")=="1":n=="localization"?yes("supplementary")&&yes("plural")&&yes("named")&&yes("invalid")&&yes("nul")&&yes("keyLimit")&&yes("textWins"):n=="materials"?yes("changed")&&yes("reverted")&&yes("appearance")&&yes("stale"):n=="profiling"?yes("error")&&yes("invalid")&&state.find("\"value\":42")!=std::string::npos&&state.find("\"calls\":102")!=std::string::npos:n=="liquid-surface"?yes("ready")&&yes("conserved")&&yes("impulse")&&yes("presented"):n=="liquid"?yes("ready")&&yes("transferred")&&yes("conserved")&&yes("sample"):n=="navigation"?yes("sample")&&yes("path")&&yes("controlled"):n=="surface"?state.find("Entity.destroy")!=std::string::npos:
    n=="presentation"?yes("synchronized")&&yes("frameMode")&&state.find("\"calls\":100")!=std::string::npos:
    n=="impulse-point"?yes("angular")&&yes("rejectsInvalid")&&yes("linear")&&yes("unchanged"):
    n=="physical-control"?yes("capture")&&state.find("\"mass\":40")!=std::string::npos:

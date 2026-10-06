@@ -75,8 +75,7 @@ or carried props into the persistent root before releasing their source region.
 Incomplete physical assemblies are rejected. Retention pressure pins content
 rather than silently respawning or discarding it.
 
-Composed-world disk saves are explicitly disabled/rejected. Session JSON survives
-M43 replacement; region suspension records do not. M61 remains future work.
+**Historical M59–M60 disk limitation:** composed-world legacy deltas were disabled/rejected; session JSON survived M43 replacement but region records did not. [M61 slots](saves.md) now preserve qualified active and suspended state, tombstones and travellers. Ordinary reload still resets world-owned region state; Load reconstructs the selected slot.
 
 ## Coordinates and authoring
 

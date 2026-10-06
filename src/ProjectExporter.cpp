@@ -234,11 +234,14 @@ bool ExportProject(const Project& project, const ProjectExportOptions& options,
             const auto relative = notice.lexically_relative(root); safeContentPath(relative);
             Copy(notice, staging / relative);
         }
-        write("game.judasproj", Project::SerializeToString(project.Settings()));
+        auto packagedSettings=project.Settings();
+        packagedSettings.saveIdentity=project.Settings().saveIdentity.empty()?SceneFingerprintSha256(project.Settings().name+"\n"+fs::path(project.ProjectFile()).filename().string()):project.Settings().saveIdentity;
+        write("game.judasproj", Project::SerializeToString(packagedSettings));
         // Stable across moves/re-exports/settings edits. Equal project names AND
-        // source project filenames share a save namespace; strict scene digest
+        // source project filenames share a legacy fallback namespace; explicit authored
+        // identities distinguish new projects. Strict scene digest
         // still rejects incompatible authored baselines. Not an absolute path.
-        const auto saveId = SceneFingerprintSha256(project.Settings().name + "\n" + fs::path(project.ProjectFile()).filename().string());
+        const auto saveId = packagedSettings.saveIdentity;
         write(kGamePackageMarker, "JudasPackage 1\nproject \"game.judasproj\"\nsave-id \"" + saveId + "\"\n");
         Copy(engineRoot / "assets/fonts/DejaVuSans.ttf", staging / "engine/assets/fonts/DejaVuSans.ttf");
         Copy(engineRoot / "assets/fonts/DejaVuSans-LICENSE.txt", staging / "engine/licenses/DejaVuSans.txt");

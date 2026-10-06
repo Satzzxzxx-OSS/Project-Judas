@@ -22,6 +22,8 @@ struct LiquidSubmersion {double volume=0,displacedMass=0;glm::vec3 center{0},buo
 struct LiquidStepTimes {double containers=0,geometry=0,surface=0,loading=0,total=0;};
 class LiquidSystem {
 public:
+ bool PreparePersistence(RuntimeWorld&,std::string&);
+ void Persist(class SaveArchive&);
  LiquidSystem();
  const LiquidStepTimes& StepTimes()const{return m_stepTimes;}
  LiquidHandle AddBasin(SceneObjectId,const LiquidBasinSettings&,const SceneTransform&,std::shared_ptr<const LiquidBasinData>,std::string&);

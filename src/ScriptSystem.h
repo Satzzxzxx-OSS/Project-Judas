@@ -27,8 +27,8 @@ public:
     void UIEvents(const InputSystem* input,float dt);
     void Stop();
     void RemoveEntities(const std::vector<SceneObjectId>&);
-    std::vector<ScriptStateRecord> Capture() const;
-    bool Restore(const std::vector<ScriptStateRecord>& records,std::string& error);
+    std::vector<ScriptStateRecord> Capture(bool required=false) const;
+    bool Restore(const std::vector<ScriptStateRecord>& records,std::string& error,bool resume=false);
     const std::vector<ScriptDiagnostic>& Diagnostics() const;
     void SetBudget(unsigned interruptPolls);
     static bool ValidateJson(const std::string& text,std::string& error,bool requireObject=true);

@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M60 review of the registered virtual module based on M59 icon checkpoint `277e67d2b0811644b2122bae27a4301d6dd3c96b`.
+M61 review of the registered virtual module based on M60 checkpoint `a9c6cd780b8c93db6355b791c6fdb34afec7cf53`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -199,6 +199,18 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 | `profiler` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](profiling.md) |
 | `profiler.counter` | `profileCounter` | [declaration](../judas.d.ts) | [reference](profiling.md) |
 | `profiler.scope` | `profileScope` | [declaration](../judas.d.ts) | [reference](profiling.md) |
+| `saves` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.cancel` | `saveCancel` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.delete` | `saveRequest` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.exclude` | `saveExclude` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.exists` | `saveList` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.list` | `saveList` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.load` | `saveRequest` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.reference` | `saveReference` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.refresh` | `saveRequest` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.resolve` | `saveResolve` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.save` | `saveRequest` | [declaration](../judas.d.ts) | [reference](saves.md) |
+| `saves.status` | `saveStatus` | [declaration](../judas.d.ts) | [reference](saves.md) |
 | `scenes` | JS wrapper/data | [declaration](../judas.d.ts) | [reference](scenes-state.md) |
 | `scenes.activateRegion` | `regionActivate` | [declaration](../judas.d.ts) | [reference](streaming.md) |
 | `scenes.adopt` | `regionAdopt` | [declaration](../judas.d.ts) | [reference](streaming.md) |
@@ -245,7 +257,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 
 ## Lifecycle and dynamic exceptions
 
-`start`, `update`, `fixedUpdate`, `uiUpdate`, `presentationUpdate`, `destroy`, `onUI`, `onCollisionEnter`, `onCollisionStay`, `onCollisionExit`, `onTriggerEnter`, `onTriggerStay`, `onTriggerExit` are structural ScriptBehaviour callbacks, not module exports.
+`start`, `restore`, `update`, `fixedUpdate`, `uiUpdate`, `presentationUpdate`, `destroy`, `onUI`, `onCollisionEnter`, `onCollisionStay`, `onCollisionExit`, `onTriggerEnter`, `onTriggerStay`, `onTriggerExit` are structural ScriptBehaviour callbacks, not module exports.
 
 - **globalThis.__judas**: Internal native dispatcher; unsupported, not a public API declaration.
 - **globalThis.console**: Alias of exported console; no extra API.

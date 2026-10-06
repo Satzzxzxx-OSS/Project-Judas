@@ -114,3 +114,7 @@ work. Standard synchronous language facilities exist, but no Node filesystem,
 DOM, timers, networking, npm, promise pumping or JS worker API is supplied.
 Scripts are trusted project code, not a security sandbox. `__judas` is an internal
 native dispatch function; `globalThis.console` aliases the public logging object.
+
+## Modern save restoration (M61)
+
+The constructor context includes `restored`. Loaded script state is installed before `restore(dt)`, which replaces `start(dt)` for modern slots. Reacquire handles and UI in restore; do not replay new-game side effects. [Save contract](saves.md). Legacy delta restoration retains its historical lifecycle.

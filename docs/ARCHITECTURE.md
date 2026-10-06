@@ -9025,3 +9025,44 @@ Composed asset hashing now uses bounded incremental reads with unchanged SHA-256
 digests. Canonical schema stays 5 with ordinary conditional authored fields.
 No decoder pointers, buffers, tails or playback cursors become persistence state.
 See [M60 contracts and limits](M60_AUDIO.md) and the [current JudasJS audio API](judasjs/audio.md).
+
+## M61 — project-scoped save slots and world reconstruction
+
+Judas owns durable storage, coherent snapshots and native reconstruction; projects
+choose save policy and contribute bounded script/session data. The legacy M29
+`.judasstate` delta path remains separate. Historical session-only and composed-
+world disk-save restrictions above do not describe the modern M61 slot contract.
+
+`SceneSession` owns one lazy `SaveService` across world replacement. Requests
+from ordinary JudasJS queue until an outer frame boundary after fixed updates,
+events and presentation. Partial region installation/unload defers capture. Owner-
+thread participants produce immutable records; existing JobSystem workers encode,
+read/write and synchronize files without accessing live worlds or VMs.
+
+The bounded explicit little-endian envelope separates container, participant and
+game-data versions from strict project/content compatibility. Stable full-width
+entity and M59 qualified identities remap to fresh world/generation-aware native
+handles. Adopted identity, retained changes and tombstones survive process exit;
+unvisited baseline regions remain unloaded. M54 quantities and M55 partitions/flows
+are restored once. Animation contributors, active articulation, motors/supports,
+constraints, navigation intent and persistent M60 playback have explicit records.
+Derived broadphase, render/font resources, corridors and audio decoder/DSP state
+are rebuilt. Contact history prevents replaying enter events on touching pairs.
+
+Load validates and builds a non-ticking private world using normal RuntimeWorld
+construction, prepares required resources and seeks audio quietly, then publishes
+once. Saved plain script state is installed before the new `restore` callback;
+`start` remains new-game policy. Arbitrary post-publication gameplay side effects
+are not transactionally reversible. Input edges clear; machine master/device
+preferences are not overwritten.
+
+Linux XDG storage uses a stable local/export namespace and separate editor slots.
+Opaque IDs, descriptor-relative no-symlink access and exclusive process locking
+protect the directory. Same-filesystem temporary writes use checked file sync,
+rename and directory sync, with a validated previous-good generation. A failure
+after publication reports uncertain durability rather than claiming no change.
+No universal hardware/network-filesystem power-loss guarantee is made.
+
+See [participation, limits and human review](M61_SAVES.md), the
+[`saves` reference](judasjs/saves.md) and [M61 evidence](evidence/m61/RESULTS.md).
+No fluid/audio/navigation algorithms, cloud service or VM checkpointing introduced.

@@ -45,9 +45,25 @@ Export Project includes all registered runtime content. Move the resulting packa
 and launch its game from any working directory. Documentation, limitations,
 component matrix and evidence: [M59](../../docs/M59_WORLD_STREAMING.md).
 
-Human visual/travel/carry acceptance is pending. A liquid or pose/articulation group
+Historical M59 candidate note: human visual/travel/carry acceptance was pending at that point (later accepted). A liquid or pose/articulation group
 is explicitly pinned because M59 does not invent lossless native-state suspension.
 
 ## M60 audio integration
 
 Persistent-root 180-second streamed music continues across gallery travel. Gallery-local streamed ambience and alternating reverb settings use normal components. Q can adopt/carry the softly sounding physical prop out of its birthplace. Gallery removal retires streams asynchronously without pinning the region. Pause holds the effects group while music and UI remain independent. Shots request bounded independent buffered voices. The current [listening lab](../audio_lab/README.md) isolates audio comparisons.
+
+## M61 save/load integration — review candidate
+
+Escape opens localized slot A/B controls: select a slot, Save/overwrite, Load or
+Delete. Repeat overwrite/delete to confirm; wait for **completed** before quitting.
+Names, compatibility and operation errors appear in the menu. N uses the already
+configured logical spawn action to create another ordinary navigator prefab.
+Defeated enemies use a dark material cue, keeping their CharacterMotor roots at
+unit scale. Score, defeat/spawn state, cooldowns and logical residency/carry requests
+live in script state; no native game serializer exists.
+
+Save, quit completely, relaunch, Load and revisit an altered gallery. Qualified
+travellers, changed bodies and tombstones survive disk persistence; New Game/R
+still reconstructs authored state. The compact [Save Lab](../save_lab/README.md)
+separately demonstrates disturbed water, a tilted bucket/parcels, mixing, ragdoll
+and persistent music. [M61 contract/checklist](../../docs/M61_SAVES.md).

@@ -64,6 +64,6 @@ resolves its physics contribution into the same skeleton. Owner translation
 follows physical root; reference orientation/scale remain fixed. Mapped body
 collisions are per-body, not owner-aggregate. Asset replacement/destruction/disable
 cleans articulation; mapped transient entities are not independently saved.
-Active ragdoll and mixer state are not persisted. Uniform positive mapped scale
+**Historical M46–M60 persistence limitation:** active ragdoll and mixer state were not persisted by legacy deltas. [M61 slots](saves.md) now preserve active articulation and mixer state through the shared pose/physics path. Uniform positive mapped scale
 only, no owner rigid collider; partial active physical control is not provided.
 See [mapping/lifecycle limits](../RAGDOLLS.md).

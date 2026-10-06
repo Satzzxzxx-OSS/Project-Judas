@@ -32,6 +32,7 @@ enum class AudioPlaybackState { Stopped, Playing, Paused, Finished };
 struct AudioVoiceSnapshot {
     bool streamed=false,ready=false,seeking=false,starved=false;
     double positionSeconds=0,durationSeconds=0;
+    float groupGain=1;std::uint64_t groupFadeFrames=0; // audio-thread published semantic fade progress
     bool durationKnown=false;
     std::size_t bufferBytes=0;
     std::uint64_t underruns=0;

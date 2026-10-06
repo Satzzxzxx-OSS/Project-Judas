@@ -1,4 +1,5 @@
 #include "WorldStreaming.h"
+#include "SaveService.h"
 #include "PerformanceProfiler.h"
 #include <array>
 #include "ScriptSystem.h"
@@ -197,6 +198,7 @@ export const scenes={get current(){return call('sceneCurrent')},get registered()
  pinRegion:(name,reason,pin=true)=>call('regionPin',name,reason,pin),adopt:(entity,name='root')=>call('regionAdopt',entity.id,name),
  setInterest:(name,position,options)=>call('regionInterest',name,position,options),removeInterest:name=>call('regionRemoveInterest',name)};
 export const localization={get locale(){return call('localeInfo').locale},get available(){return call('localeInfo').available},get revision(){return call('localeInfo').revision},get direction(){return call('localeInfo').direction},setLocale:locale=>call('localeChoose',locale),format:(key,args={})=>call('localeFormat',key,args),number:(value,options={})=>call('localeNumber',value,options),reload:()=>call('localeReload')};
+export const saves={save:(slot,options={})=>call('saveRequest','save',slot,options),load:slot=>call('saveRequest','load',slot,{}),delete:slot=>call('saveRequest','delete',slot,{}),refresh:()=>call('saveRequest','list','',{}),list:()=>call('saveList'),exists:slot=>call('saveList').some(s=>s.id===slot),status:request=>call('saveStatus',request),cancel:request=>call('saveCancel',request),exclude:(entity,excluded=true)=>call('saveExclude',entity.id,excluded),reference:entity=>call('saveReference',entity.id),resolve:key=>entity(call('saveResolve',key))};
 export const session={get:key=>call('sessionGet',key),set:(key,value)=>call('sessionSet',key,value),delete:key=>call('sessionDelete',key)};
 export const input={get pointerCapture(){return call('pointerCapture')},set pointerCapture(value){call('setPointerCapture',value)},held:name=>call('held',name),pressed:name=>call('pressed',name),released:name=>call('released',name),axis:name=>call('axis',name)};
 export const profiler={scope:(label,callback)=>call("profileScope",label,callback),counter:(label,value,mode="sum")=>call("profileCounter",label,value,mode)};
@@ -247,7 +249,7 @@ struct ScriptSystem::Impl {
     std::thread::id thread=std::this_thread::get_id();
     void CheckThread() const {if(thread!=std::this_thread::get_id())throw std::logic_error("ScriptSystem is main/runtime-thread only");}
     RuntimeWorld* world;const AssetDatabase* assets;JSRuntime* rt=nullptr;JSContext* ctx=nullptr;
-    struct Instance {SceneObjectId entity;SceneScriptSlot slot;JSValue value=JS_UNDEFINED;bool started=false,fault=false;size_t order=0;std::uint32_t profileLabel=0;bool profileRegistered=false;};
+    struct Instance {SceneObjectId entity;SceneScriptSlot slot;JSValue value=JS_UNDEFINED;bool started=false,fault=false,loaded=false;size_t order=0;std::uint32_t profileLabel=0;bool profileRegistered=false;};
     std::map<std::pair<SceneObjectId,std::uint64_t>,Instance> instances;
     std::map<std::string,JSModuleDef*> modules;
     std::vector<ScriptDiagnostic> diagnostics;
@@ -256,6 +258,7 @@ struct ScriptSystem::Impl {
     bool hasView=false;glm::vec3 viewOrigin{0},viewDirection{0};
     unsigned budget=10000,polls=0;bool stopping=false;SceneObjectId currentOwner=0;std::uint64_t currentSlot=0;
     std::map<std::pair<SceneObjectId,std::uint64_t>,std::string> restored;
+    std::set<std::pair<SceneObjectId,std::uint64_t>> resumed;
     Impl(RuntimeWorld* w,const AssetDatabase* a):world(w),assets(a){
         rt=JS_NewRuntime();JS_SetMemoryLimit(rt,64*1024*1024);JS_SetMaxStackSize(rt,512*1024);
         ctx=JS_NewContext(rt);JS_SetContextOpaque(ctx,this);
@@ -379,6 +382,18 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
     auto& world=*s->world;
 
 
+    if(op=="saveExclude"||op=="saveRequest"||op=="saveList"||op=="saveStatus"||op=="saveCancel"||op=="saveReference"||op=="saveResolve"){
+        if(op=="saveExclude"){EntityId id=0;try{size_t end=0;auto text=String(c,arg(1));id=std::stoull(text,&end);if(end!=text.size())id=0;}catch(...){}if(!id)return JS_ThrowTypeError(c,"entity identity required");std::string error;return world.SetTransientEntity(id,JS_ToBool(c,arg(2)),error)?JS_TRUE:JS_ThrowTypeError(c,"%s",error.c_str());}
+        auto scenes=world.SceneControl();auto* resources=world.Resources();if(!scenes||!resources||!resources->Jobs())return JS_ThrowTypeError(c,"save project service unavailable");auto* service=scenes->Saves(*resources);
+        if(op=="saveReference"||op=="saveResolve"){
+            std::string key=String(c,arg(1));std::string error;auto* stream=scenes->ComposedProject()?scenes->Streaming(world,error):nullptr;
+            if(op=="saveReference"){uint64_t id=0;try{id=std::stoull(key);}catch(...){}if(!world.RuntimeDefinition(id))return JS_NULL;auto stable=stream?stream->PersistentKey(id):"entity:"+std::to_string(id);return JS_NewString(c,stable.c_str());}
+            EntityId id=0;if(stream)id=stream->ResolvePersistentKey(key);else if(key.rfind("entity:",0)==0){try{size_t end=0;auto tail=key.substr(7);id=std::stoull(tail,&end);if(end!=tail.size()||!world.RuntimeDefinition(id))id=0;}catch(...){id=0;}}return id?JS_NewString(c,std::to_string(id).c_str()):JS_NULL;
+        }
+        if(op=="saveRequest"){std::string error,json="{}",name;auto options=arg(3);if(JS_IsObject(options)){auto value=JS_GetPropertyStr(c,options,"name");if(!JS_IsUndefined(value))name=String(c,value);JS_FreeValue(c,value);value=JS_GetPropertyStr(c,options,"metadata");if(!JS_IsUndefined(value)&&!s->Json(value,json,error)){JS_FreeValue(c,value);return JS_ThrowTypeError(c,"%s",error.c_str());}JS_FreeValue(c,value);}auto request=service->Request(String(c,arg(1)),String(c,arg(2)),name,json,error);return request?JS_NewFloat64(c,double(request)):JS_ThrowTypeError(c,"%s",error.c_str());}
+        if(op=="saveList"){auto list=JS_NewArray(c);unsigned i=0;for(auto& slot:service->List()){auto o=JS_NewObject(c);for(auto item:{std::pair<const char*,const std::string*>{"id",&slot.id},{"name",&slot.name},{"scene",&slot.scene},{"status",&slot.status},{"error",&slot.error}})JS_SetPropertyStr(c,o,item.first,JS_NewString(c,item.second->c_str()));JS_SetPropertyStr(c,o,"timestamp",JS_NewFloat64(c,double(slot.timestamp)));JS_SetPropertyStr(c,o,"recovered",JS_NewBool(c,slot.recovered));JS_SetPropertyStr(c,o,"metadata",JS_ParseJSON(c,slot.metadata.empty()?"{}":slot.metadata.c_str(),slot.metadata.empty()?2:slot.metadata.size(),"slot metadata"));JS_SetPropertyUint32(c,list,i++,o);}return list;}
+        double id=0;if(JS_ToFloat64(c,&id,arg(1))<0||!std::isfinite(id)||std::floor(id)!=id||id<0||id>9007199254740991.)return JS_ThrowTypeError(c,"save request token required");if(op=="saveCancel")return JS_NewBool(c,service->Cancel(uint64_t(id)));auto* status=service->Status(uint64_t(id));if(!status)return JS_NULL;auto o=JS_NewObject(c);for(auto item:{std::pair<const char*,const std::string*>{"operation",&status->operation},{"slot",&status->slot},{"state",&status->state},{"error",&status->error}})JS_SetPropertyStr(c,o,item.first,JS_NewString(c,item.second->c_str()));for(auto item:{std::pair<const char*,double>{"id",double(status->id)},{"captureMs",status->captureMs},{"workerMs",status->workerMs},{"restoreMs",status->restoreMs},{"bytes",double(status->bytes)}})JS_SetPropertyStr(c,o,item.first,JS_NewFloat64(c,item.second));JS_SetPropertyStr(c,o,"recovered",JS_NewBool(c,status->recovered));return o;
+    }
     if(op=="audioGroup"||op=="audioGroupSet"||op=="audioDiagnostics"){
         auto* service=world.Resources()?world.Resources()->GetAudioSystem():nullptr;
         if(!service)return JS_NULL;
@@ -842,7 +857,7 @@ void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){
         auto ctor=JS_GetPropertyStr(m->ctx,ns,"default");JS_FreeValue(m->ctx,ns);
         auto propertyText=WriteProperties(fields);
         auto props=JS_ParseJSON(m->ctx,propertyText.data(),propertyText.size(),"authored properties");
-        auto args=JS_NewObject(m->ctx);JS_SetPropertyStr(m->ctx,args,"properties",props);
+        auto args=JS_NewObject(m->ctx);i.loaded=m->resumed.count(key)!=0;JS_SetPropertyStr(m->ctx,args,"restored",JS_NewBool(m->ctx,i.loaded));JS_SetPropertyStr(m->ctx,args,"properties",props);
         auto libraryNs=m->NamespaceLibrary();
         auto entityFn=JS_GetPropertyStr(m->ctx,libraryNs,"entity");auto id=JS_NewString(m->ctx,std::to_string(object.id).c_str());auto self=JS_Call(m->ctx,entityFn,JS_UNDEFINED,1,&id);
         JS_FreeValue(m->ctx,id);JS_FreeValue(m->ctx,entityFn);JS_FreeValue(m->ctx,libraryNs);JS_SetPropertyStr(m->ctx,args,"entity",self);
@@ -867,17 +882,17 @@ void ScriptSystem::Frame(const InputSystem* input,float dt){
     std::vector<std::pair<SceneObjectId,uint64_t>> order;for(const auto& entry:m->instances)order.push_back(entry.first);
     // Slot order follows authored vector order, not numeric slot identity.
     if(m->world){order.clear();for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts)if(m->instances.count({o.id,slot.id}))order.push_back({o.id,slot.id});}
-    for(auto key:order){auto it=m->instances.find(key);if(it==m->instances.end()||(m->world&&!m->world->RuntimeDefinition(key.first)))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}m->Callback(i,"update");}}
+    for(auto key:order){auto it=m->instances.find(key);if(it==m->instances.end()||(m->world&&!m->world->RuntimeDefinition(key.first)))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}m->Callback(i,"update");}}
 void ScriptSystem::Fixed(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript fixedUpdate");m->CheckThread();m->input=input;m->delta=dt;m->fixed=true;
     auto objects=m->world?m->world->ScriptObjects():std::vector<SceneObject>{};
-    for(const auto& o:objects)for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||!m->world->RuntimeDefinition(o.id))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}m->Callback(i,"fixedUpdate");}}
-std::vector<ScriptStateRecord> ScriptSystem::Capture()const{m->CheckThread();std::vector<ScriptStateRecord> result;
-    for(const auto& entry:m->instances){const auto& i=entry.second;if(i.fault||(m->world&&!m->world->RuntimeDefinition(i.entity)))continue;auto value=JS_GetPropertyStr(m->ctx,i.value,"state");std::string text,error;
+    for(const auto& o:objects)for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||!m->world->RuntimeDefinition(o.id))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}m->Callback(i,"fixedUpdate");}}
+std::vector<ScriptStateRecord> ScriptSystem::Capture(bool required)const{m->CheckThread();std::vector<ScriptStateRecord> result;
+    for(const auto& entry:m->instances){const auto& i=entry.second;if(m->world&&!m->world->RuntimeDefinition(i.entity))continue;if(i.fault){if(required)result.push_back({i.entity,i.slot.id,""});continue;}auto value=JS_GetPropertyStr(m->ctx,i.value,"state");std::string text,error;
         if(m->Json(value,text,error))result.push_back({i.entity,i.slot.id,text});else {result.push_back({i.entity,i.slot.id,""});std::fprintf(stderr,"script state %llu/%llu: %s\n",(unsigned long long)i.entity,(unsigned long long)i.slot.id,error.c_str());}JS_FreeValue(m->ctx,value);}
     return result;}
-bool ScriptSystem::Restore(const std::vector<ScriptStateRecord>& records,std::string& error){m->CheckThread();for(const auto& r:records)if(!ValidateJson(r.json,error))return false;
-    for(const auto& r:records){auto key=std::make_pair(r.entity,r.slot);m->restored[key]=r.json;if(auto it=m->instances.find(key);it!=m->instances.end())JS_SetPropertyStr(m->ctx,it->second.value,"state",JS_ParseJSON(m->ctx,r.json.data(),r.json.size(),"saved state"));}return true;}
+bool ScriptSystem::Restore(const std::vector<ScriptStateRecord>& records,std::string& error,bool resume){m->CheckThread();for(const auto& r:records)if(!ValidateJson(r.json,error))return false;
+    for(const auto& r:records){auto key=std::make_pair(r.entity,r.slot);m->restored[key]=r.json;if(resume)m->resumed.insert(key);if(auto it=m->instances.find(key);it!=m->instances.end())JS_SetPropertyStr(m->ctx,it->second.value,"state",JS_ParseJSON(m->ctx,r.json.data(),r.json.size(),"saved state"));}return true;}
 bool ScriptSystem::ValidateJson(const std::string& text,std::string& error,bool requireObject){error.clear();if(text.size()>65536){error="JSON exceeds 64KiB";return false;}Impl vm(nullptr,nullptr);vm.polls=0;auto value=JS_ParseJSON(vm.ctx,text.data(),text.size(),"JSON");if(JS_IsException(value)){error=Exception(vm.ctx);return false;}std::string canonical;bool ok=(!requireObject||JS_IsObject(value))&&vm.Json(value,canonical,error);if(!ok&&error.empty())error="JSON root must be object";JS_FreeValue(vm.ctx,value);return ok;}
 bool ScriptSystem::Inspect(const AssetDatabase& assets,const std::string& asset,std::string& schema,std::string& error){Impl vm(nullptr,&assets);vm.polls=0;auto ns=vm.Namespace(asset);if(JS_IsException(ns)){error=Exception(vm.ctx);return false;}auto value=JS_GetPropertyStr(vm.ctx,ns,"properties");JS_FreeValue(vm.ctx,ns);if(JS_IsUndefined(value)){JS_FreeValue(vm.ctx,value);schema="{}";return true;}bool ok=vm.Json(value,schema,error);JS_FreeValue(vm.ctx,value);return ok;}
 bool ScriptSystem::ReadProperties(const std::string& schema,const std::string& values,std::vector<ScriptProperty>& out,std::string& error){
@@ -926,7 +941,7 @@ bool ScriptSystem::SourceFingerprint(const AssetDatabase& assets,const Scene& sc
 
 void ScriptSystem::UIFrame(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript UI update");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
-    for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end())continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}m->Callback(i,"uiUpdate");}
+    for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end())continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}m->Callback(i,"uiUpdate");}
 }
 void ScriptSystem::UIEvents(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript UI events");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
@@ -952,7 +967,7 @@ void ScriptSystem::PhysicsEvent(SceneObjectId self,SceneObjectId other,const Phy
         if(event.phase!=PhysicsWorld::TouchPhase::Exit&&!m->world->Physics().IsBodyEnabled(m->world->RuntimeBody(self)))return;
         if(std::none_of(live->scripts.begin(),live->scripts.end(),[&](const auto& s){return s.id==slot.id&&s.enabled;}))continue;
         auto it=m->instances.find({self,slot.id});if(it==m->instances.end()||it->second.fault)continue;
-        auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,"start");}
+        auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}
         if(!m->world->RuntimeDefinition(self)||i.fault)continue;
         ProfileScope assetScope(m->AssetLabel(i));
         m->polls=0;m->currentOwner=self;m->currentSlot=slot.id;
@@ -987,7 +1002,7 @@ void ScriptSystem::Presentation(const InputSystem* input,float dt,float alpha){
         auto it=m->instances.find({o.id,slot.id});
         if(it==m->instances.end()||!m->world->RuntimeDefinition(o.id))continue;
         auto& instance=it->second;
-        if(!instance.started){instance.started=true;m->Callback(instance,"start");}
+        if(!instance.started){instance.started=true;m->Callback(instance,instance.loaded?"restore":"start");}
         m->Callback(instance,"presentationUpdate",true);
     }
     m->inPresentation=false;

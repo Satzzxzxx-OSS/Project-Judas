@@ -1,4 +1,5 @@
 #include "Project.h"
+#include "AssetDatabase.h"
 
 #include <filesystem>
 #include <fstream>
@@ -60,6 +61,7 @@ std::string Project::SerializeToString(const ProjectSettings& s) {
     out += "assets-dir " + Quote(s.assetsDir) + "\n";
     out += "scenes-dir " + Quote(s.scenesDir) + "\n";
     out += "saves-dir " + Quote(s.savesDir) + "\n";
+    if(!s.saveIdentity.empty())out += "save-identity " + Quote(s.saveIdentity) + "\n";
     out += "legacy-gameplay " + Quote(s.legacyGameplay ? "true" : "false") + "\n";
     out += "input-map " + Quote(s.input.Serialize()) + "\n";
     if (!s.classification.IsDefault()) out += "classification " + Quote(s.classification.Serialize()) + "\n";
@@ -126,6 +128,7 @@ bool Project::ParseFromString(const std::string& text, ProjectSettings& outSetti
         else if (key == "assets-dir") s.assetsDir = value;
         else if (key == "scenes-dir") s.scenesDir = value;
         else if (key == "saves-dir") s.savesDir = value;
+        else if(key=="save-identity"){if(value.size()!=64||value.find_first_not_of("0123456789abcdef")!=std::string::npos){outError="invalid save identity";return false;}s.saveIdentity=value;}
         else if (key == "legacy-gameplay") {
             if(value!="true"&&value!="false"){outError="legacy-gameplay must be true or false";return false;}
             s.legacyGameplay=value=="true";
@@ -215,6 +218,9 @@ bool Project::CreateNew(const std::string& rootDir, const std::string& name, Pro
     Project project;
     project.m_settings = ProjectSettings{};
     project.m_settings.legacyGameplay = false;
+    // Authored identity survives renames/exports; unrelated same-name projects
+    // must not share player slots. Existing projects retain their legacy identity.
+    project.m_settings.saveIdentity = MintAssetId() + MintAssetId();
     project.m_settings.name = name;
     std::string fileStem;
     for (char c : name) fileStem += (std::isalnum(static_cast<unsigned char>(c)) ? c : '_');

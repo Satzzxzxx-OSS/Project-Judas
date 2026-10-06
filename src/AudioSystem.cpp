@@ -47,10 +47,12 @@ struct AudioSystem::Impl {
   ma_node_base base{};Impl* owner=nullptr;std::atomic<unsigned> group{0};
   std::atomic<float> occlusion{1},cutoff{24000},send{0};
   float smoothedGain=1,smoothedCut=24000,busGain=1,oldTarget=1,lp[2]{};std::uint64_t fadeLeft=0;
+  std::atomic<float> publishedBus{1},resumeGain{1};std::atomic<uint64_t> publishedFade{0},resumeFade{0};std::atomic<bool> resumePending{false};
   static void Process(ma_node* n,const float** input,ma_uint32*,float** output,ma_uint32* count){
    auto& e=*reinterpret_cast<Effect*>(n);auto& a=*e.owner;const auto g=e.group.load();
    const float target=g?a.groups[g].gain.load():1.f;
-   if(target!=e.oldTarget){e.oldTarget=target;e.fadeLeft=a.groups[g].fade.load();}
+   if(e.resumePending.exchange(false)){e.busGain=e.resumeGain.load();e.fadeLeft=e.resumeFade.load();e.oldTarget=target;}
+   else if(target!=e.oldTarget){e.oldTarget=target;e.fadeLeft=a.groups[g].fade.load();}
    const float occ=e.occlusion.load(),cut=e.cutoff.load(),send=e.send.load();
    const float smooth=1-std::exp(-float(*count)/4800.f);e.smoothedGain+=(occ-e.smoothedGain)*smooth;e.smoothedCut+=(cut-e.smoothedCut)*smooth;
    const float pole=std::exp(-6.2831853f*std::min(e.smoothedCut,23999.f)/48000.f);
@@ -63,6 +65,7 @@ struct AudioSystem::Impl {
      if(output[1])output[1][k]=x*send;
     }
    }
+   e.publishedBus.store(e.busGain);e.publishedFade.store(e.fadeLeft);
   }
  };
  struct Reverb {
@@ -180,6 +183,11 @@ bool AudioSystem::Resume(AudioVoiceHandle h){auto it=m->voices.find(h.id);if(it=
 bool AudioSystem::Seek(AudioVoiceHandle h,double seconds){auto it=m->voices.find(h.id);if(it==m->voices.end()||!std::isfinite(seconds)||seconds<0||seconds>1e8)return false;
  AudioVoiceSnapshot snap;Snapshot(h,snap);if(snap.durationKnown&&seconds>snap.durationSeconds)return false;auto& v=*it->second;const auto frames=ma_uint64(seconds*48000);
  if(v.stream){ma_sound_stop(&v.sound);v.stream->Seek(frames);return true;}return Impl::Buffered::Seek(&v.buffer,frames)==MA_SUCCESS;}
+bool AudioSystem::RestorePlayback(AudioVoiceHandle h,double seconds,AudioPlaybackState state,float gain,uint64_t fade){
+ auto it=m->voices.find(h.id);if(it==m->voices.end()||gain<0||gain>1||fade>60*48000||!Seek(h,seconds))return false;auto& v=*it->second;
+ ma_sound_stop(&v.sound);v.paused=state==AudioPlaybackState::Paused;v.stopped=state==AudioPlaybackState::Stopped||state==AudioPlaybackState::Finished;v.requested=state==AudioPlaybackState::Playing||state==AudioPlaybackState::Paused;
+ v.effect.resumeGain.store(gain);v.effect.resumeFade.store(fade);v.effect.resumePending.store(true);return true;
+}
 bool AudioSystem::SetSettings(AudioVoiceHandle h,const AudioSettings& s){auto it=m->voices.find(h.id);if(it==m->voices.end()||!ValidAudioSettings(s)||m->GroupIndex(s.group)>16)return false;auto& v=*it->second;v.settings=s;auto* sound=&v.sound;
  if(v.stream){v.stream->loop.store(s.loop);ma_sound_set_looping(sound,s.loop);}else {v.buffer.loop.store(s.loop);ma_sound_set_looping(sound,s.loop);}
  ma_sound_set_spatialization_enabled(sound,s.spatial);ma_sound_set_volume(sound,s.volume);ma_sound_set_pitch(sound,glm::clamp(s.pitch*v.dopplerRatio,.125f,8.f));
@@ -199,7 +207,7 @@ bool AudioSystem::SetListenerMotion(const glm::vec3& v){if(!Finite(v))return fal
 AudioListenerSnapshot AudioSystem::Listener()const{return m->listener;}
 bool AudioSystem::Snapshot(AudioVoiceHandle h,AudioVoiceSnapshot& out)const{auto it=m->voices.find(h.id);if(it==m->voices.end())return false;const auto& v=*it->second;const auto* s=&v.sound;out={};
  out.state=v.stopped?AudioPlaybackState::Stopped:(v.stream?v.stream->ended.load():ma_sound_at_end(s))?AudioPlaybackState::Finished:v.paused||v.groupPaused?AudioPlaybackState::Paused:ma_sound_is_playing(s)?AudioPlaybackState::Playing:AudioPlaybackState::Stopped;
- out.streamed=bool(v.stream);out.ready=!v.stream||(v.stream->ready.load()&&v.stream->readyGeneration.load()==v.stream->generation.load());out.seeking=v.stream&&v.stream->readyGeneration.load()>0&&v.stream->generation.load()!=v.stream->readyGeneration.load();
+ out.groupGain=v.effect.publishedBus.load();out.groupFadeFrames=v.effect.publishedFade.load();out.streamed=bool(v.stream);out.ready=!v.stream||(v.stream->ready.load()&&v.stream->readyGeneration.load()==v.stream->generation.load());out.seeking=v.stream&&v.stream->readyGeneration.load()>0&&v.stream->generation.load()!=v.stream->readyGeneration.load();
  if(v.stream){out.cursorAvailable=true;out.cursorFrames=v.stream->cursor.load();out.bufferBytes=v.stream->BufferBytes();out.underruns=v.stream->underruns.load();out.durationKnown=v.stream->metadata->length.load()>0;out.durationSeconds=v.stream->metadata->length.load()/48000.;out.starved=v.stream->starved.load();if(v.stream->failed.load(std::memory_order_acquire))out.error=v.stream->error;}
  else{out.cursorAvailable=true;out.cursorFrames=v.buffer.cursor.load();out.durationKnown=true;out.durationSeconds=v.data->Frames()/48000.;}
  out.positionSeconds=out.cursorFrames/48000.;out.position=Vector(ma_sound_get_position(s));out.spatial=v.settings.spatial;out.loop=v.settings.loop;out.volume=v.settings.volume;out.pitch=v.settings.pitch;out.referenceDistance=v.settings.referenceDistance;out.maximumDistance=v.settings.maximumDistance;out.rolloff=v.settings.attenuation==AudioAttenuation::None?0:v.settings.rolloff;out.attenuation=v.settings.attenuation;out.spatialPanningEnabled=out.spatial;

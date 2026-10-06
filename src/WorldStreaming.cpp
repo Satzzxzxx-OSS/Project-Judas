@@ -6,6 +6,7 @@
 #include "Prefab.h"
 #include "NavigationAsset.h"
 #include "PerformanceProfiler.h"
+#include "SaveArchive.h"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -96,7 +97,7 @@ bool ValidateWorldQualifiedReferences(const WorldManifest& manifest,const std::m
 }
 struct WorldStreaming::Impl {
     RuntimeWorld& world;ResourceManager& resources;Project project;WorldManifest manifest;
-    std::string baselineError;uint64_t previousResourceBudget=0;JobHandle baselineJob;std::shared_ptr<std::string> baseline=std::make_shared<std::string>();
+    bool restoredRecords=false;std::string baselineError,restoredBaseline;uint64_t previousResourceBudget=0;JobHandle baselineJob;std::shared_ptr<std::string> baseline=std::make_shared<std::string>();
     struct Product {PreparedWorldRegion data;std::string error;double elapsed=0;};
     struct Snapshot {SceneObject definition;EntityPhysicalState state;bool destroyed=false;std::vector<ScriptStateRecord> scripts;};
     struct Region {
@@ -111,6 +112,7 @@ struct WorldStreaming::Impl {
     std::map<std::string,Region> regions;std::map<uint64_t,Demand> requests;std::map<EntityId,std::string> owners;
     std::map<std::string,std::vector<std::string>> dependents;
     std::map<std::string,InterestSource> interests;std::map<EntityId,std::string> gravityOrder;
+    std::map<EntityId,std::string> identities;
     StreamingStats stats;std::function<bool(const JobContext&)> gate;
     Impl(RuntimeWorld& w,ResourceManager& r,Project p,WorldManifest m):world(w),resources(r),project(std::move(p)),manifest(std::move(m)){previousResourceBudget=r.BudgetBytes();r.SetBudgetBytes(manifest.resourceCacheBytes);for(auto& [id,_]:manifest.regions){Region region;region.status.id=id;regions.emplace(id,std::move(region));for(auto& dep:manifest.regions.at(id).dependencies)dependents[dep].push_back(id);}}
     ~Impl(){resources.SetBudgetBytes(previousResourceBudget);if(baselineJob.IsValid())resources.Jobs()->Cancel(baselineJob);for(auto& [_,r]:regions){if(r.job.IsValid())resources.Jobs()->Cancel(r.job);releaseHandoff(r);}}
@@ -185,7 +187,7 @@ bool WorldStreaming::Adopt(EntityId root,const std::string& target,std::string& 
     if(!m->world.RuntimeDefinition(root)){error="stale adoption root";return false;}
     for(auto& o:objects)if(o.joint&&(ids.count(o.id)||ids.count(o.joint->bodyA)||ids.count(o.joint->bodyB))){if(!ids.count(o.id)||!ids.count(o.joint->bodyA)||(o.joint->bodyB&&!ids.count(o.joint->bodyB))){error="adopt complete joint assembly or keep dependency pinned";return false;}}
     for(auto id:ids){const auto owner=m->Owner(id);if(owner!="root"&&m->regions.at(owner).status.state!="active"){error="adoption source is departing/not active";return false;}auto* o=m->world.RuntimeDefinition(id);if(o&&(o->gravity||o->liquidBasin||o->liquidContainer||o->ragdoll)){error="group-owned gravity/liquid/articulation cannot be adopted separately";return false;}}
-    for(auto id:ids){auto from=m->Owner(id);if(from!="root"){auto& r=m->regions.at(from);r.members.erase(std::remove(r.members.begin(),r.members.end(),id),r.members.end());for(auto it=r.mapping.begin();it!=r.mapping.end();)if(it->second==id){r.saved[it->first].destroyed=true;it=r.mapping.erase(it);}else ++it;r.retainedBytes=m->savedBytes(r.saved);}m->owners[id]=target;if(target!="root")m->regions.at(target).members.push_back(id);}
+    for(auto id:ids){m->identities.try_emplace(id,PersistentKey(id));auto from=m->Owner(id);if(from!="root"){auto& r=m->regions.at(from);r.members.erase(std::remove(r.members.begin(),r.members.end(),id),r.members.end());for(auto it=r.mapping.begin();it!=r.mapping.end();)if(it->second==id){r.saved[it->first].destroyed=true;it=r.mapping.erase(it);}else ++it;r.retainedBytes=m->savedBytes(r.saved);}m->owners[id]=target;if(target!="root")m->regions.at(target).members.push_back(id);}
     return true;
 }
 bool WorldStreaming::Interest(const std::string& id,glm::vec3 p,float load,float retain,int priority,std::string& error){if(id.empty()||id.size()>128||!finite(glm::dvec3(p))||!std::isfinite(load+retain)||load<0||retain<load||priority<-100000||priority>100000||(m->interests.size()>=32&&!m->interests.count(id))){error="invalid interest source or 32-source limit";return false;}m->interests[id]={p,load,retain,priority};return true;}
@@ -198,7 +200,7 @@ void WorldStreaming::Advance(bool paused){
         if(gone)it=m->requests.erase(it);else ++it;
     }
     if(m->baselineJob.IsValid()&&m->resources.Jobs()->IsFinished(m->baselineJob)){
-        if(m->resources.Jobs()->StateOf(m->baselineJob)==JobState::Completed)m->world.SetCompositionFingerprint(*m->baseline);
+        if(m->resources.Jobs()->StateOf(m->baselineJob)==JobState::Completed)m->world.SetCompositionFingerprint(m->restoredBaseline.empty()?*m->baseline:m->restoredBaseline);
         else m->baselineError="composed identity: "+m->resources.Jobs()->ErrorOf(m->baselineJob);
         m->resources.Jobs()->Forget(m->baselineJob);m->baselineJob={};
     }
@@ -271,7 +273,7 @@ void WorldStreaming::Advance(bool paused){
                     remap(saved,replacements);saved.id=o.id;saved.transform.position=snap->second.state.position;saved.transform.rotation=snap->second.state.rotation;o=std::move(saved);
                 }
                 for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==original)reference(o,ref.field,Resolve(ref.target,ref.targetLocal));
-                std::string error;bool ok=false;unit([&]{JUDAS_PROFILE_SCOPE("Streaming component registration");ok=m->world.StageRegionObject(o,local,error,id+":"+std::to_string(original));},r);r.members.push_back(o.id);m->owners[o.id]=id;
+                std::string error;bool ok=false;unit([&]{JUDAS_PROFILE_SCOPE("Streaming component registration");ok=m->world.StageRegionObject(o,local,error,id+":"+std::to_string(original));},r);r.members.push_back(o.id);m->owners[o.id]=id;m->identities[o.id]="region:"+id+":"+std::to_string(original);
                 if(!ok){s.state="unloading";s.error=error;r.scriptsEnded=true;r.unload=true;break;}
                 ++r.next;s.installed=r.next;
             }
@@ -283,7 +285,7 @@ void WorldStreaming::Advance(bool paused){
                 // Complete publication is one atomic boundary. Native surface registration
                 // is indivisible and measured; source certificates were checked on workers.
                 bool ok=true;std::string error;unit([&]{JUDAS_PROFILE_SCOPE("Streaming atomic publication");
-                    if(ok){m->world.Navigation().PublishSurfaces(r.members);m->world.PublishRegion(r.members);for(auto& [source,snap]:r.saved)if(!snap.destroyed&&r.mapping.count(source)){auto runtime=r.mapping.at(source);auto t=snap.definition.transform;t.position=snap.state.position;t.rotation=snap.state.rotation;m->world.SetRuntimeTransform(runtime,t);m->world.SetEntityState(runtime,snap.state);if(auto* motor=m->world.RuntimeCharacter(runtime))motor->velocity=snap.state.linearVelocity;std::vector<ScriptStateRecord> records=snap.scripts;for(auto& js:records)js.entity=runtime;if(!records.empty())m->world.RestoreScriptState(records,error);}
+                    if(ok){m->world.Navigation().PublishSurfaces(r.members);m->world.PublishRegion(r.members);for(auto& [source,snap]:r.saved)if(!snap.destroyed&&r.mapping.count(source)){auto runtime=r.mapping.at(source);auto t=snap.definition.transform;t.position=snap.state.position;t.rotation=snap.state.rotation;m->world.SetRuntimeTransform(runtime,t);m->world.SetEntityState(runtime,snap.state);if(auto* motor=m->world.RuntimeCharacter(runtime))motor->velocity=snap.state.linearVelocity;std::vector<ScriptStateRecord> records=snap.scripts;for(auto& js:records)js.entity=runtime;if(!records.empty())m->world.RestoreScriptState(records,error,m->restoredRecords);}
                         m->world.RebuildRegionGravity(m->gravityOrder);}
                 },r);
                 if(!ok){s.state="unloading";s.error=error;r.unload=true;r.scriptsEnded=true;}else {s.state="active";s.loadMs=ms(r.requested);m->releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};r.activate=false;}
@@ -299,4 +301,36 @@ void WorldStreaming::Advance(bool paused){
     for(auto& ref:m->manifest.references)if(!ref.hard){auto source=Resolve(ref.region,ref.local);auto target=Resolve(ref.target,ref.targetLocal);if(source)m->world.BindRegionCameraReference(source,target);}
     m->recount();for(auto& [id,r]:m->regions)if(r.status.state=="active"){m->pins(id);r.status.visualReady=m->world.RegionVisualReady(r.members);}else r.status.visualReady=false;
     m->stats.integrationMs=ms(start);JUDAS_PROFILE_COUNTER("Streaming pending bytes",double(m->stats.pendingBytes),ProfileCounterMode::Latest);JUDAS_PROFILE_COUNTER("Streaming live estimated bytes",double(m->stats.liveBytes),ProfileCounterMode::Latest);JUDAS_PROFILE_COUNTER("Streaming retained bytes",double(m->stats.retainedBytes),ProfileCounterMode::Latest);
+}
+
+bool WorldStreaming::SaveReady()const{for(auto& [_,r]:m->regions)if(r.status.state=="installing"||r.status.state=="unloading")return false;return true;}
+std::string WorldStreaming::PersistentKey(SceneObjectId id)const{
+ if(!m->world.RuntimeDefinition(id))return {};
+ if(auto it=m->identities.find(id);it!=m->identities.end())return it->second;
+ auto owner=m->Owner(id);if(owner!="root")for(auto& [local,runtime]:m->regions.at(owner).mapping)if(runtime==id)return "region:"+owner+":"+std::to_string(local);
+ return "entity:"+std::to_string(id);
+}
+SceneObjectId WorldStreaming::ResolvePersistentKey(const std::string& key)const{
+ for(auto& [id,identity]:m->identities)if(identity==key&&m->world.RuntimeDefinition(id))return id;
+ try{if(key.rfind("entity:",0)==0){auto tail=key.substr(7);size_t end=0;auto id=std::stoull(tail,&end);return end==tail.size()&&m->world.RuntimeDefinition(id)?id:0;}
+ if(key.rfind("region:",0)==0){auto split=key.rfind(':');if(split<=7)return 0;auto tail=key.substr(split+1);size_t end=0;auto local=std::stoull(tail,&end);return end==tail.size()?Resolve(key.substr(7,split-7),local):0;}}catch(...){}return 0;
+}
+void WorldStreaming::ResumeOwnership(){m->previousResourceBudget=m->resources.BudgetBytes();m->resources.SetBudgetBytes(m->manifest.resourceCacheBytes);}
+void WorldStreaming::Persist(SaveArchive& a){
+ std::string baseline=m->world.BaselineFingerprint();a(baseline);a.Require(baseline.size()==64,"composed authored identity not ready");if(a.reading){m->restoredRecords=true;m->restoredBaseline=baseline;m->world.SetCompositionFingerprint(baseline);}
+ a.Require(a.reading||SaveReady(),"streaming residency transaction pending");
+ uint32_t count=uint32_t(m->regions.size());a(count);a.Require(count==m->regions.size(),"saved manifest region mismatch");std::set<std::string> seen;
+ for(uint32_t i=0;i<count;++i){std::string id;if(!a.reading){auto it=m->regions.begin();std::advance(it,i);id=it->first;}a(id);a.Require(m->regions.count(id)&&seen.insert(id).second,"unknown/duplicate saved region");auto& r=m->regions.at(id);
+  bool active=r.status.state=="active";a(active,r.mapping,r.members,r.manualPins);uint64_t bytes=r.status.bytes;a(bytes);a.Require(bytes<=128*1024*1024,"region saved byte bound");
+  uint32_t records=uint32_t(r.saved.size());a(records);a.Require(records<=4096,"region retained record bound");if(a.reading)r.saved.clear();
+  for(uint32_t j=0;j<records;++j){SceneObjectId local=0;Impl::Snapshot snapshot;std::string text;
+   if(!a.reading){auto it=r.saved.begin();std::advance(it,j);local=it->first;snapshot=it->second;WriteSceneObjectBlock(snapshot.definition,text);}
+   a(local,snapshot.destroyed,text,snapshot.state.position,snapshot.state.rotation,snapshot.state.linearVelocity,snapshot.state.angularVelocity);
+   uint32_t scripts=uint32_t(snapshot.scripts.size());a(scripts);a.Require(scripts<=16,"region script count bound");if(a.reading)snapshot.scripts.resize(scripts);for(auto& s:snapshot.scripts)a(s.entity,s.slot,s.json);
+   if(a.reading){if(!snapshot.destroyed){std::vector<std::string> lines;std::istringstream input(text);std::string line;while(std::getline(input,line))lines.push_back(line);size_t cursor=0;std::string error;a.Require(ParseSceneObjectBlock(lines,cursor,snapshot.definition,error)&&cursor==lines.size(),"invalid retained definition");}a.Require(r.saved.emplace(local,std::move(snapshot)).second,"duplicate retained identity");}
+  }
+  if(a.reading){r.status.state=active?"active":"unloaded";r.status.bytes=active?size_t(bytes):0;r.status.visualReady=active;r.status.entities=r.members.size();r.status.installed=r.members.size();r.retainedBytes=m->savedBytes(r.saved);}
+ }
+ a(m->owners,m->gravityOrder,m->identities);uint32_t interests=uint32_t(m->interests.size());a(interests);a.Require(interests<=32,"saved interest limit");if(a.reading)m->interests.clear();for(uint32_t i=0;i<interests;++i){std::string key;Impl::InterestSource source;if(!a.reading){auto it=m->interests.begin();std::advance(it,i);key=it->first;source=it->second;}a(key,source.position,source.load,source.retain,source.priority);a.Require(source.load>=0&&source.retain>=source.load,"invalid saved streaming interest");if(a.reading)a.Require(m->interests.emplace(key,source).second,"duplicate streaming interest");}
+ if(a.reading){for(auto& [id,owner]:m->owners)a.Require(owner=="root"||m->regions.count(owner),"invalid saved ownership");for(auto& [_,r]:m->regions)for(auto& [local,id]:r.mapping){(void)local;a.Require(id!=0,"invalid qualified mapping");}m->world.RebuildRegionGravity(m->gravityOrder);m->recount();a.Require(m->stats.retainedBytes<=m->manifest.retainedBytes,"saved retained budget exceeded");}
 }

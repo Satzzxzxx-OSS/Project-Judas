@@ -1,0 +1,23 @@
+#pragma once
+#include "SaveStorage.h"
+#include <string>
+class RuntimeWorld;
+class Scene;
+// Small participant registry, not reflection. Each subsystem owns its record
+// version and native fixup. Capture/restoration are main-thread operations.
+class WorldPersistence {
+public:
+ static bool Capture(RuntimeWorld&,std::map<std::string,SaveChunk>&,std::string&);
+ static bool SceneFrom(const std::map<std::string,SaveChunk>&,Scene&,std::string&);
+ static bool Prepare(RuntimeWorld&,std::string&);
+ static bool PrepareAudio(RuntimeWorld&,std::string&);
+ static bool Restore(RuntimeWorld&,const std::map<std::string,SaveChunk>&,std::string&);
+ static void Published(RuntimeWorld&);
+private:
+ static void Entities(RuntimeWorld&,SaveArchive&);
+ static void Motors(RuntimeWorld&,SaveArchive&);
+ static void Animation(RuntimeWorld&,SaveArchive&);
+ static void Articulation(RuntimeWorld&,SaveArchive&);
+ static void Navigation(RuntimeWorld&,SaveArchive&);
+ static void Audio(RuntimeWorld&,SaveArchive&);
+};

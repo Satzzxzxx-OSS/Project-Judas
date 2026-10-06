@@ -24,7 +24,7 @@ glm::vec3 Motion(RuntimeWorld& w,EntityId id,glm::vec3 point,glm::vec3 previous,
 std::string StableKey(RuntimeWorld& w,EntityId id){return w.AudioStableIdentity(id);}
 }
 void RuntimeWorld::ResetAudioMotion(){m_listenerMotionValid=false;for(auto& e:m_audioEmitters)e.motionValid=false;}
-void RuntimeWorld::BeginAudio(){EndAudio();m_audioRunning=true;if(m_audioSystem)m_audioSystem->ConfigureGroups(audioGroups);for(auto& e:m_audioEmitters){if(!IsPublished(e.id))continue;e.wantPlay=e.settings.playOnStart;e.error.clear();}ResetAudioMotion();}
+void RuntimeWorld::BeginAudio(){if(m_audioResume.empty())EndAudio();m_audioRunning=true;if(m_audioSystem){AudioGroupSettings master;bool retained=m_audioSystem->GetGroup("master",master);m_audioSystem->ConfigureGroups(audioGroups);if(m_restoreConstruction&&retained)m_audioSystem->SetGroup("master",master);}for(auto& e:m_audioEmitters){if(!IsPublished(e.id))continue;e.wantPlay=m_audioResume.count(e.id)?m_audioResume.at(e.id).requested:e.settings.playOnStart;e.error.clear();}ResetAudioMotion();}
 void RuntimeWorld::ReleaseEntityAudio(SceneObjectId id){
  for(auto& e:m_audioEmitters)if(e.id==id){if(m_audioSystem)m_audioSystem->DestroyVoice(e.voice);e.voice={};e.wantPlay=false;}
  for(auto it=m_audioOneShots.begin();it!=m_audioOneShots.end();)if(it->first==id){if(m_audioSystem)m_audioSystem->DestroyVoice(it->second);it=m_audioOneShots.erase(it);}else ++it;
@@ -38,7 +38,7 @@ bool RuntimeWorld::PlayAudioOneShot(SceneObjectId id,std::string& error){
   auto h=m_audioSystem->PlayOneShot(clip,e.settings,p,error);if(!h.IsValid())return false;m_audioOneShots.push_back({id,h});return true;}
  error="entity has no audio emitter";return false;
 }
-void RuntimeWorld::EndAudio(){for(auto& shot:m_audioOneShots)if(m_audioSystem)m_audioSystem->DestroyVoice(shot.second);m_audioOneShots.clear();for(auto& e:m_audioEmitters){if(m_audioSystem)m_audioSystem->DestroyVoice(e.voice);e.voice={};}if(m_audioSystem)m_audioSystem->ResetEnvironment();m_audioRunning=false;ResetAudioMotion();}
+void RuntimeWorld::EndAudio(){for(auto& shot:m_audioOneShots)if(m_audioSystem)m_audioSystem->DestroyVoice(shot.second);m_audioOneShots.clear();for(auto& e:m_audioEmitters){if(m_audioSystem)m_audioSystem->DestroyVoice(e.voice);e.voice={};}if(m_audioSystem&&m_audioRunning)m_audioSystem->ResetEnvironment();m_audioRunning=false;ResetAudioMotion();}
 void RuntimeWorld::UpdateAudio(const glm::mat4& activeView,float alpha,float dt){
  JUDAS_PROFILE_SCOPE("Audio main update");
  if(!m_audioRunning||!m_audioSystem||!m_assets)return;
@@ -55,11 +55,16 @@ void RuntimeWorld::UpdateAudio(const glm::mat4& activeView,float alpha,float dt)
    std::string error;
    if(e.settings.loading==AudioLoading::Streamed){auto path=m_assets->GetStreamAudioPath(e.settings.asset,error);if(!path.empty())e.voice=m_audioSystem->CreateStreamVoice(path,e.settings,error);}
    else {auto clip=m_assets->GetAudio(e.settings.asset,error);if(clip.IsValid())e.voice=m_audioSystem->CreateVoice(clip,e.settings,error);}
-   if(e.voice.IsValid()){m_audioSystem->SetPosition(e.voice,p);if(e.wantPlay)m_audioSystem->Play(e.voice);}
+   if(e.voice.IsValid()){m_audioSystem->SetPosition(e.voice,p);
+    if(!m_audioResume.count(e.id)&&e.wantPlay)m_audioSystem->Play(e.voice);
+   }
    if(!error.empty()&&error!="loading"&&error!=e.error)std::fprintf(stderr,"audio emitter %llu: %s\n",static_cast<unsigned long long>(e.id),error.c_str());
    e.error=error;
   }
   if(e.voice.IsValid()){
+   auto restored=m_audioResume.find(e.id);if(restored!=m_audioResume.end()){
+    auto saved=restored->second;if(!m_audioSystem->RestorePlayback(e.voice,saved.time,saved.state,saved.groupGain,saved.fadeFrames)){e.error="saved audio state incompatible";continue;}m_audioResume.erase(restored);
+   }
    m_audioSystem->SetSettings(e.voice,e.settings);m_audioSystem->SetPosition(e.voice,p);
    auto velocity=e.explicitVelocity?*e.explicitVelocity:Motion(*this,e.id,p,e.lastPosition,dt,e.motionValid);
    m_audioSystem->SetMotion(e.voice,velocity);e.lastVelocity=velocity;e.lastPosition=p;e.motionValid=true;

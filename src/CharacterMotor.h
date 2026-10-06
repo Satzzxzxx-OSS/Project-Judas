@@ -33,6 +33,7 @@ void ResolveCharacterSlide(PhysicsWorld&,glm::vec3& center,const glm::quat&,glm:
     bool legacyPush,bool& collided);
 class CharacterMotor {
 public:
+    void Persist(class SaveArchive&);
     CharacterMotorSettings settings;
     glm::vec3 position{0},velocity{0};
     glm::quat orientation{1,0,0,0};

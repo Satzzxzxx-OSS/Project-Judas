@@ -15,7 +15,7 @@ the live world and report failure through normal application diagnostics.
 Replacement builds a fresh normal RuntimeWorld, ends the old Play/VM/audio/UI,
 then starts the new world. Reload reconstructs authored state, not an automatic
 save overlay. No old entities, closures, UI, animation mixer or ragdoll state survive.
-There is no additive scenes/world streaming API. Scene operations require an active
+Whole-scene replacement is distinct from [M59 additive residency](streaming.md). Scene operations require an active
 project SceneSession; isolated no-session worlds throw.
 
 ## session
@@ -36,14 +36,14 @@ numbers/strings/arrays/plain objects (null prototype allowed), depth <=16,
 <=4096 visited values, <=64 KiB serialized per slot. No functions/accessors/symbols,
 cycles/custom prototypes, Entity/UI wrappers, BigInt or VM pointers. Save state root
 must be an object/array for restore; prefer an object. Do not put handles in state;
-store IDs and reacquire/validate, or game facts.
+store [durable references](saves.md) and reacquire/validate, or game facts.
 
 Engine M29 captures `this.state`, keyed by entity/slot, validates the authored
 baseline and restores before `start`. Invalid captured state prevents valid save
 serialization; faulted slots are omitted. `entity.scriptState(slot)` reads a
 detached JSON snapshot or null. This is not live inter-script object sharing.
 
-**No JS save/load-disk binding exists.** The runtime/editor's existing save controls
+**Historical M40–M60 contract, superseded for modern slots by M61:** no JS save/load-disk binding existed. The runtime/editor's existing save controls
 are separate. Session is not saved automatically. Private instance fields/module
 globals/animation mixer/active ragdoll/UI/live voices are not VM-persisted. Authored
 script/UI/prefab content contributes strict content fingerprints; don't assume
@@ -77,4 +77,8 @@ by the motor's safe generations, not explicit transform parenting.
 
 ## M59 additive residency
 
-For additive region requests, ownership, pins and suspension see [Streaming](streaming.md). Whole-world reload remains distinct. Composed-world disk saves are disabled.
+For additive region requests, ownership, pins and suspension see [Streaming](streaming.md). Whole-world reload remains distinct. The historical legacy delta save remains disabled for composed worlds; M61 slots now include qualified resident/retained state.
+
+## Project slots (M61)
+
+The reusable [`saves`](saves.md) service persists the bounded session map and supported world state. It stages a coherent replacement and never overlays a legacy delta afterward. Session-only data remains distinct from durable disk state.

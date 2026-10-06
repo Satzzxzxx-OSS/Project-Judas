@@ -101,10 +101,15 @@ void SectionProjectFormat() {
               fs::is_directory(project.ScenesDir()) && fs::is_directory(project.SavesDir()),
           "CreateNew wrote the project file and the Assets/Scenes/Saves directories");
     Check(fs::path(project.ProjectFile()).filename() == "My_Game.judasproj", "the project file is named after the project");
+    Project unrelated;
+    Check(Project::CreateNew(temp.Str() + "/other", "My Game", unrelated, error) &&
+          project.Settings().saveIdentity.size()==64 &&
+          unrelated.Settings().saveIdentity!=project.Settings().saveIdentity,
+          "same-name projects get distinct durable save namespaces");
     Project second;
     Check(!Project::CreateNew(temp.Str() + "/game", "Another", second, error), "a directory holding a project refuses a second one");
     Project loaded;
-    Check(loaded.Load(project.ProjectFile(), error) && loaded.Settings().name == "My Game" && loaded.RootDir() == project.RootDir(),
+    Check(loaded.Load(project.ProjectFile(), error) && loaded.Settings().name == "My Game" && loaded.Settings().saveIdentity==project.Settings().saveIdentity && loaded.RootDir() == project.RootDir(),
           "a created project loads back with the same root");
     Check(Project::FindProjectFileFor(project.ScenesDir() + "/nested/deeper/level.judas") == project.ProjectFile(),
           "FindProjectFileFor walks up from a nested scene path to the project file");

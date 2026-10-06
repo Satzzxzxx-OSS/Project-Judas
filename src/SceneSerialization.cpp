@@ -618,8 +618,8 @@ bool ParseSettings(Reader& reader, const Block& block, Scene& scene) {
         return reader.Fail("fidelity-policy must be 'none' or 'distance <fullRadius> <coarseRadius>'");
     }
     if(p.Has("main-camera.render-mask")&&!p.Mask("main-camera.render-mask",s.mainCameraRenderMask))return false;
-    int nextId = 0;
-    if (!p.Int("next-id", nextId)) return false;
+    SceneObjectId nextId = 0;
+    if (!p.Id("next-id", nextId)) return false;
     if (nextId < 1) return reader.Fail("next-id must be at least 1");
     scene.SetNextId(static_cast<SceneObjectId>(nextId));
     return p.CheckNoUnknown();

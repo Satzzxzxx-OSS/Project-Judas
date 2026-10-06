@@ -69,6 +69,12 @@ public:
     bool Interest(const std::string&,glm::vec3,float load,float retain,int priority,std::string&);
     void RemoveInterest(const std::string&);
     void Advance(bool paused);
+    // Only committed residency is archived; partial installation/unload defers capture.
+    bool SaveReady() const;
+    void ResumeOwnership();
+    void Persist(class SaveArchive&);
+    std::string PersistentKey(SceneObjectId) const;
+    SceneObjectId ResolvePersistentKey(const std::string&) const;
     // Tests hold a real read job before parsing. Production never sets this gate.
     void SetPreparationGate(std::function<bool(const JobContext&)>);
 private:

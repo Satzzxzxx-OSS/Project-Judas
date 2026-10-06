@@ -475,6 +475,7 @@ bool EditorApplication::StartPlay(std::string& outError) {
     m_world->legacyGameplay = m_project.Settings().legacyGameplay;
     m_world->audioGroups=m_project.Settings().audio;
     m_world->SetSceneControl(std::make_shared<SceneSession>(m_project,m_document.Path()));
+    m_world->SceneControl()->SetEditorSaveIsolation(true);
     if (!m_world->Build(m_document.GetScene(), &m_host->Resources(), outError, &m_project.Settings().classification, &m_project.Settings().navigation)) {
         m_world.reset();
         return false;
@@ -1083,6 +1084,11 @@ int EditorApplication::Run(int argc, char** argv) {
             m_play->Frame(window, renderer, deltaSeconds, /*drawHud=*/true);
             if(auto scenes=m_world->SceneControl()) {
                 scenes->AdvanceStreaming(*m_world,m_play->IsPaused());
+                auto* previousWorld=m_world.get();
+        scenes->AdvanceSaves(m_world,*m_play,host.Resources(),error);
+                // Clear the Load edge without turning a held confirm button into a new jump.
+                if(previousWorld!=m_world.get())window.Input().DiscardPending();
+        if(!error.empty()){std::fprintf(stderr,"Save service: %s\n",error.c_str());error.clear();}
                 if(!scenes->Apply(m_world,*m_play,host.Resources(),error))std::fprintf(stderr,"Scene transition: %s\n",error.c_str());
                 m_panels.runtime=m_world.get();
                 m_panels.worldStatePath=m_play->WorldStatePath();

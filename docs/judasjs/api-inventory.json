@@ -1,5 +1,5 @@
 {
-  "checkpoint": "277e67d2b0811644b2122bae27a4301d6dd3c96b",
+  "checkpoint": "a9c6cd780b8c93db6355b791c6fdb34afec7cf53",
   "authority": "src/ScriptSystem.cpp::library + Impl::Native",
   "symbols": [
     {
@@ -2048,6 +2048,136 @@
       "reference": "docs/judasjs/profiling.md"
     },
     {
+      "symbol": "saves",
+      "kinds": [
+        "namespace"
+      ],
+      "native": [],
+      "type": "docs/judas.d.ts:saves",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.cancel",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveCancel"
+      ],
+      "type": "docs/judas.d.ts:saves.cancel",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.delete",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveRequest"
+      ],
+      "type": "docs/judas.d.ts:saves.delete",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.exclude",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveExclude"
+      ],
+      "type": "docs/judas.d.ts:saves.exclude",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.exists",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveList"
+      ],
+      "type": "docs/judas.d.ts:saves.exists",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.list",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveList"
+      ],
+      "type": "docs/judas.d.ts:saves.list",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.load",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveRequest"
+      ],
+      "type": "docs/judas.d.ts:saves.load",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.reference",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveReference"
+      ],
+      "type": "docs/judas.d.ts:saves.reference",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.refresh",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveRequest"
+      ],
+      "type": "docs/judas.d.ts:saves.refresh",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.resolve",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveResolve"
+      ],
+      "type": "docs/judas.d.ts:saves.resolve",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.save",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveRequest"
+      ],
+      "type": "docs/judas.d.ts:saves.save",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
+      "symbol": "saves.status",
+      "kinds": [
+        "call"
+      ],
+      "native": [
+        "saveStatus"
+      ],
+      "type": "docs/judas.d.ts:saves.status",
+      "reference": "docs/judasjs/saves.md"
+    },
+    {
       "symbol": "scenes",
       "kinds": [
         "namespace"
@@ -2638,6 +2768,13 @@
     "released",
     "removeTag",
     "resumeAudio",
+    "saveCancel",
+    "saveExclude",
+    "saveList",
+    "saveReference",
+    "saveRequest",
+    "saveResolve",
+    "saveStatus",
     "sceneCurrent",
     "sceneList",
     "sceneLoad",
@@ -2669,6 +2806,7 @@
   ],
   "callbacks": [
     "start",
+    "restore",
     "update",
     "fixedUpdate",
     "uiUpdate",

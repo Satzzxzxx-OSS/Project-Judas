@@ -17,6 +17,7 @@ public:
     void SetJobSystem(JobSystem* jobs);
     AudioVoiceHandle CreateStreamVoice(const std::string& path,const AudioSettings&,std::string& error);
     bool Seek(AudioVoiceHandle,double seconds);
+    bool RestorePlayback(AudioVoiceHandle,double seconds,AudioPlaybackState,float groupGain=1,uint64_t fadeFrames=0);
     bool SetMotion(AudioVoiceHandle,const glm::vec3& velocity);
     bool SetListenerMotion(const glm::vec3& velocity);
     bool SetOcclusion(AudioVoiceHandle,float obstruction);

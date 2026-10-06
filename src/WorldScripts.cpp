@@ -59,10 +59,10 @@ void RuntimeWorld::FixedScripts(const InputSystem* input,float dt){
     if(m_scripts){m_scripts->Synchronize(ScriptObjects());m_scripts->Fixed(input,dt);}
 }
 
-bool RuntimeWorld::RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error){
+bool RuntimeWorld::RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error,bool resume){
     if(records.empty())return true;
     if(!m_scripts)m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);
-    return m_scripts->Restore(records,error);
+    return m_scripts->Restore(records,error,resume);
 }
 
 void RuntimeWorld::UpdateUIScripts(InputSystem* input,float dt){

@@ -11,7 +11,7 @@ Returns a wrapper, with public opaque `entityId` and integer `slot` (0–63). Op
 - `set(parameters)`: merges instance overrides, returns true. Supports `baseColor: {x,y,z,a}` (linear RGB and unencoded alpha, each 0–1), `metallic` / `roughness` (0–1), `emissive: {x,y,z}` (linear, nonnegative ≤100000), `emissiveIntensity` (0–100000). No per-frame shader compilation or resource recreation.
 - `clearOverrides()`: removes all parameter overrides on this slot, returns boolean. Keeps assigned asset. Shared definitions remain immutable.
 
-Runtime edits are transient to this world, including across component disable; scene reload/Stop reconstruct authored values. Shared-source editing is an intentional editor operation, not a script write to disk. No implicit save of runtime material state.
+Runtime edits are transient to this world, including across component disable; scene reload/Stop reconstruct authored values. Shared-source editing is an intentional editor operation, not a script write to disk. No implicit save of runtime material state. An explicit [M61 slot](saves.md) preserves runtime material assignments/overrides and scene appearance; ordinary reload/Stop still restores authored data.
 
 ```js
 const surface = entity.material(0);

@@ -201,10 +201,11 @@ bool RuntimeWorld::AppendEntitySlot(const SceneObject& o, bool authored, const E
     return true;
 }
 
-bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError, const ProjectClassification* categories,const ProjectNavigation* navigation) {
+bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std::string& outError, const ProjectClassification* categories,const ProjectNavigation* navigation,bool runtimeSnapshot) {
  JUDAS_PROFILE_SCOPE("World build"); PerformanceProfiler::Get().Boundary("World build");
     Scene resolved, scene;
-    if (!ResolvePrefabs(authored, resources ? resources->Assets() : nullptr, resolved, outError) ||
+    if(runtimeSnapshot){resolved=scene=authored;} // already resolved world-space definitions, source content validated by save service
+    else if (!ResolvePrefabs(authored, resources ? resources->Assets() : nullptr, resolved, outError) ||
         !FlattenHierarchy(resolved, scene, outError)) return false;
     const ProjectClassification selected=categories?*categories:ProjectClassification{};
     if(!ValidateSceneClassification(scene,selected,outError))return false;
@@ -267,16 +268,28 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
     }
     if(resources&&resources->Assets()){std::string navBytes="Judas.NavSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.navigationSurface){has=true;auto* asset=resources->Assets()->Find(o.navigationSurface->asset);if(asset){std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();navBytes+=asset->id+SceneFingerprintSha256(contents.str());}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+navBytes);}
     if(resources&&resources->Assets()){bool localized=std::any_of(resources->Assets()->Records().begin(),resources->Assets()->Records().end(),[](const auto& p){return p.second.type==AssetType::Catalog;});if(auto control=SceneControl())localized|=!control->Localization(resources).Configuration().fonts.empty();if(localized){std::string bytes="Judas.LocalizationSources.1";for(auto& p:resources->Assets()->Records())if(p.second.type==AssetType::Catalog||p.second.type==AssetType::Font){std::ifstream f(p.second.path,std::ios::binary);if(!f){outError="cannot fingerprint localization dependency "+p.first;return false;}std::string content(std::istreambuf_iterator<char>(f),{});bytes+=p.first+SceneFingerprintSha256(content);}if(auto control=SceneControl())bytes+=control->Localization(resources).Configuration().Encode();fingerprint=SceneFingerprintSha256(fingerprint+bytes);}}
-    if(resources&&resources->Assets()){std::string liquidBytes="Judas.LiquidSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.liquidBasin||o.liquidContainer){has=true;std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){auto* asset=resources->Assets()->Find(id);if(!asset||asset->missing||asset->type!=AssetType::Liquid){outError="missing/wrong-type liquid asset";return false;}std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();liquidBytes+=id+SceneFingerprintSha256(contents.str());}if(o.liquidBasin){LiquidBasinData data;auto* asset=resources->Assets()->Find(o.liquidBasin->asset);if(!LoadLiquidBasin(asset->path,data,outError)||LiquidSourceFingerprint(scene,o,*resources->Assets(),outError)!=data.fingerprint){outError="stale/invalid liquid bake: "+outError;return false;}}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+liquidBytes);}
+    if(resources&&resources->Assets()){std::string liquidBytes="Judas.LiquidSources.1";bool has=false;for(const auto& o:scene.Objects())if(o.liquidBasin||o.liquidContainer){has=true;std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){auto* asset=resources->Assets()->Find(id);if(!asset||asset->missing||asset->type!=AssetType::Liquid){outError="missing/wrong-type liquid asset";return false;}std::ifstream file(asset->path,std::ios::binary);std::ostringstream contents;contents<<file.rdbuf();liquidBytes+=id+SceneFingerprintSha256(contents.str());}if(o.liquidBasin&&!runtimeSnapshot){LiquidBasinData data;auto* asset=resources->Assets()->Find(o.liquidBasin->asset);if(!LoadLiquidBasin(asset->path,data,outError)||LiquidSourceFingerprint(scene,o,*resources->Assets(),outError)!=data.fingerprint){outError="stale/invalid liquid bake: "+outError;return false;}}}if(has)fingerprint=SceneFingerprintSha256(fingerprint+liquidBytes);}
     for(const auto& o:scene.Objects())if(!ValidateLiquidComponents(o,outError))return false;
     Destroy();
+    m_restoreConstruction=runtimeSnapshot;
     m_categories=selected;
     m_navigation=std::make_unique<NavigationSystem>(navigation?*navigation:ProjectNavigation{});
     m_assets = resources;
     m_audioSystem=resources?resources->GetAudioSystem():nullptr;
     m_settings = scene.Settings();
     if(m_assets&&!m_settings.environmentAsset.empty()){m_assets->AddRef(m_settings.environmentAsset);m_referencedAssets.push_back(m_settings.environmentAsset);m_assets->RequestEnvironment(m_settings.environmentAsset,JobPriority::High);}
-    if(std::any_of(resolved.Objects().begin(),resolved.Objects().end(),[](const auto& o){return o.parent!=0;}))m_hierarchy=resolved;
+    if(std::any_of(resolved.Objects().begin(),resolved.Objects().end(),[](const auto& o){return o.parent!=0;})){
+        m_hierarchy=resolved;
+        if(runtimeSnapshot)for(auto& local:m_hierarchy.Objects())if(local.parent){
+            const auto* parent=resolved.Find(local.parent);
+            if(!parent){outError="snapshot hierarchy parent unavailable";return false;}
+            auto inverse=glm::inverse(parent->transform.rotation);
+            if(glm::any(glm::lessThan(glm::abs(parent->transform.scale),glm::vec3(1e-6f)))){outError="snapshot hierarchy singular scale";return false;}
+            local.transform.position=(inverse*(local.transform.position-parent->transform.position))/parent->transform.scale;
+            local.transform.rotation=glm::normalize(inverse*local.transform.rotation);
+            local.transform.scale/=parent->transform.scale;
+        }
+    }
     if (!m_physics.Init()) {
         outError = "physics initialization failed";
         return false;
@@ -309,9 +322,11 @@ bool RuntimeWorld::Build(const Scene& authored, ResourceManager* resources, std:
         if (o.playerStart) loadContext.focus = o.transform.position;
     }
 
+    auto restoredPolicy=runtimeSnapshot?std::move(m_policy):std::unique_ptr<FidelityPolicy>{};
     if (!AppendSceneObjects(scene, true, loadContext, outError)) { Destroy(); return false; }
+    if(runtimeSnapshot)m_policy=std::move(restoredPolicy);
     SynchronizeJoints();
-    for(const auto& o:scene.Objects())if((m_hasScripts||o.animation||o.ragdoll||o.characterMotor||!NavigationProperties(o).empty()||!LiquidProperties(o).empty())&&!FindEntity(o.id)){
+    for(const auto& o:scene.Objects())if((runtimeSnapshot||m_hasScripts||o.animation||o.ragdoll||o.characterMotor||!NavigationProperties(o).empty()||!LiquidProperties(o).empty())&&!FindEntity(o.id)){
         std::string unsupported;
         if(o.scripts.empty()&&!ValidateEntityDefinition(o,unsupported))continue;
         EntityRecord e;e.id=o.id;e.name=o.name;e.definition=o;e.authored=true;e.requiresFull=true;
@@ -801,7 +816,8 @@ EntityRecord* RuntimeWorld::FindEntity(EntityId id) {
 }
 
 EntityId RuntimeWorld::EntityIdOfBody(BodyHandle handle) const {
-    if (!handle.IsValid()) return kInvalidSceneObjectId;
+    unsigned layer=0;CategoryMask mask=0;
+    if (!handle.IsValid() || !m_physics.GetCollisionFilter(handle,layer,mask)) return kInvalidSceneObjectId;
     for (const EntityRecord& e : m_entities) {
         if (e.lifecycle != EntityLifecycle::Destroyed && m_dynamicBodies[e.slot].IsLive() &&
             m_dynamicBodies[e.slot].Handle().id == handle.id) {
@@ -1155,8 +1171,7 @@ SceneTransform RuntimeWorld::PresentedTransform(SceneObjectId id,const SceneTran
 bool RuntimeWorld::DestroyHierarchy(EntityId root,std::string& error) {
     std::vector<EntityId> ids{root};
     for(size_t i=0;i<ids.size();++i){
-        for(const auto& e:m_entities)if(e.definition.parent==ids[i])ids.push_back(e.id);
-        for(const auto& e:m_extraEntities)if(e.definition.parent==ids[i])ids.push_back(e.id);
+        for(const auto& o:ScriptObjects())if(o.parent==ids[i]&&std::find(ids.begin(),ids.end(),o.id)==ids.end())ids.push_back(o.id);
     }
     for(auto id:ids)if(!ValidateEntityDestruction(id,error))return false;
     for(auto it=ids.rbegin();it!=ids.rend();++it)if(!DestroyEntity(*it,&error))return false;

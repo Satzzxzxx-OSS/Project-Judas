@@ -237,7 +237,7 @@ public:
     // missing or undecodable shows as a placeholder and reads Failed in the
     // resource manager. On failure nothing is left allocated and `outError`
     // says which object/component could not be realised.
-    bool Build(const Scene& scene, ResourceManager* resources, std::string& outError, const ProjectClassification* categories=nullptr,const ProjectNavigation* navigation=nullptr);
+    bool Build(const Scene& scene, ResourceManager* resources, std::string& outError, const ProjectClassification* categories=nullptr,const ProjectNavigation* navigation=nullptr,bool runtimeSnapshot=false);
     ResourceManager* Resources() const { return m_assets; }
     void Destroy();
     bool IsBuilt() const { return m_built; }
@@ -291,7 +291,7 @@ public:
     void DispatchPhysicsEvents(const InputSystem* input,float dt);
     bool SetColliderEnabled(EntityId id,bool enabled);
     void FixedScripts(const InputSystem* input,float dt);
-    bool RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error);
+    bool RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error,bool resume=false);
     void EndScripts(){m_scripts.reset();m_ui.reset();pointerCapture=false;}
     LocalizationSession& Localization();
     RuntimeUI& UI(){if(!m_ui)m_ui=std::make_unique<RuntimeUI>(m_assets);m_ui->SetLocalization(&Localization());return *m_ui;}
@@ -341,6 +341,7 @@ public:
     bool RagdollActive(EntityId)const;
     EntityId RagdollBody(EntityId,const std::string& key)const;
     void UpdateRagdolls(float dt);
+    bool SetTransientEntity(EntityId id,bool transient,std::string& error);
     bool IsTransientEntity(EntityId id)const {const auto* e=FindEntity(id);return e&&e->transient;}
 
     void SynchronizeJoints();
@@ -452,6 +453,8 @@ public:
     void SetCompositionFingerprint(const std::string& hash) { m_baselineFingerprint=hash;m_composed=true; }
     bool IsComposed() const { return m_composed; }
 private:
+    friend class WorldPersistence;
+    bool m_restoreConstruction=false;
     bool m_composed=false;
     std::set<EntityId> m_regionPending;
     std::map<EntityId,std::vector<AssetId>> m_regionAssets;
@@ -510,6 +513,8 @@ private:
     std::vector<StaticRenderable> m_staticRenderables;
     AudioSystem* m_audioSystem=nullptr;
     std::map<EntityId,std::string> m_audioIdentities;
+    struct AudioResume {double time=0;AudioPlaybackState state=AudioPlaybackState::Stopped;bool requested=false,seekSubmitted=false;float groupGain=1;uint64_t fadeFrames=0;};
+    std::map<EntityId,AudioResume> m_audioResume;
     std::vector<std::pair<EntityId,AudioVoiceHandle>> m_audioOneShots;
     bool m_audioRunning=false;
     mutable std::vector<ParticleEmitter> m_particleEmitters;

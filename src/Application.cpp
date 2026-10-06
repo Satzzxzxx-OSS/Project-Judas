@@ -190,6 +190,11 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
         if (control && control->afterFrame) control->afterFrame(host, world, play);
         { JUDAS_PROFILE_WAIT("Swap present wait"); window.SwapBuffers(); }
         sceneControl->AdvanceStreaming(*worldOwner,play.IsPaused());
+        auto* previousWorld=worldOwner.get();
+        sceneControl->AdvanceSaves(worldOwner,play,host.Resources(),error);
+        // Keep held-device state: clearing it would create a fresh press when polled again.
+        if(previousWorld!=worldOwner.get())window.Input().DiscardPending();
+        if(!error.empty()){std::fprintf(stderr,"Save service: %s\n",error.c_str());error.clear();}
         if(!sceneControl->Apply(worldOwner,play,host.Resources(),error))
             std::fprintf(stderr,"Scene transition failed: %s\n",error.c_str());
     }

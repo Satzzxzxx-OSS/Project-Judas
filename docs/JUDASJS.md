@@ -1,9 +1,9 @@
-# JudasJS — current API reference (M60)
+# JudasJS — current API reference (M61)
 
 JUDAS PROVIDES ENGINE PRIMITIVES. JAVASCRIPT PROVIDES GAME BEHAVIOUR.
 
-This reference describes the public virtual `judas` module through M60, based on
-M58 checkpoint `6fb90d56562651d027a8740cc8d17bb655d9b8b0`. It is not an
+This reference describes the public virtual `judas` module through M61, based on
+accepted M60 checkpoint `a9c6cd780b8c93db6355b791c6fdb34afec7cf53` plus the uncommitted M61 candidate. It is not an
 eternal compatibility/semantic-version promise. Source authority is
 `src/ScriptSystem.cpp` and the runtime systems it calls; demos do not define API.
 M50 introduced the documentation/tooling. M51 adds generic mass/inertia snapshots
@@ -12,7 +12,7 @@ M52 exposes the existing generic impulse-at-point body operation and render pose
 through `Entity.presentedTransform` / `presentationUpdate(dt, alpha)`; the
 [Spring Range project](M52_SHOOTER_GAME.md) implements all shooting/score rules in JS.
 
-M60 adds optional additive residency through [scenes streaming](judasjs/streaming.md).
+M59 added optional additive residency through [scenes streaming](judasjs/streaming.md).
 
 ## Find an API
 
@@ -58,7 +58,7 @@ not extend native lifetime and cannot cross scene replacement.
 
 Scripts are trusted QuickJS code, not Node/browser/npm or a malicious-code sandbox.
 No arbitrary async callbacks, debugger/hot reload, raw bones, ECS, runtime layer
-registry editing or JS disk-save API. Current subsystem limits are documented
+registry editing. Current subsystem limits are documented
 on their pages rather than silently upgraded. Human hardware/visual/audio review
 remains authoritative.
 
@@ -92,3 +92,7 @@ remains authoritative.
 [Audio reference](judasjs/audio.md) covers M60 emitter settings, cursor/readiness,
 independent one-shots, authored groups/fades and approximate spatial effects.
 [Listening lab](../projects/audio_lab/README.md) provides ordinary authored content.
+
+## M61 save/load
+
+[Project slots, durable references and restore lifecycle](judasjs/saves.md) | [Subsystem participation and storage](M61_SAVES.md).

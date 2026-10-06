@@ -4,6 +4,7 @@ export const properties={hinge:{type:'string',default:''},points:{type:'number',
 export default class {
  constructor({entity,properties}){this.entity=entity;this.props=properties;this.state={ready:true,hitOnce:false,cooldown:0,angle:0};}
  start(){this.joint=physics.joint(scenes.resolveRegionEntity(scenes.owner(this.entity),this.props.hinge));register(this);}
+ restore(){this.start();}
  fixedUpdate(dt){const s=this.joint.state;this.state.angle=s.coordinate;
   if(!this.state.ready){this.state.cooldown+=dt;
    // Only observations. Solver limits/spring return the plate, NEVER a transform reset.

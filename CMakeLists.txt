@@ -196,6 +196,11 @@ add_library(judas_engine STATIC
     src/FidelityPolicy.cpp
     src/CoarseSimulation.cpp
     src/WorldState.cpp
+    src/SaveStorage.cpp
+    src/SaveService.cpp
+    src/MotorPersistence.cpp
+    src/LiquidPersistence.cpp
+    src/WorldPersistence.cpp
     ${JUDAS_PHYSICS_SOURCES}
     src/PhysicsWorld.cpp
 )
@@ -1194,3 +1199,22 @@ target_compile_options(judas_audio_world_tests PRIVATE -Wall -Wextra)
 add_executable(judas_audio_application_tests tests/AudioApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
 target_link_libraries(judas_audio_application_tests PRIVATE judas_engine)
 target_compile_options(judas_audio_application_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+# M61 focused local-storage protocol; no desktop or operator save directories.
+add_executable(judas_save_storage_tests tests/SaveStorageTests.cpp)
+target_link_libraries(judas_save_storage_tests PRIVATE judas_engine)
+target_compile_options(judas_save_storage_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(judas_world_persistence_tests tests/WorldPersistenceTests.cpp)
+target_link_libraries(judas_world_persistence_tests PRIVATE judas_engine)
+target_compile_options(judas_world_persistence_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(judas_save_application_tests tests/SaveApplicationTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_save_application_tests PRIVATE judas_engine)
+target_compile_options(judas_save_application_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(judas_save_streaming_tests tests/SaveStreamingTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_save_streaming_tests PRIVATE judas_engine)
+target_compile_options(judas_save_streaming_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(judas_save_performance_tests tests/SavePerformanceTests.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_save_performance_tests PRIVATE judas_engine)
+target_compile_options(judas_save_performance_tests PRIVATE -Wall -Wextra -Wpedantic)

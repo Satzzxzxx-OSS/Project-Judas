@@ -64,3 +64,11 @@ and document. It preserves supplementary/combining UTF-8, named whole messages,
 Russian plural rules and invalid-locale handling. [API and asset syntax](localization.md).
 
 - [Additive preload/activation](examples/streaming.js) runs on a persistent root in `projects/streamed_range`; requests never block.
+
+## M61 slots and durable references
+
+[saves.js](examples/saves.js) uses the ordinary public service. Attach to an entity
+in a registered project with supported modern components. Default policy queues a
+save and polls later; the focused fixture cancels before capture. The separate M61
+application proof executes committed saves and fresh-process restores. Never treat
+`queued` as success, and wait for `completed` before exiting. [Save API](saves.md).

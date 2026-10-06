@@ -1,4 +1,4 @@
-import {ui,input,scenes,session,localization,audio} from 'judas';
+import {ui,input,scenes,session,localization,audio,saves} from 'judas';
 import {round,targets,navigators} from './round.js';
 // Only presentation changes with language. Score/physics/weapon rules are untouched.
 function message(){const s=round.message;const points=/^\+(\d+) - physical hit!$/.exec(s);if(points)return localization.format('range.hit',{points:Number(points[1])});
@@ -6,11 +6,12 @@ function message(){const s=round.message;const points=/^\+(\d+) - physical hit!$
  return keys[s]?localization.format('range.'+keys[s]):s;
 }
 export default class {
- constructor(player){this.player=player;this.doc=ui.get('range_ui');this.last='';}
- start(){ui.debugOverlayVisible=false;this.doc.modal=false;this.doc.get('pause').visible=false;input.pointerCapture=true;}
- menu(open){audio.setGroup("effects",{paused:open});this.doc.modal=open;this.doc.get('pause').visible=open;input.pointerCapture=!open;}
+ constructor(player){this.player=player;this.doc=ui.get('range_ui');this.last='';this.saveRequest=0;this.selected='slot-a';this.saveMessage='';}
+ start(){this.saveRequest=saves.refresh();ui.debugOverlayVisible=false;this.doc.modal=false;this.doc.get('pause').visible=false;this.doc.get('save_panel').visible=false;input.pointerCapture=true;}
+ menu(open){audio.setGroup("effects",{paused:open});this.doc.modal=open;this.doc.get('pause').visible=open;this.doc.get('save_panel').visible=open;input.pointerCapture=!open;}
  nextLanguage(){const languages=localization.available;localization.setLocale(languages[(languages.indexOf(localization.locale)+1)%languages.length]);}
- update(){if(input.pressed('pause'))this.menu(!this.doc.modal);if(input.pressed('language_next'))this.nextLanguage();
+ update(){if(this.saveRequest){const result=saves.status(this.saveRequest);if(result){this.saveMessage=localization.format('save.'+result.state)+(result.error?' — '+result.error:'');if(['completed','failed','cancelled'].includes(result.state))this.saveRequest=0;}}const slot=saves.list().find(s=>s.id===this.selected);this.doc.get('save_status').text=localization.format('save.selected',{slot:this.selected,name:slot?.name||'—'})+'\n'+this.saveMessage;
+ if(input.pressed('pause'))this.menu(!this.doc.modal);if(input.pressed('language_next'))this.nextLanguage();
   let ready=0;for(const t of targets.values())if(t.state.ready)ready++;
   const chasers=[...navigators.values()].filter(n=>!n.state.defeated).length,best=session.get('rangeBest')||0;
   const signature=[localization.revision,round.score,round.hits,round.shots,round.unique,targets.size,ready,this.player.camera.third,chasers,best,round.message].join('|');
@@ -25,6 +26,11 @@ export default class {
   if(e.type==='back'||e.type==='click'&&e.element==='resume')this.menu(false);
   if(e.type==='click'&&e.element==='restart')scenes.reload();
   if(e.type==='click'&&e.element==='language')this.nextLanguage();
+  if(e.type==='click'&&e.element==='save_slot'){this.selected=this.selected==='slot-a'?'slot-b':'slot-a';this.confirmOperation='';}
+  if(e.type==='click'&&['save','load','delete'].includes(e.element)&&!this.saveRequest){try{
+   if((e.element==='delete'||e.element==='save'&&saves.exists(this.selected))&&this.confirmOperation!==e.element){this.confirmOperation=e.element;this.saveMessage=localization.format('save.confirm');return;}this.confirmOperation='';
+   this.saveRequest=e.element==='save'?saves.save(this.selected,{name:localization.format('save.name',{slot:this.selected}),metadata:{score:round.score}}):e.element==='load'?saves.load(this.selected):saves.delete(this.selected);
+  }catch(error){this.saveMessage=String(error);}}
   if(e.type==='click'&&e.element==='quit')ui.quit();
  }
 }

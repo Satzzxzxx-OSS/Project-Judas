@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -163,6 +164,8 @@ public:
     };
     const std::vector<TouchEvent>& LastStepTouchEvents() const;
     void ClearTouchHistory();
+    void PersistTouches(class SaveArchive&,const std::function<uint64_t(BodyHandle)>&,const std::function<BodyHandle(uint64_t)>&,const std::function<bool(BodyHandle)>& include = {});
+    void PersistBodyForces(class SaveArchive&,BodyHandle);
     bool SetBodySensor(BodyHandle handle,bool sensor);
     bool IsBodySensor(BodyHandle handle) const;
     bool SetBodyEnabled(BodyHandle handle,bool enabled);

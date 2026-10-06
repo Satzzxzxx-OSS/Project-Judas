@@ -1,4 +1,5 @@
 #include "WorldStreaming.h"
+#include "SaveService.h"
 #include "PerformanceProfiler.h"
 #include "SceneSession.h"
 #include "RuntimeWorld.h"
@@ -43,7 +44,7 @@ WorldStreaming* SceneSession::Streaming(RuntimeWorld& world,std::string& error){
 }
 void SceneSession::AdvanceStreaming(RuntimeWorld& world,bool paused){if(!ComposedProject())return;std::string error;if(auto* stream=Streaming(world,error))stream->Advance(paused);}
 bool SceneSession::Request(const std::string& scene,std::string& error){
-    if(!m_accepting){error="Scene lifecycle is ending";return false;}
+    if(!m_accepting||(m_saveService&&m_saveService->Busy())){error="Scene/save lifecycle is busy";return false;}
     if(std::find(m_scenes.begin(),m_scenes.end(),scene)==m_scenes.end()){
         error="Scene is not registered in this project: "+scene;return false;
     }
@@ -87,3 +88,6 @@ bool SceneSession::Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& p
     // save/load compatibility remains tied to this new world's baseline.
     return true;
 }
+
+SaveService* SceneSession::Saves(ResourceManager& resources){if(!m_saveService)m_saveService=std::make_unique<SaveService>(*this,resources,m_editorSaves);return m_saveService.get();}
+void SceneSession::AdvanceSaves(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& play,ResourceManager& resources,std::string& error){if(m_saveService)m_saveService->Advance(world,play,error);(void)resources;}

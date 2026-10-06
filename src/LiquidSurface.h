@@ -37,6 +37,7 @@ struct LiquidSurfaceCell {std::uint64_t geometryRevision=1;double volume=0,previ
 struct LiquidSurfaceAllocation {std::vector<std::pair<unsigned,double>> changes;double amount=0;};
 class LiquidSurface {
 public:
+ void Persist(class SaveArchive&);
  explicit LiquidSurface(std::shared_ptr<const LiquidSurfaceData>,double volume);
  std::shared_ptr<const LiquidSurfaceData> data;
  std::vector<LiquidSurfaceCell> cells;std::vector<double> discharge;
