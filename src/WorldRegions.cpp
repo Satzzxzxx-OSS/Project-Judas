@@ -46,6 +46,17 @@ void RuntimeWorld::PublishRegion(const std::vector<EntityId>& ids) {
     for(auto& e:m_audioEmitters)if(std::find(ids.begin(),ids.end(),e.id)!=ids.end())e.wantPlay=e.settings.playOnStart;
     ++m_entityVersion;
 }
+bool RuntimeWorld::RestoreRegionObject(EntityId id,const SceneTransform& transform,const EntityPhysicalState& state,const std::vector<ScriptStateRecord>& scripts,std::string& error,bool resume){
+    if(!m_regionPending.count(id)){error="restoration requires a private staged entity";return false;}
+    // Owner-thread scope only: no callback or step can observe temporary lookup
+    // access. Bodies stay disabled, including a newly constructed motor capsule.
+    m_regionPending.erase(id);
+    const bool ok=SetRuntimeTransform(id,transform)&&SetEntityState(id,state);
+    if(auto* motor=RuntimeCharacter(id))motor->velocity=state.linearVelocity;
+    m_physics.SetBodyEnabled(RuntimeBody(id),false);m_regionPending.insert(id);
+    if(!ok){error="invalid retained entity state";return false;}
+    return RestoreScriptState(scripts,error,resume);
+}
 bool RuntimeWorld::RegionVisualReady(const std::vector<EntityId>& ids)const {
     if(!m_assets)return true;
     for(auto id:ids)if(auto it=m_regionAssets.find(id);it!=m_regionAssets.end())for(auto& asset:it->second){auto* r=m_assets->Assets()->Find(asset);if(r&&(r->type==AssetType::Audio||r->type==AssetType::AudioEffect))continue;if(m_assets->StateOf(asset)!=ResourceState::Ready)return false;}
@@ -55,7 +66,7 @@ void RuntimeWorld::EndRegionScripts(const std::vector<EntityId>& ids){if(m_scrip
 void RuntimeWorld::RemoveRegionObject(EntityId id) {
     // Suspension is preflighted by the residency coordinator. In particular,
     // conserved liquids are pinned; destruction's parked-parcel path is not used.
-    m_regionPending.insert(id);
+    m_regionPending.insert(id);if(m_scripts)m_scripts->RemoveEntities({id});
     if(m_navigation)m_navigation->RemoveSurface(id);
     if(auto it=m_runtimeJoints.find(id);it!=m_runtimeJoints.end()){m_physics.DestroyJoint(it->second);m_runtimeJoints.erase(it);}
     BodyHandle handle;
@@ -72,10 +83,10 @@ void RuntimeWorld::RemoveRegionObject(EntityId id) {
     if(m_cameraRenderer)for(auto& c:m_renderCameras)if(c.id==id)m_cameraRenderer->DestroyRenderTarget(c.target);
     if(m_ui)m_ui->RemoveOwner(id);
     auto erase=[&](auto& v){v.erase(std::remove_if(v.begin(),v.end(),[&](const auto& e){return e.id==id;}),v.end());};
-    erase(m_entities);erase(m_extraEntities);erase(m_staticBodies);erase(m_staticRenderables);erase(m_staticLights);
+    erase(m_entities);erase(m_extraEntities);m_entityIndexVersion=~0u;erase(m_staticBodies);erase(m_staticRenderables);erase(m_staticLights);
     erase(m_audioZones);erase(m_audioEmitters);erase(m_particleEmitters);erase(m_renderCameras);
     RemoveDeformable(id);m_deformableOwners.erase(id);m_characters.erase(id);m_animationInstances.erase(id);m_animationOwners.erase(id);m_jointOwners.erase(id);m_jointParticipants.erase(id);
-    m_scriptDefinitions.erase(id);m_entityCategories.erase(id);m_hierarchy.DestroyObject(id);
+    m_scriptDefinitions.erase(id);m_scriptOwners.erase(id);m_entityCategories.erase(id);m_hierarchy.DestroyObject(id);
     if(auto it=m_regionAssets.find(id);it!=m_regionAssets.end()){
         if(m_assets)for(auto& a:it->second){m_assets->ReleaseRef(a);auto ref=std::find(m_referencedAssets.begin(),m_referencedAssets.end(),a);if(ref!=m_referencedAssets.end())m_referencedAssets.erase(ref);}
         m_regionAssets.erase(it);
@@ -84,7 +95,7 @@ void RuntimeWorld::RemoveRegionObject(EntityId id) {
 }
 void RuntimeWorld::RebuildRegionGravity(const std::map<EntityId,std::string>& order) {
     m_gravityMap.Clear();m_gravityFields.clear();m_gravityVolumes.clear();m_gravityRegions.clear();
-    auto objects=ScriptObjects();std::stable_sort(objects.begin(),objects.end(),[&](const auto& a,const auto& b){
+    std::vector<SceneObject> objects;for(const auto& [id,d]:m_scriptDefinitions)if(d.gravity&&RuntimeDefinition(id))objects.push_back(d);std::stable_sort(objects.begin(),objects.end(),[&](const auto& a,const auto& b){
         auto key=[&](EntityId id){auto it=order.find(id);return it==order.end()?std::string("0:")+std::to_string(id):it->second;};return key(a.id)<key(b.id);
     });
     for(auto& o:objects)if(o.gravity){auto g=*o.gravity;std::unique_ptr<GravityField> field;

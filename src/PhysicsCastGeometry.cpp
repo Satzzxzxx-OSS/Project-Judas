@@ -57,8 +57,17 @@ PrimitiveCastHit CastAgainstPrimitive(const Shape& cast,const BodyTransform& pos
         glm::dvec3 a=center-queryR[1]*half,b=center+queryR[1]*half;
         Distance d;
         if(cast.type!=ShapeType::Box) {
-            if(target.shape.type==ShapeType::Sphere)d=SegmentSphere(a,b,cast.radius,target.shape.radius);
+            if(target.shape.type==ShapeType::Capsule){auto x=SegmentGeometry(targetCenter+a,targetCenter+b,cast.radius,target);d={x.gap,x.normal,x.point-targetCenter};}
+            else if(target.shape.type==ShapeType::Sphere)d=SegmentSphere(a,b,cast.radius,target.shape.radius);
             else {d=SegmentBox(glm::transpose(targetR)*a,glm::transpose(targetR)*b,cast.radius,glm::dvec3(target.shape.halfExtents));d.normal=targetR*d.normal;d.point=targetR*d.point;}
+        } else if(target.shape.type==ShapeType::Capsule) {
+            // Reverse segment/OBB distance, preserving the real capsule witness.
+            auto axis=targetR[1]*double(target.shape.halfHeight);
+            auto reverse=SegmentBox(glm::transpose(queryR)*(-axis-center),glm::transpose(queryR)*(axis-center),target.shape.radius,glm::dvec3(cast.halfExtents));
+            d.gap=reverse.gap;d.normal=-queryR*reverse.normal;
+            // The reverse box witness and separation reconstruct its nearest
+            // target capsule surface, including initial overlap.
+            d.point=center+queryR*reverse.point+d.normal*reverse.gap;
         } else if(target.shape.type==ShapeType::Sphere) {
             // Reverse sphere/box distance and convert its target witness back to
             // the sphere surface. This is the same physical sphere/OBB geometry.
@@ -165,6 +174,21 @@ PrimitiveCastHit CastAgainstPrimitive(const Shape& cast,const BodyTransform& pos
             double projection=glm::dot(origin,dir),disc=projection*projection-glm::dot(origin,origin)+double(target.shape.radius)*target.shape.radius;
             if(disc<0)return {};
             double t=-projection-std::sqrt(disc);if(t<0||t>maximum)return {};return MakeHit(t,distance(t),false);
+        }
+        if(target.shape.type==ShapeType::Capsule){
+            auto start=distance(0);if(start.gap<=0)return MakeHit(0,start,true);
+            const auto o=glm::transpose(targetR)*origin,v=glm::transpose(targetR)*dir;
+            const double r=target.shape.radius,h=target.shape.halfHeight;
+            double best=INFINITY;
+            auto roots=[&](double A,double B,double C,const auto& accepts){
+                if(A<=1e-24)return;
+                double disc=B*B-A*C;if(disc<0)return;
+                for(double t:{(-B-std::sqrt(disc))/A,(-B+std::sqrt(disc))/A})
+                    if(t>=0&&t<=maximum&&t<best&&accepts(o+v*t))best=t;
+            };
+            roots(v.x*v.x+v.z*v.z,o.x*v.x+o.z*v.z,o.x*o.x+o.z*o.z-r*r,[&](auto p){return p.y>=-h&&p.y<=h;});
+            for(double end:{-h,h}){auto a=o-glm::dvec3(0,end,0);roots(glm::dot(v,v),glm::dot(a,v),glm::dot(a,a)-r*r,[&](auto p){return end<0?p.y<=-h:p.y>=h;});}
+            return std::isfinite(best)?MakeHit(best,distance(best),false):PrimitiveCastHit{};
         }
         auto o=glm::transpose(targetR)*origin,v=glm::transpose(targetR)*dir,h=glm::dvec3(target.shape.halfExtents);
         auto start=distance(0);if(start.gap<=0)return MakeHit(0,start,true);

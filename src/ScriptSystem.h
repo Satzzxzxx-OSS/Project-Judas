@@ -1,4 +1,5 @@
 #include <map>
+#include <optional>
 #pragma once
 #include "Scene.h"
 #include "PhysicsWorld.h"
@@ -10,6 +11,7 @@ class AssetDatabase;
 class InputSystem;
 struct ScriptStateRecord { SceneObjectId entity=0;std::uint64_t slot=0;std::string json="{}"; };
 struct ScriptProperty {std::string name,type,text;double number=0;bool boolean=false;};
+struct ScriptMetadataStats {uint64_t parserConstructions=0,referenceInspections=0;};
 struct ScriptDiagnostic {SceneObjectId entity=0;std::uint64_t slot=0;std::string asset,callback,message;};
 // One main-thread session per world. No backend objects escape this boundary.
 class ScriptSystem {
@@ -18,6 +20,7 @@ public:
     ~ScriptSystem();
     ScriptSystem(const ScriptSystem&)=delete;
     void Synchronize(const std::vector<SceneObject>& objects);
+    std::optional<std::vector<SceneObjectId>> DeclaredReferences(SceneObjectId,const SceneScriptSlot&)const;
     // Latest active presentation camera, for project-authored pointing UI.
     void SetView(const glm::mat4& view);
     void Frame(const InputSystem* input,float dt);
@@ -29,11 +32,12 @@ public:
     void UIEvents(const InputSystem* input,float dt);
     void Stop();
     void RemoveEntities(const std::vector<SceneObjectId>&);
-    std::vector<ScriptStateRecord> Capture(bool required=false) const;
+    std::vector<ScriptStateRecord> Capture(bool required=false,const std::vector<SceneObjectId>* only=nullptr) const;
     bool Restore(const std::vector<ScriptStateRecord>& records,std::string& error,bool resume=false);
     const std::vector<ScriptDiagnostic>& Diagnostics() const;
     void SetBudget(unsigned interruptPolls);
     static bool ValidateJson(const std::string& text,std::string& error,bool requireObject=true);
+    static ScriptMetadataStats MetadataStats();
     static std::vector<SceneObjectId> PropertyEntities(const std::string& values);
     static std::string RemapPropertyEntities(const std::string& values,const std::map<SceneObjectId,SceneObjectId>& ids);
     static bool SetPropertyEntity(std::string& values,const std::string& name,SceneObjectId id);
@@ -42,5 +46,5 @@ public:
     static bool SourceFingerprint(const AssetDatabase& assets,const Scene& scene,std::string& digest,std::string& error,bool strict=true);
     static bool Inspect(const AssetDatabase& assets,const std::string& asset,std::string& schema,std::string& error);
 private:
-    struct Impl;std::unique_ptr<Impl> m;
+    struct Impl;static Impl& PropertyVM();std::unique_ptr<Impl> m;
 };

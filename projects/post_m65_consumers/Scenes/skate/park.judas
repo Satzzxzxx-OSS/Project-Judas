@@ -1448,6 +1448,7 @@ object 12 "Rider"
   ragdoll.bone.2.limits false
   ragdoll.bone.2.lower -1
   ragdoll.bone.2.upper 1
+  ragdoll.bone.2.rotational-resistance 0.05
   ragdoll.bone.3.joint "mixamorig:LeftArm"
   ragdoll.bone.3.parent "mixamorig:Spine1"
   ragdoll.bone.3.shape 0
@@ -1678,6 +1679,7 @@ object 12 "Rider"
   ragdoll.bone.12.limits true
   ragdoll.bone.12.lower -0.6
   ragdoll.bone.12.upper 0.6
+  ragdoll.bone.12.rotational-resistance 0.05
 end
 
 object 20 "SFX roll_loop"

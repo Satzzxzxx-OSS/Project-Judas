@@ -301,7 +301,9 @@ public:
     void UpdateUIScripts(InputSystem* input,float dt);
     void DispatchUIEvents(const InputSystem* input,float dt);
     ScriptSystem* Scripts() const {return m_scripts.get();}
-    std::vector<SceneObject> ScriptObjects() const;
+    struct MetadataWork {uint64_t lookups=0,indexRebuilds=0,definitionsCopied=0;};
+    MetadataWork MetadataStats()const{return m_metadataWork;}
+    std::vector<SceneObject> ScriptObjects(bool scriptedOnly=false) const;
     const SceneObject* RuntimeDefinition(EntityId id) const;
     bool SetRuntimeTransform(EntityId id,const SceneTransform& transform);
     bool SetMaterialSlot(EntityId,unsigned,const MaterialSlot&);
@@ -397,7 +399,7 @@ public:
     std::vector<EntityId> QueryEntities(CategoryMask requiredTags,CategoryMask excludedTags=0,
                                       const std::vector<EntityId>* candidates=nullptr) const;
     const std::vector<EntityRecord>& Entities() const { return m_entities; }
-    std::vector<EntityRecord>& MutableEntities() { return m_entities; }
+    std::vector<EntityRecord>& MutableEntities() { m_entityIndexVersion=~0u; return m_entities; }
     const EntityRecord* FindEntity(EntityId id) const;
     EntityRecord* FindEntity(EntityId id);
     EntityId EntityIdOfBody(BodyHandle handle) const;
@@ -469,6 +471,7 @@ public:
 // M59 registration seam uses the same component constructor as Build.
     bool StageRegionObject(const SceneObject& worldObject,const SceneObject& localObject,std::string&,const std::string& stableIdentity="");
     void PublishRegion(const std::vector<EntityId>& ids);
+    bool RestoreRegionObject(EntityId,const SceneTransform&,const EntityPhysicalState&,const std::vector<ScriptStateRecord>&,std::string&,bool);
     bool RegionVisualReady(const std::vector<EntityId>& ids) const;
     void HideRegion(const std::vector<EntityId>& ids);
     void BindRegionCameraReference(EntityId id,EntityId target);
@@ -525,7 +528,14 @@ private:
     std::unique_ptr<RuntimeUI> m_ui;
     std::unique_ptr<LocalizationSession> m_localization;
     std::map<EntityId,SceneObject> m_scriptDefinitions;
+    std::set<EntityId> m_scriptOwners; // Ordered membership; inert scenery is not copied into callback phases.
     std::vector<EntityRecord> m_extraEntities; // normal non-dynamic runtime components
+    // Store positions rather than pointers: vector growth never aliases stale records.
+    mutable MetadataWork m_metadataWork;
+    void RefreshEntityIndex() const;
+    mutable std::map<EntityId,std::pair<bool,size_t>> m_entityIndex;
+    mutable unsigned m_entityIndexVersion=~0u;
+    mutable size_t m_entityIndexMainSize=~size_t(0),m_entityIndexExtraSize=~size_t(0);
     SceneSettings m_settings;
     std::string m_baselineFingerprint;
     ResourceManager* m_assets = nullptr;

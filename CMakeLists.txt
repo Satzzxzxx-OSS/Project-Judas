@@ -1296,3 +1296,12 @@ target_compile_options(judas_consumer_capsule_repro PRIVATE -Wall -Wextra -Wpeda
 add_executable(judas_consumer_reference_repro tools/ConsumerReferenceRepro.cpp)
 target_link_libraries(judas_consumer_reference_repro PRIVATE judas_engine)
 target_compile_options(judas_consumer_reference_repro PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(judas_post_consumer_query_tests tests/PostConsumerQueryTests.cpp)
+target_link_libraries(judas_post_consumer_query_tests PRIVATE judas_engine)
+target_compile_options(judas_post_consumer_query_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(judas_post_consumer_metadata_tests tests/PostConsumerMetadataTests.cpp)
+target_link_libraries(judas_post_consumer_metadata_tests PRIVATE judas_engine)
+add_executable(judas_post_consumer_ragdoll_tests tests/PostConsumerRagdollTests.cpp)
+target_link_libraries(judas_post_consumer_ragdoll_tests PRIVATE judas_engine)

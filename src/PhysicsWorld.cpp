@@ -238,7 +238,7 @@ struct PhysicsWorld::Impl {
     DynamicAabbTree tree;
     std::vector<std::pair<unsigned int, unsigned int>> candidatePairs;
     mutable std::vector<unsigned int> queryScratch;
-    struct JointRecord {JointHandle handle;JointState state;std::array<float,10> warm{};float previousCoordinate=0;};
+    struct JointRecord {JointHandle handle;JointState state;std::array<float,12> warm{};float previousCoordinate=0;};
     std::vector<JointRecord> joints;
     std::set<std::pair<unsigned,unsigned>> suppressedPairs;
     JointSolver jointSolver,eventJointSolver;
@@ -279,7 +279,9 @@ struct PhysicsWorld::Impl {
             }
         }
     }
+    uint64_t sleepTraceStep=0;
     void Settle(float dt){
+        ++sleepTraceStep;
         if(!sleepingEnabled){for(auto i:aliveSlots)if(bodies[i].isDynamic)++stats.awakeBodies;return;}
         std::vector<unsigned> parent(bodies.size());for(unsigned i=0;i<parent.size();++i)parent[i]=i;
         auto root=[&](unsigned i){while(parent[i]!=i){parent[i]=parent[parent[i]];i=parent[i];}return i;};
@@ -307,6 +309,13 @@ struct PhysicsWorld::Impl {
             }
             for(const auto& c:lastStepContacts)if(c.penetration>.02f){ // only invalidate the contacting island
                 for(auto i:slots)if(glm::length(c.point-bodies[i].rigidBody.position)<bodies[i].boundingRadius+.1f)quiet=false;
+            }
+            if(std::getenv("JUDAS_SLEEP_TRACE")&&sleepTraceStep%60==0){
+                float linear=0,angular=0,travel=0,anchorError=0,angularError=0,penetration=0;bool drive=false,limit=true;
+                for(auto i:slots){const auto& b=bodies[i];linear=std::max(linear,glm::length(b.rigidBody.linearVelocity));angular=std::max(angular,glm::length(b.rigidBody.angularVelocity));travel=std::max(travel,glm::length(b.rigidBody.position-b.previousPosition));}
+                for(const auto& j:joints)if(JointActive(j)&&root(j.state.settings.bodyA.id&kSlotMask)==root(slots.front())){const auto& x=j.state.settings;auto* a=Get(x.bodyA);auto* b=Get(x.bodyB);auto pa=a->rigidBody.position+a->rigidBody.orientation*(x.anchorA-a->shape.pivotOffset),pb=b?b->rigidBody.position+b->rigidBody.orientation*(x.anchorB-b->shape.pivotOffset):x.anchorB;anchorError=std::max(anchorError,glm::length(pa-pb));drive|=x.motor&&x.speed!=0;limit&=!x.limits||(j.state.coordinate>=x.lower-.01f&&j.state.coordinate<=x.upper+.01f);auto qa=glm::normalize(a->rigidBody.orientation*x.frameA),qb=b?glm::normalize(b->rigidBody.orientation*x.frameB):glm::normalize(x.frameB);if(x.type==JointType::Hinge)angularError=std::max(angularError,glm::length(qa*glm::vec3(1,0,0)-qb*glm::vec3(1,0,0)));}
+                for(const auto& c:lastStepContacts)for(auto i:slots)if(glm::length(c.point-bodies[i].rigidBody.position)<bodies[i].boundingRadius+.1f)penetration=std::max(penetration,c.penetration);
+                std::fprintf(stderr,"SLEEP step=%llu root=%u members=%zu v=%g w=%g travel=%g anchor=%g axis=%g penetration=%g drive=%d limits=%d quiet=%d time=%g supported=%d\n",(unsigned long long)sleepTraceStep,slots.front(),slots.size(),linear,angular,travel,anchorError,angularError,penetration,drive,limit,quiet,seconds,anchored);
             }
             seconds=quiet?seconds+dt:0;
             const bool asleep=quiet&&seconds>=.75f&&(anchored||std::all_of(slots.begin(),slots.end(),[&](unsigned i){return glm::length(bodies[i].lastAcceleration)<1e-6f&&glm::length(bodies[i].rigidBody.linearVelocity)<1e-6f&&glm::length(bodies[i].rigidBody.angularVelocity)<1e-6f;}));
@@ -2302,11 +2311,11 @@ JointHandle PhysicsWorld::CreateJoint(const JointSettings& settings) {
 }
 bool PhysicsWorld::DestroyJoint(JointHandle handle){JointState old;if(GetJoint(handle,old)){Wake(old.settings.bodyA);Wake(old.settings.bodyB);}if(!m_impl)return false;auto& joints=m_impl->joints;auto it=std::find_if(joints.begin(),joints.end(),[&](const auto& j){return j.handle.id==handle.id;});if(it==joints.end())return false;joints.erase(it);return true;}
 bool PhysicsWorld::GetJoint(JointHandle handle,JointState& state)const{if(!m_impl)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){if(!m_impl->Get(joint.state.settings.bodyA)||(joint.state.settings.bodyB.IsValid()&&!m_impl->Get(joint.state.settings.bodyB)))return false;state=joint.state;state.active=m_impl->JointActive(joint);return true;}return false;}
-bool PhysicsWorld::SetJoint(JointHandle handle,const JointSettings& settings){JointState previous;if(!GetJoint(handle,previous)||!ValidJointSettings(settings)||settings.bodyA.id!=previous.settings.bodyA.id||settings.bodyB.id!=previous.settings.bodyB.id)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){m_impl->Wake(settings.bodyA.id&Impl::kSlotMask);if(m_impl->Get(settings.bodyB))m_impl->Wake(settings.bodyB.id&Impl::kSlotMask);joint.state.settings=settings;joint.warm.fill(0);return true;}return false;}
+bool PhysicsWorld::SetJoint(JointHandle handle,const JointSettings& settings){JointState previous;if(!GetJoint(handle,previous)||!ValidJointSettings(settings)||settings.bodyA.id!=previous.settings.bodyA.id||settings.bodyB.id!=previous.settings.bodyB.id)return false;for(auto& joint:m_impl->joints)if(joint.handle.id==handle.id){if(JointSettingsEqual(joint.state.settings,settings))return true;m_impl->Wake(settings.bodyA.id&Impl::kSlotMask);if(m_impl->Get(settings.bodyB))m_impl->Wake(settings.bodyB.id&Impl::kSlotMask);joint.state.settings=settings;joint.warm.fill(0);return true;}return false;}
 
 bool PhysicsWorld::SetPairCollisionEnabled(BodyHandle a,BodyHandle b,bool enabled){
     if(!m_impl||a.id==b.id||!m_impl->Get(a)||!m_impl->Get(b))return false;
-    Wake(a);Wake(b);auto pair=std::minmax(a.id,b.id);if(enabled)m_impl->suppressedPairs.erase(pair);else m_impl->suppressedPairs.insert(pair);return true;
+    auto pair=std::minmax(a.id,b.id);if((m_impl->suppressedPairs.count(pair)==0)==enabled)return true;Wake(a);Wake(b);if(enabled)m_impl->suppressedPairs.erase(pair);else m_impl->suppressedPairs.insert(pair);return true;
 }
 
 void PhysicsWorld::PersistTouches(SaveArchive& a,const std::function<uint64_t(BodyHandle)>& identity,const std::function<BodyHandle(uint64_t)>& resolve,const std::function<bool(BodyHandle)>& include){

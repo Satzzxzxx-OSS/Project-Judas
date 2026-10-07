@@ -279,7 +279,7 @@ void DrawRagdoll(EditorDocument& doc,SceneObject& object,EditorPanelState& state
         DragVec3(doc,"Shape offset",b.offset,.01f);frame("Shape orientation",b.orientation);DragVec3(doc,"Half extents",b.halfExtents,.01f);DragScalar(doc,"Radius",b.radius,.01f);DragScalar(doc,"Mass",b.mass,.1f);DragScalar(doc,"Friction",b.friction,.01f);DragScalar(doc,"Restitution",b.restitution,.01f);
         if(state.project){DrawCategoryLayer(doc,"Collision layer",b.collisionLayer,state.project->Settings().classification.collision);DrawCategoryMask(doc,"Collision mask",b.collisionMask,state.project->Settings().classification.collision);}
         Checkbox(doc,"Suppress parent collision",b.suppressParentCollision);Checkbox(doc,"Capture anchors from current pose",b.autoAnchors);
-        const char* types[]={"Fixed","Hinge","Ball","Slider"};Combo(doc,"Constraint",b.constraint.type,types,4);Checkbox(doc,"Constraint enabled",b.constraint.enabled);Checkbox(doc,"Limits",b.constraint.limits);DragScalar(doc,"Lower",b.constraint.lower,.01f);DragScalar(doc,"Upper",b.constraint.upper,.01f);
+        const char* types[]={"Fixed","Hinge","Ball","Slider"};Combo(doc,"Constraint",b.constraint.type,types,4);Checkbox(doc,"Constraint enabled",b.constraint.enabled);Checkbox(doc,"Limits",b.constraint.limits);DragScalar(doc,"Lower",b.constraint.lower,.01f);DragScalar(doc,"Upper",b.constraint.upper,.01f);DragScalar(doc,"Rotational resistance (N m s/rad)",b.constraint.rotationalResistance,.01f,0,100000);
         if(!b.autoAnchors){DragVec3(doc,"Child anchor",b.constraint.anchorA,.01f);DragVec3(doc,"Parent anchor",b.constraint.anchorB,.01f);}
         frame("Child frame",b.constraint.frameA);frame("Parent frame",b.constraint.frameB);
         if(ImGui::Button("Remove mapping"))remove=i;
@@ -315,6 +315,7 @@ void DrawJoint(EditorDocument& doc, SceneObject& object, EditorPanelState&) {
         Checkbox(doc,"Spring",settings.spring);DragScalar(doc,"Rest coordinate",settings.rest);
         DragScalar(doc,"Stiffness",settings.stiffness,.1f,0,100000);DragScalar(doc,"Damping",settings.damping,.1f,0,100000);
     }
+    DragScalar(doc,"Rotational resistance (N m s/rad)",settings.rotationalResistance,.01f,0,100000);
     if(!ValidJointSettings(settings)||joint.bodyA==0||joint.bodyA==joint.bodyB)ImGui::TextColored(ImVec4(1,.3f,.2f,1),"Invalid joint settings or body references");
 }
 

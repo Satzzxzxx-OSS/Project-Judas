@@ -46,7 +46,9 @@ int main(){std::string error;JobSystem jobs(2);AudioSystem audio;audio.SetJobSys
  }
  // Real ordinary M59 registration/adoption/removal, root cursor persists.
  Project range;Check(range.Load("projects/streamed_range/streamed_range.judasproj",error),"current streamed game project");resources.Shutdown();db.Scan(range.RootDir(),range.AssetsDir());ResourceManager regionResources(nullptr,&db,&jobs,&audio);regionResources.SetHeadlessResidency(true);Scene root;Check(LoadSceneFromFile(range.StartupScenePath(),root,error),"registered streamed root scene");for(auto& o:root.Objects()){o.scripts.clear();o.ui.reset();}RuntimeWorld streamed;streamed.audioGroups=range.Settings().audio;Check(streamed.Build(root,&regionResources,error,&range.Settings().classification,&range.Settings().navigation),"audio root through ordinary world path");auto session=std::make_shared<SceneSession>(range,range.StartupScenePath());streamed.SetSceneControl(session);auto* stream=session->Streaming(streamed,error);Check(stream!=nullptr,"normal world manifest coordinator");if(!stream){std::puts(error.c_str());return 1;}streamed.BeginAudio();
- auto frame=[&]{regionResources.Pump();stream->Advance(false);streamed.UpdateAudio(glm::mat4(1),1,.016);audio.AdvanceWithoutDevice(512);std::this_thread::sleep_for(std::chrono::milliseconds(1));};
+ // This isolated audio clock still initializes region script metadata through
+ // normal lifecycle. Otherwise conservative unpublished-schema pins cannot retire.
+ auto frame=[&]{regionResources.Pump();streamed.UpdateScripts(nullptr,0);stream->Advance(false);streamed.UpdateAudio(glm::mat4(1),1,.016);audio.AdvanceWithoutDevice(512);std::this_thread::sleep_for(std::chrono::milliseconds(1));};
  auto state=[&](const char* id){for(auto& r:stream->Regions())if(r.id==id)return r.state;return std::string();};
  auto wait=[&](const char* id,const char* expected){for(int i=0;i<3000;++i){frame();if(state(id)==expected)return true;}return false;};
  for(int i=0;i<30;++i)frame();

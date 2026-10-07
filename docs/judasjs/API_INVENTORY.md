@@ -1,6 +1,6 @@
 # Current public JudasJS inventory
 
-M65 review of the registered virtual module based on starting checkpoint `19a53a42a9b363818e67c07d8b63e9fddcea2845`.
+Post-M65 corrective review of the registered virtual module based on starting checkpoint `26e6f089fde0f39d68659882f6204da3a453473e`.
 Each row is a runtime export/member (constructors and plain handle fields included).
 Native dispatcher operations are implementation details, not additional JS APIs.
 
@@ -302,7 +302,7 @@ Native dispatcher operations are implementation details, not additional JS APIs.
 
 - **globalThis.__judas**: Internal native dispatcher; unsupported, not a public API declaration.
 - **globalThis.console**: Alias of exported console; no extra API.
-- **result objects / config / property schema**: Native structured fields and value validation reviewed manually; representative runtime/type examples cover shapes, not every invalid value.
+- **result objects / config / property schema**: Native structured fields (including JointConfiguration.rotationalResistance) and value validation reviewed manually; representative runtime/type examples cover shapes, not every invalid value.
 - **types-only exports**: Interfaces/type aliases are tooling only; runtime export comparison excludes them.
 - **setter-only accessors**: TypeScript cannot prohibit reads; docs state these return undefined.
 - **callback ordering / phases**: Implementation traced manually; no AST checker proves temporal semantics.

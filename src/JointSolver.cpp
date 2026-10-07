@@ -10,9 +10,10 @@ void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool wa
   glm::quat qa=glm::normalize(a.orientation),qb=glm::normalize(b.orientation),fa=qa*glm::normalize(s.frameA),fb=qb*glm::normalize(s.frameB);
   auto basis=glm::mat3_cast(fa);auto ra=qa*(s.anchorA-input.pivotOffsetA),rb=qb*(s.anchorB-input.pivotOffsetB),delta=(b.position-a.position)+rb-ra;
   auto ia=a.InverseInertiaWorld(),ib=b.InverseInertiaWorld();int index=0;
-  auto row=[&](glm::vec3 la,glm::vec3 lb,glm::vec3 aa,glm::vec3 ab,float error,float low=-std::numeric_limits<float>::infinity(),float high=std::numeric_limits<float>::infinity(),bool soft=false,bool motor=false){
+  auto row=[&](glm::vec3 la,glm::vec3 lb,glm::vec3 aa,glm::vec3 ab,float error,float low=-std::numeric_limits<float>::infinity(),float high=std::numeric_limits<float>::infinity(),bool soft=false,bool motor=false,bool resistance=false){
    float gamma=0,bias=impact?0:.2f*error/dt;
    if(soft){float denominator=dt*(s.damping+dt*s.stiffness);if(denominator<=0)return;gamma=1/denominator;bias=error*dt*s.stiffness*gamma;}
+   if(resistance){gamma=1/(dt*s.rotationalResistance);bias=0;}
    if(motor)bias=-s.speed;
    float k=a.inverseMass*glm::dot(la,la)+b.inverseMass*glm::dot(lb,lb)+glm::dot(aa,ia*aa)+glm::dot(ab,ib*ab);
    if(k+gamma<=0)return;
@@ -54,6 +55,12 @@ void JointSolver::Prepare(const std::vector<JointInput>& inputs,float dt,bool wa
    if(s.limits){if(coordinate<=s.lower||(!impact&&coordinate+velocity*dt<s.lower))axisRow(coordinate<s.lower?std::max(coordinate-s.lower,-maxCorrection):5*(coordinate-s.lower),0,inf);
     else if(coordinate>=s.upper||(!impact&&coordinate+velocity*dt>s.upper))axisRow(coordinate>s.upper?std::min(coordinate-s.upper,maxCorrection):5*(coordinate-s.upper),-inf,0);}
 
+  }
+  // Passive viscous joint resistance is solved implicitly with contacts and
+  // anchors. It opposes relative angular motion, never drives a rest pose.
+  if(!impact&&s.rotationalResistance>0&&(s.type==JointType::Ball||s.type==JointType::Hinge)){
+   index=9;const int axes=s.type==JointType::Ball?3:1;
+   for(int k=0;k<axes;++k)row({0,0,0},{0,0,0},-basis[k],basis[k],0,-inf,inf,false,false,true);
   }
  }
 }

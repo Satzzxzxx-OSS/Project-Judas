@@ -113,6 +113,12 @@ M PrimitiveRotation(const PrimitivePose& p){return ContactRotation(p.parentOrien
 V PrimitiveCenter(const PrimitivePose& p){return V(p.parentPosition)+ContactRotation(p.parentOrientation)*V(p.parentLocalCenter);}
 GeometryDistance SegmentGeometry(V a,V b,double radius,const PrimitivePose& target,double range,bool nearestSurface,uint32_t feature) {
  GeometryDistance out;M r=PrimitiveRotation(target),inverse=glm::transpose(r);V center=PrimitiveCenter(target),x=inverse*(a-center),y=inverse*(b-center);
+ if(target.shape.type==ShapeType::Capsule){
+  V u,v;segmentPair(x,y,V(0,-target.shape.halfHeight,0),V(0,target.shape.halfHeight,0),u,v);
+  double length=glm::length(u-v);V normal=unit(u-v);
+  double gap=length-radius-target.shape.radius;
+  return {gap<=range,length<=target.shape.radius,gap,center+r*(v+normal*double(target.shape.radius)),center+r*u,r*normal,0,length>eps};
+ }
  if(!target.shape.asset)return out;
  const auto& asset=*target.shape.asset;
  bool inside=asset.convex;
@@ -132,11 +138,12 @@ GeometryDistance PointGeometry(V point,const PrimitivePose& target,double range)
  if(target.shape.asset){auto out=SegmentGeometry(point,point,0,target,range,true);if(out.contains)out.gap=std::abs(out.gap);if(out.gap>range)out.valid=false;return out;}
  M r=PrimitiveRotation(target);V center=PrimitiveCenter(target),p=glm::transpose(r)*(point-center),q(0),n(0);bool inside=false;
  if(target.shape.type==ShapeType::Sphere){double length=glm::length(p);n=unit(p);q=n*double(target.shape.radius);inside=length<=target.shape.radius;}
+ else if(target.shape.type==ShapeType::Capsule){V axis(0,std::clamp(p.y,-double(target.shape.halfHeight),double(target.shape.halfHeight)),0);V offset=p-axis;double length=glm::length(offset);n=unit(offset);q=axis+n*double(target.shape.radius);inside=length<=target.shape.radius;}
  else if(target.shape.type==ShapeType::Box){V h(target.shape.halfExtents);inside=glm::all(glm::lessThanEqual(glm::abs(p),h));q=glm::clamp(p,-h,h);if(inside){V depth=h-glm::abs(p);int axis=depth.y<depth.x?1:0;if(depth.z<depth[axis])axis=2;n[axis]=p[axis]>=0?1:-1;q[axis]=n[axis]*h[axis];}else n=unit(p-q);}
  else if(target.shape.type==ShapeType::Terrain&&target.shape.terrain){auto sample=target.shape.terrain->Sample(glm::vec3(p));q=sample.surfacePoint;n=sample.outwardNormal;inside=sample.signedDistance<=0;}
  else return {};
  double distance=glm::length(p-q);GeometryDistance result{distance<=range,inside,distance,center+r*q,point,r*n,0};
- if(target.shape.type==ShapeType::Sphere&&glm::length(p)<eps)result.normalUnique=false;
+ if((target.shape.type==ShapeType::Sphere&&glm::length(p)<eps)||(target.shape.type==ShapeType::Capsule&&glm::length(V(p.x,p.y-std::clamp(p.y,-double(target.shape.halfHeight),double(target.shape.halfHeight)),p.z))<eps))result.normalUnique=false;
  if(target.shape.type==ShapeType::Box&&inside){auto depth=V(target.shape.halfExtents)-glm::abs(p);double minimum=std::min({depth.x,depth.y,depth.z});unsigned tied=0;for(int i=0;i<3;++i)if(std::abs(depth[i]-minimum)<eps)++tied;result.normalUnique=tied==1;}
  return result;
 }

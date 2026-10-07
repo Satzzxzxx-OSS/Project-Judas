@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <stdexcept>
 
 #include "EngineHost.h"
 #include "InteractivePlay.h"
@@ -16,6 +17,8 @@
 #include "RuntimeWorld.h"
 #include "Scene.h"
 #include "SceneSession.h"
+#include "SaveService.h"
+#include "WorldStreaming.h"
 #include "SceneSerialization.h"
 #include "TestHarness.h"
 #include "WorldCoordinates.h"
@@ -132,7 +135,19 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
                  worldCoordinates.Origin().y, worldCoordinates.Origin().z);
 
     if (options.IsTestRun()) {
-        return RunTestHarness(window, renderer, play, options.testScriptPath);
+        startupProfile.End();
+        return RunTestHarness(window, renderer, play, options.testScriptPath,
+            [&]{host.PumpResources();},
+            [&]{std::string boundaryError;sceneControl->AdvanceOuter(worldOwner,play,host.Resources(),window.Input(),boundaryError);
+                if(!boundaryError.empty())throw std::runtime_error(boundaryError);
+                // Workers progress on wall time even with a synthetic test clock.
+                if(sceneControl->Pending())SDL_Delay(1);
+            },[&](const std::string& service){
+                if(service=="scene")return !sceneControl->Pending();
+                if(service=="save")return !sceneControl->Saves(host.Resources())->Busy();
+                if(service=="stream"){auto* s=sceneControl->StreamingIfLoaded();return !s||(s->SaveReady()&&s->Stats().pending==0);}
+                throw std::runtime_error("unknown service wait: "+service);
+            });
     }
 
     if (control && control->worldReady) control->worldReady(host, world, play);
@@ -180,14 +195,9 @@ int Application::Run(int argc, char** argv, ApplicationControl* control) {
         }
         if (control && control->afterFrame) control->afterFrame(host, world, play);
         { JUDAS_PROFILE_WAIT("Swap present wait"); window.SwapBuffers(); }
-        sceneControl->AdvanceStreaming(*worldOwner,play.IsPaused());
-        auto* previousWorld=worldOwner.get();
-        sceneControl->AdvanceSaves(worldOwner,play,host.Resources(),error);
-        // Keep held-device state: clearing it would create a fresh press when polled again.
-        if(previousWorld!=worldOwner.get())window.Input().DiscardPending();
-        if(!error.empty()){std::fprintf(stderr,"Save service: %s\n",error.c_str());error.clear();}
-        if(!sceneControl->Apply(worldOwner,play,host.Resources(),error))
-            std::fprintf(stderr,"Scene transition failed: %s\n",error.c_str());
+        if(!sceneControl->AdvanceOuter(worldOwner,play,host.Resources(),window.Input(),error)||!error.empty()){
+            std::fprintf(stderr,"Runtime outer services: %s\n",error.c_str());error.clear();
+        }
     }
     if (control && control->beforeShutdown) control->beforeShutdown(host, *worldOwner, play);
     return 0;

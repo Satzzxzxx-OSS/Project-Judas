@@ -123,7 +123,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
     if(o.ragdoll){const auto& r=*o.ragdoll;w.Line("ragdoll.enabled",B(r.enabled));w.Line("ragdoll.play-on-start",B(r.playOnStart));w.Line("ragdoll.self-collision",B(r.selfCollision));w.Line("ragdoll.bones",std::to_string(r.bones.size()));
         for(size_t i=0;i<r.bones.size();++i){const auto& b=r.bones[i];const auto& c=b.constraint;auto k="ragdoll.bone."+std::to_string(i)+".";
             w.Line(k+"joint",Quote(b.joint));w.Line(k+"parent",Quote(b.parent));w.Line(k+"shape",std::to_string(int(b.shape)));w.Line(k+"offset",V(b.offset));w.Line(k+"orientation",Q(b.orientation));w.Line(k+"half-extents",V(b.halfExtents));w.Line(k+"radius",F(b.radius));w.Line(k+"mass",F(b.mass));w.Line(k+"friction",F(b.friction));w.Line(k+"restitution",F(b.restitution));w.Line(k+"layer",std::to_string(b.collisionLayer));w.Line(k+"mask",std::to_string(b.collisionMask));w.Line(k+"suppress-parent",B(b.suppressParentCollision));w.Line(k+"auto-anchors",B(b.autoAnchors));
-            w.Line(k+"constraint",std::to_string(int(c.type)));w.Line(k+"enabled",B(c.enabled));w.Line(k+"anchor-a",V(c.anchorA));w.Line(k+"anchor-b",V(c.anchorB));w.Line(k+"frame-a",Q(c.frameA));w.Line(k+"frame-b",Q(c.frameB));w.Line(k+"limits",B(c.limits));w.Line(k+"lower",F(c.lower));w.Line(k+"upper",F(c.upper));
+            w.Line(k+"constraint",std::to_string(int(c.type)));w.Line(k+"enabled",B(c.enabled));w.Line(k+"anchor-a",V(c.anchorA));w.Line(k+"anchor-b",V(c.anchorB));w.Line(k+"frame-a",Q(c.frameA));w.Line(k+"frame-b",Q(c.frameB));w.Line(k+"limits",B(c.limits));w.Line(k+"lower",F(c.lower));w.Line(k+"upper",F(c.upper));if(c.rotationalResistance)w.Line(k+"rotational-resistance",F(c.rotationalResistance));
         }
     }
     if(o.joint){const auto& j=*o.joint;const auto& s=j.settings;
@@ -131,7 +131,7 @@ void WriteObject(Writer& w, const SceneObject& o) {
         w.Line("joint.anchor-a",V(s.anchorA));w.Line("joint.anchor-b",V(s.anchorB));w.Line("joint.frame-a",Q(s.frameA));w.Line("joint.frame-b",Q(s.frameB));
         w.Line("joint.enabled",B(s.enabled));w.Line("joint.limits",B(s.limits));w.Line("joint.motor",B(s.motor));w.Line("joint.spring",B(s.spring));
         w.Line("joint.lower",F(s.lower));w.Line("joint.upper",F(s.upper));w.Line("joint.speed",F(s.speed));w.Line("joint.max-force",F(s.maxForce));
-        w.Line("joint.rest",F(s.rest));w.Line("joint.stiffness",F(s.stiffness));w.Line("joint.damping",F(s.damping));
+        w.Line("joint.rest",F(s.rest));w.Line("joint.stiffness",F(s.stiffness));w.Line("joint.damping",F(s.damping));if(s.rotationalResistance)w.Line("joint.rotational-resistance",F(s.rotationalResistance));
     }
     if(o.ui){w.Line("ui.asset",Quote(o.ui->asset));w.Line("ui.name",Quote(o.ui->name));w.Line("ui.enabled",B(o.ui->enabled));}
     if(!o.scripts.empty()) {
@@ -701,7 +701,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
     if(p.Has("ragdoll.enabled")){RagdollDefinition r;int count=0;
         if(!p.Bool("ragdoll.enabled",r.enabled)||!p.Bool("ragdoll.play-on-start",r.playOnStart)||!p.Bool("ragdoll.self-collision",r.selfCollision)||!p.Int("ragdoll.bones",count)||count<1||count>32)return reader.Fail("invalid ragdoll definition");
         for(int i=0;i<count;++i){RagdollBone b;auto& c=b.constraint;auto k="ragdoll.bone."+std::to_string(i)+".";int shape=0,type=0;
-            if(!p.String(k+"joint",b.joint)||!p.String(k+"parent",b.parent)||!p.Int(k+"shape",shape)||!p.Vec3(k+"offset",b.offset)||!p.Quat(k+"orientation",b.orientation)||!p.Vec3(k+"half-extents",b.halfExtents)||!p.Float(k+"radius",b.radius)||!p.Float(k+"mass",b.mass)||!p.Float(k+"friction",b.friction)||!p.Float(k+"restitution",b.restitution)||!p.Layer(k+"layer",b.collisionLayer)||!p.Mask(k+"mask",b.collisionMask)||!p.Bool(k+"suppress-parent",b.suppressParentCollision)||!p.Bool(k+"auto-anchors",b.autoAnchors)||!p.Int(k+"constraint",type)||!p.Bool(k+"enabled",c.enabled)||!p.Vec3(k+"anchor-a",c.anchorA)||!p.Vec3(k+"anchor-b",c.anchorB)||!p.Quat(k+"frame-a",c.frameA)||!p.Quat(k+"frame-b",c.frameB)||!p.Bool(k+"limits",c.limits)||!p.Float(k+"lower",c.lower)||!p.Float(k+"upper",c.upper))return false;
+            if(!p.String(k+"joint",b.joint)||!p.String(k+"parent",b.parent)||!p.Int(k+"shape",shape)||!p.Vec3(k+"offset",b.offset)||!p.Quat(k+"orientation",b.orientation)||!p.Vec3(k+"half-extents",b.halfExtents)||!p.Float(k+"radius",b.radius)||!p.Float(k+"mass",b.mass)||!p.Float(k+"friction",b.friction)||!p.Float(k+"restitution",b.restitution)||!p.Layer(k+"layer",b.collisionLayer)||!p.Mask(k+"mask",b.collisionMask)||!p.Bool(k+"suppress-parent",b.suppressParentCollision)||!p.Bool(k+"auto-anchors",b.autoAnchors)||!p.Int(k+"constraint",type)||!p.Bool(k+"enabled",c.enabled)||!p.Vec3(k+"anchor-a",c.anchorA)||!p.Vec3(k+"anchor-b",c.anchorB)||!p.Quat(k+"frame-a",c.frameA)||!p.Quat(k+"frame-b",c.frameB)||!p.Bool(k+"limits",c.limits)||!p.Float(k+"lower",c.lower)||!p.Float(k+"upper",c.upper)||(p.Has(k+"rotational-resistance")&&!p.Float(k+"rotational-resistance",c.rotationalResistance)))return false;
             b.shape=RagdollShape(shape);c.type=JointType(type);r.bones.push_back(std::move(b));
         }std::string why;if(!ValidRagdollDefinition(r,why))return reader.Fail(why);o.ragdoll=std::move(r);
     }
@@ -710,7 +710,7 @@ bool ParseObject(Reader& reader, const std::vector<Token>& header, const Block& 
            !p.Vec3("joint.anchor-a",s.anchorA)||!p.Vec3("joint.anchor-b",s.anchorB)||!p.Quat("joint.frame-a",s.frameA)||!p.Quat("joint.frame-b",s.frameB)||
            !p.Bool("joint.enabled",s.enabled)||!p.Bool("joint.limits",s.limits)||!p.Bool("joint.motor",s.motor)||!p.Bool("joint.spring",s.spring)||
            !p.Float("joint.lower",s.lower)||!p.Float("joint.upper",s.upper)||!p.Float("joint.speed",s.speed)||!p.Float("joint.max-force",s.maxForce)||
-           !p.Float("joint.rest",s.rest)||!p.Float("joint.stiffness",s.stiffness)||!p.Float("joint.damping",s.damping))return false;
+           !p.Float("joint.rest",s.rest)||!p.Float("joint.stiffness",s.stiffness)||!p.Float("joint.damping",s.damping)||(p.Has("joint.rotational-resistance")&&!p.Float("joint.rotational-resistance",s.rotationalResistance)))return false;
         s.type=JointType(type);if(!j.bodyA||j.bodyA==j.bodyB||!ValidJointSettings(s))return reader.Fail("invalid joint settings");o.joint=j;
     }
     if(p.Has("ui.asset")){SceneUIComponent u;if(!p.String("ui.asset",u.asset)||!p.String("ui.name",u.name)||!p.Bool("ui.enabled",u.enabled))return false;if(!IsValidAssetId(u.asset)||u.name.empty())return reader.Fail("invalid UI component");o.ui=u;}

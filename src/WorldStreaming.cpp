@@ -106,6 +106,9 @@ struct WorldStreaming::Impl {
     struct Region {
         RegionStatus status;JobHandle job;std::shared_ptr<Product> product;
         std::map<SceneObjectId,EntityId> mapping;std::vector<EntityId> members;Scene local,flat;
+        struct Relocation {Scene local,flat;std::vector<SceneObject> externalParents;std::string error;};
+        std::shared_ptr<Relocation> relocation;JobHandle relocationJob;size_t allocationNext=0,relocationNext=0,restoreNext=0;unsigned relocationPhase=0;
+        std::map<EntityId,SceneObjectId> originals;std::map<EntityId,size_t> localIndices;std::map<EntityId,EntityId> savedReplacements;std::vector<EntityId> restoreKeys;
         std::map<SceneObjectId,Snapshot> saved;std::set<std::string> manualPins;
         std::vector<AssetId> handoffRefs;size_t next=0,navNext=0,resourceNext=0,retainedBytes=0;bool activate=false,interest=false,unload=false,scriptsEnded=false;
         std::string suspensionError;int interestPriority=0;Clock::time_point requested{};
@@ -118,9 +121,9 @@ struct WorldStreaming::Impl {
     std::map<EntityId,std::string> identities;
     StreamingStats stats;std::function<bool(const JobContext&)> gate;
     Impl(RuntimeWorld& w,ResourceManager& r,Project p,WorldManifest m):world(w),resources(r),project(std::move(p)),manifest(std::move(m)){previousResourceBudget=r.BudgetBytes();r.SetBudgetBytes(manifest.resourceCacheBytes);for(auto& [id,_]:manifest.regions){Region region;region.status.id=id;regions.emplace(id,std::move(region));for(auto& dep:manifest.regions.at(id).dependencies)dependents[dep].push_back(id);}}
-    ~Impl(){resources.SetBudgetBytes(previousResourceBudget);if(baselineJob.IsValid())resources.Jobs()->Cancel(baselineJob);for(auto& [_,r]:regions){if(r.job.IsValid())resources.Jobs()->Cancel(r.job);releaseHandoff(r);}}
+    ~Impl(){resources.SetBudgetBytes(previousResourceBudget);if(baselineJob.IsValid())resources.Jobs()->Cancel(baselineJob);for(auto& [_,r]:regions){if(r.job.IsValid())resources.Jobs()->Cancel(r.job);if(r.relocationJob.IsValid())resources.Jobs()->Cancel(r.relocationJob);releaseHandoff(r);}}
     void releaseHandoff(Region& r){for(auto& a:r.handoffRefs)resources.ReleaseRef(a);r.handoffRefs.clear();}
-    void clearPrepared(Region& r){releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};for(auto& [_,id]:r.mapping)if(!owners.count(id))gravityOrder.erase(id);r.mapping.clear();r.members.clear();r.next=r.navNext=r.resourceNext=0;}
+    void clearPrepared(Region& r){if(r.relocationJob.IsValid()){resources.Jobs()->Cancel(r.relocationJob);resources.Jobs()->Forget(r.relocationJob);r.relocationJob={};}r.relocation.reset();r.relocationPhase=0;r.allocationNext=r.relocationNext=r.restoreNext=0;r.originals.clear();r.localIndices.clear();r.savedReplacements.clear();r.restoreKeys.clear();releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};for(auto& [_,id]:r.mapping)if(!owners.count(id))gravityOrder.erase(id);r.mapping.clear();r.members.clear();r.next=r.navNext=r.resourceNext=0;}
     size_t savedBytes(const std::map<SceneObjectId,Snapshot>& saved)const {size_t bytes=0;for(auto& [_,snap]:saved){bytes+=sizeof(Snapshot)+sizeof(SceneObject)*2+snap.deformable.size();for(auto& [key,value]:ObjectProperties(snap.definition))bytes+=key.size()+value.size();for(auto& js:snap.scripts)bytes+=js.json.size();}return bytes;}
     void recount(){stats.resourceResidentBytes=resources.Stats().bytesResident;stats.resourceCacheBudget=resources.BudgetBytes();stats.pendingBytes=stats.liveBytes=stats.retainedBytes=stats.active=stats.pending=0;for(auto& [id,r]:regions){auto& s=r.status;s.demands=0;for(auto& [_,q]:requests)if(q.region==id)++s.demands;s.retained=r.retainedBytes;stats.retainedBytes+=s.retained;
         if(s.state=="active"||s.state=="unloading"){++stats.active;stats.liveBytes+=s.bytes;}else if(s.state=="preparing"||s.state=="prepared"||s.state=="installing"){++stats.pending;stats.pendingBytes+=s.bytes;if(s.state=="installing")stats.liveBytes+=s.bytes;}
@@ -128,16 +131,37 @@ struct WorldStreaming::Impl {
     bool wanted(const std::string& id)const{auto& r=regions.at(id);if(r.interest||!r.manualPins.empty())return true;for(auto& [_,q]:requests)if(q.region==id)return true;if(auto it=dependents.find(id);it!=dependents.end())for(auto& other:it->second)if(regions.at(other).status.state=="active"||wantsDirect(other))return true;return false;}
     bool wantsActivation(const std::string& id)const{auto& r=regions.at(id);if(r.interest)return true;for(auto& [_,q]:requests)if(q.region==id&&!q.preload)return true;for(auto& [other,data]:manifest.regions)if(other!=id&&std::find(data.dependencies.begin(),data.dependencies.end(),id)!=data.dependencies.end()&&wanted(other)&&wantsDirect(other))return true;return false;}
     bool wantsDirect(const std::string& id)const{auto& r=regions.at(id);if(r.interest)return true;for(auto& [_,q]:requests)if(q.region==id&&!q.preload)return true;return false;}
-    void pins(const std::string& id){auto& r=regions.at(id);r.status.pins.assign(r.manualPins.begin(),r.manualPins.end());auto add=[&](std::string reason){if(std::find(r.status.pins.begin(),r.status.pins.end(),reason)==r.status.pins.end())r.status.pins.push_back(std::move(reason));};
+    struct ReferenceCache {std::string asset,properties;std::vector<EntityId> targets;};
+    std::map<std::pair<EntityId,uint64_t>,ReferenceCache> referenceCache;
+    std::map<std::string,bool> scriptReferencePins;bool referenceMetadataPending=false;
+    std::vector<SceneObject> pinObjects;unsigned pinVersion=~0u;
+    void refreshScriptReferences(){
+        pinObjects=world.ScriptObjects();pinVersion=world.EntityVersion();
+        scriptReferencePins.clear();referenceMetadataPending=false;std::set<std::pair<EntityId,uint64_t>> live;
+        for(const auto& object:pinObjects)for(const auto& slot:object.scripts)if(slot.enabled){
+            auto key=std::make_pair(object.id,slot.id);live.insert(key);
+            auto [it,inserted]=referenceCache.try_emplace(key);
+            if(inserted||it->second.properties!=slot.properties||it->second.asset!=slot.asset){it->second.properties=slot.properties;it->second.asset=slot.asset;it->second.targets.clear();}
+            // Only normal script initialization knows the exported schema. Never
+            // guess that an arbitrary JSON object/string is a declared reference.
+            const auto declared=world.Scripts()?world.Scripts()->DeclaredReferences(object.id,slot):std::optional<std::vector<EntityId>>{};
+            if(!declared){referenceMetadataPending=true;continue;}
+            it->second.targets=*declared;
+            for(auto target:it->second.targets)if(world.RuntimeDefinition(target)&&Owner(target)!=Owner(object.id))scriptReferencePins[Owner(target)]=true;
+        }
+        for(auto it=referenceCache.begin();it!=referenceCache.end();)if(!live.count(it->first))it=referenceCache.erase(it);else ++it;
+    }
+    void pins(const std::string& id){if(pinVersion!=world.EntityVersion())refreshScriptReferences();auto& r=regions.at(id);r.status.pins.assign(r.manualPins.begin(),r.manualPins.end());auto add=[&](std::string reason){if(std::find(r.status.pins.begin(),r.status.pins.end(),reason)==r.status.pins.end())r.status.pins.push_back(std::move(reason));};
         if(!r.suspensionError.empty())add(r.suspensionError);
+        if(referenceMetadataPending)add("script reference metadata awaiting normal synchronization");
         if(manifest.regions.at(id).policy=="resident")add("authored resident policy");
-        for(auto& o:world.ScriptObjects()){
+        for(auto& o:pinObjects){
             auto own=owners.find(o.id);bool here=own!=owners.end()&&own->second==id;
             if(o.deformable){std::string error;auto* deform=world.RuntimeDeformable(o.id,error);if(here&&deform&&deform->asset->fracture)add("live fracture family: physical pieces retained; remove/adopt family before suspension");if(!here&&deform&&deform->asset->fracture&&deform->asset->fracture->rigid)for(unsigned p=0;p<deform->asset->fracture->parts.size();++p){auto child=world.FracturePartEntity(o.id,p,true);if(child&&Owner(child)==id){add("material piece owned by an external fracture family");break;}}const auto& settings=deform?deform->settings:*o.deformable;for(size_t i=0;i<settings.attachments.size();++i){const auto& a=settings.attachments[i];if(a.enabled&&(!deform||!deform->released[i])&&a.target&&Owner(a.target)==id&&Owner(o.id)!=id)add("external deformable attachment");}}
             if(here&&(o.liquidBasin||o.liquidContainer||o.liquidConnection))add("conserved liquid group: no lossless suspension");
             if(!here&&o.parent&&Owner(o.parent)==id)add("external hierarchy parent");
             if(!here&&o.socket&&Owner(o.socket->target)==id)add("external visual socket");
-            if(!here)for(auto& slot:o.scripts)for(auto target:ScriptSystem::PropertyEntities(slot.properties))if(Owner(target)==id)add("external script entity property");
+            if(scriptReferencePins.count(id))add("external script entity property");
             if(here)if(auto* agent=world.Navigation().Agent(o.id);agent&&(agent->hasDestination||agent->onLink||agent->stopped))add("navigation intent in use: adopt or clear before suspension");
             if(here&&(o.animation||o.ragdoll))add("pose/articulation state: no lossless suspension");
             if(here&&std::find_if(r.mapping.begin(),r.mapping.end(),[&](auto& mapping){return mapping.second==o.id;})==r.mapping.end())add("adopted runtime member: transfer to root before suspension");
@@ -158,7 +182,7 @@ struct WorldStreaming::Impl {
         for(auto& [other,def]:manifest.regions)if(other!=id&&regions.at(other).status.state=="active"&&std::find(def.dependencies.begin(),def.dependencies.end(),id)!=def.dependencies.end())add("active dependent "+other);
     }
     std::string Owner(EntityId id)const{auto it=owners.find(id);return it==owners.end()?"root":it->second;}
-    bool snapshot(Region& r,std::string& error){auto records=world.Scripts()?world.Scripts()->Capture():std::vector<ScriptStateRecord>{};auto result=r.saved;
+    bool snapshot(Region& r,std::string& error){auto records=world.Scripts()?world.Scripts()->Capture(false,&r.members):std::vector<ScriptStateRecord>{};auto result=r.saved;
         for(auto& [local,id]:r.mapping){Snapshot s;const auto* def=world.RuntimeDefinition(id);s.destroyed=!def;if(def){s.definition=*def;s.definition.tags=world.TagsOf(id);if(def->deformable){auto* deform=world.RuntimeDeformable(id,error);if(!deform||!world.CaptureDeformable(id,s.deformable,error))return false;s.definition.deformable=deform->settings;}world.GetEntityState(id,s.state);if(s.definition.joint){JointState joint;if(world.Physics().GetJoint(world.RuntimeJoint(id),joint)){s.definition.joint->settings=joint.settings;
                     // Native world anchors are already in the simulation frame; authored
                     // settings are relative to their joint entity, including on revisit.
@@ -215,6 +239,7 @@ void WorldStreaming::Advance(bool paused){
         m->resources.Jobs()->Forget(m->baselineJob);m->baselineJob={};
     }
     auto start=Clock::now();m->stats.integrationMs=0;unsigned units=0;
+    m->refreshScriptReferences();
     for(auto& [id,r]:m->regions){bool wanted=false;r.interestPriority=0;const auto& def=m->manifest.regions.at(id);auto center=glm::vec3(def.origin-m->world.Settings().worldOrigin);for(auto& [_,interest]:m->interests){auto local=glm::inverse(def.rotation)*(interest.position-center);float distance=glm::length(glm::max(glm::abs(local)-def.halfExtents,glm::vec3(0)));if(distance<=(r.interest?interest.retain:interest.load)){wanted=true;r.interestPriority=std::max(r.interestPriority,interest.priority);}}r.interest=wanted;}
     // Hard dependency demand is propagated transitively before scheduling.
     std::set<std::string> needed;std::function<void(const std::string&)> need=[&](const std::string& id){if(!needed.insert(id).second)return;for(auto& d:m->manifest.regions.at(id).dependencies)need(d);};for(auto& [id,r]:m->regions)if(m->wanted(id))need(id);
@@ -222,7 +247,7 @@ void WorldStreaming::Advance(bool paused){
     std::set<std::string> activationNeeded;std::function<void(const std::string&)> activateNeed=[&](const std::string& id){if(!activationNeeded.insert(id).second)return;for(auto& d:m->manifest.regions.at(id).dependencies)activateNeed(d);};
     for(auto& [id,r]:m->regions)if(m->wantsDirect(id))activateNeed(id);
     m->recount();size_t preparing=0;for(auto& [_,r]:m->regions)if(r.status.state=="preparing")++preparing;
-    auto unit=[&](const std::function<void()>& fn,Impl::Region& r){auto t=Clock::now();fn();auto cost=ms(t);r.status.integrationMs+=cost;r.status.largestUnitMs=std::max(r.status.largestUnitMs,cost);m->stats.largestUnitMs=std::max(m->stats.largestUnitMs,cost);++units;};
+    auto unit=[&](const std::function<void()>& fn,Impl::Region& r,const char* name="Streaming dispatch"){auto t=Clock::now();fn();auto cost=ms(t);r.status.integrationMs+=cost;r.status.largestUnitMs=std::max(r.status.largestUnitMs,cost);m->stats.largestUnitMs=std::max(m->stats.largestUnitMs,cost);++units;if(std::getenv("JUDAS_STREAM_UNIT_TRACE"))std::fprintf(stderr,"STREAM unit region=%s name=%s ms=%.6f budget=%.3f\n",r.status.id.c_str(),name,cost,m->manifest.installMilliseconds);};
     auto budget=[&]{return units<m->manifest.unitsPerFrame&&ms(start)<m->manifest.installMilliseconds;};
     for(auto& id:order){auto& r=m->regions.at(id);const auto& def=m->manifest.regions.at(id);auto& s=r.status;
         if((s.state=="unloaded"||s.state=="cancelled"||s.state=="blocked")&&needed.count(id)&&!r.product&&r.members.empty()){
@@ -243,82 +268,99 @@ void WorldStreaming::Advance(bool paused){
         if(s.state=="prepared"&&needed.count(id)){
             if(m->baselineJob.IsValid()){s.error="waiting for authored baseline";continue;}if(!m->baselineError.empty()){s.state="failed";s.error=m->baselineError;m->clearPrepared(r);s.bytes=0;continue;}
             auto& required=r.product->data.requiredGeometry;
-            while(budget()&&r.resourceNext<required.size()){auto id=required[r.resourceNext++];unit([&]{m->resources.AddRef(id);r.handoffRefs.push_back(id);if(m->resources.Assets()->Find(id)->type==AssetType::Mesh)m->resources.RequestMesh(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Collision)m->resources.RequestCollision(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Deformable)m->resources.RequestDeformable(id);else m->resources.RequestLiquid(id);},r);}
+            while(budget()&&r.resourceNext<required.size()){auto id=required[r.resourceNext++];unit([&]{m->resources.AddRef(id);r.handoffRefs.push_back(id);if(m->resources.Assets()->Find(id)->type==AssetType::Mesh)m->resources.RequestMesh(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Collision)m->resources.RequestCollision(id);else if(m->resources.Assets()->Find(id)->type==AssetType::Deformable)m->resources.RequestDeformable(id);else m->resources.RequestLiquid(id);},r,"Streaming required resource request");}
             bool loading=r.resourceNext<required.size();for(auto& asset:required){auto state=m->resources.StateOf(asset);if(state==ResourceState::Failed){s.state="failed";s.error="required geometry resource: "+m->resources.ErrorOf(asset);break;}if(state!=ResourceState::Ready)loading=true;else if(m->resources.Assets()->Find(asset)->type==AssetType::Mesh&&!m->resources.TryGetSkeletal(asset)){s.state="failed";s.error="required ragdoll mesh has no skeleton";break;}}
             if(s.state=="failed"){m->clearPrepared(r);s.bytes=0;continue;}if(loading){s.error="waiting for required geometry";continue;}
         }
         if(s.state=="prepared"&&needed.count(id)&&!paused&&activationNeeded.count(id)&&budget()){
             bool ready=true;for(auto& dep:def.dependencies)if(m->regions.at(dep).status.state!="active")ready=false;if(!ready){s.error="waiting for dependency";continue;}
             m->recount();if(m->stats.liveBytes+s.bytes>m->manifest.liveBytes){s.error="live byte budget";continue;}
-            unit([&]{JUDAS_PROFILE_SCOPE("Streaming relocation");
-            const auto placement=glm::vec3(def.origin-m->world.Settings().worldOrigin);
-            if(!finite(glm::dvec3(placement))){s.state="failed";s.error="region placement exceeds fixed float frame";m->clearPrepared(r);return;}
-            r.local=r.product->data.source;r.mapping.clear();r.members.clear();
-            for(auto& o:r.local.Objects())r.mapping[o.id]=m->world.AllocateRuntimeEntityId();
-            
-            for(auto& o:r.local.Objects()){auto local=o.id;remap(o,r.mapping);if(!o.parent){o.transform.position=glm::vec3(def.origin-m->world.Settings().worldOrigin)+def.rotation*o.transform.position;o.transform.rotation=glm::normalize(def.rotation*o.transform.rotation);}if(o.body)o.body->initialLinearVelocity=def.rotation*o.body->initialLinearVelocity;
-                
-                for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==local){auto target=Resolve(ref.target,ref.targetLocal);if(!target&&ref.hard){s.error="unresolved hard reference";ready=false;}if(!reference(o,ref.field,target)){s.error="invalid reference property";ready=false;}}
-                // Joint-local anchors/frames follow the relocated entity transform.
-                // SynchronizeJoints converts a world endpoint exactly once.
-                if(auto snap=r.saved.find(local);snap!=r.saved.end()&&snap->second.destroyed){o.scripts.clear();}
-                m->gravityOrder[o.id]=orderKey(def,local);
-            }
-            SceneObjectId next=1;for(auto& [_,runtime]:r.mapping)next=std::max(next,runtime+1);r.local.SetNextId(next);
-            Scene flattenInput=r.local;
-            for(auto& o:r.local.Objects())if(o.parent&&!flattenInput.Find(o.parent)){auto* parent=m->world.RuntimeDefinition(o.parent);if(!parent){s.error="unavailable qualified parent";ready=false;}else {SceneObject frame;frame.id=parent->id;frame.transform=parent->transform;EntityPhysicalState current;if(m->world.GetEntityState(frame.id,current)){frame.transform.position=current.position;frame.transform.rotation=current.rotation;}flattenInput.Objects().push_back(frame);}}
-            std::string error;if(!ready||!FlattenHierarchy(flattenInput,r.flat,error)){s.state="failed";if(!error.empty())s.error=error;m->clearPrepared(r);return;}
-            for(auto& o:r.flat.Objects()){auto validate=o;validate.gravity.reset();if(!RuntimeWorld::ValidateEntityDefinition(validate,error)){s.state="failed";s.error="invalid relocated region: "+error;m->clearPrepared(r);return;}}
-            r.flat.Objects().erase(std::remove_if(r.flat.Objects().begin(),r.flat.Objects().end(),[&](const auto& o){return !r.local.Find(o.id);}),r.flat.Objects().end());
-            r.next=0;s.state="installing";s.error.clear();r.activate=true;
-            },r);
+            // No scene copy, remap or hierarchy flattening is repeated on a yield.
+            unit([&]{JUDAS_PROFILE_SCOPE("Streaming relocation begin");r.local=std::move(r.product->data.source);r.relocationPhase=1;s.state="installing";s.error.clear();},r,"Streaming relocation begin");
         }
-        if(s.state=="installing"&&!paused){
+        if(s.state=="installing"&&!paused&&r.relocationPhase==1){
+            while(budget()&&r.allocationNext<r.local.Objects().size())unit([&]{JUDAS_PROFILE_SCOPE("Streaming identity allocation");auto source=r.local.Objects()[r.allocationNext++].id;auto runtime=m->world.AllocateRuntimeEntityId();r.mapping[source]=runtime;r.originals[runtime]=source;if(auto snap=r.saved.find(source);snap!=r.saved.end()){r.savedReplacements[snap->second.definition.id]=runtime;r.restoreKeys.push_back(source);}},r,"Streaming identity allocation");
+            if(r.allocationNext==r.local.Objects().size())r.relocationPhase=2;
+        }
+        if(s.state=="installing"&&!paused&&r.relocationPhase==2){
+            while(budget()&&r.relocationNext<r.local.Objects().size()){
+                bool ok=true;unit([&]{JUDAS_PROFILE_SCOPE("Streaming object relocation");auto& o=r.local.Objects()[r.relocationNext];auto source=o.id;remap(o,r.mapping);r.localIndices[o.id]=r.relocationNext;
+                    if(!o.parent){o.transform.position=glm::vec3(def.origin-m->world.Settings().worldOrigin)+def.rotation*o.transform.position;o.transform.rotation=glm::normalize(def.rotation*o.transform.rotation);}
+                    if(o.body)o.body->initialLinearVelocity=def.rotation*o.body->initialLinearVelocity;
+                    for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==source){auto target=Resolve(ref.target,ref.targetLocal);if((!target&&ref.hard)||!reference(o,ref.field,target)){ok=false;s.error="unresolved/invalid qualified reference";}}
+                    if(auto snap=r.saved.find(source);snap!=r.saved.end()&&snap->second.destroyed)o.scripts.clear();
+                    m->gravityOrder[o.id]=orderKey(def,source);++r.relocationNext;
+                },r,"Streaming object relocation");
+                if(!ok){s.state="failed";m->clearPrepared(r);break;}
+            }
+            if(s.state=="installing"&&r.relocationNext==r.local.Objects().size()&&budget())unit([&]{JUDAS_PROFILE_SCOPE("Streaming hierarchy handoff");
+                r.relocation=std::make_shared<Impl::Region::Relocation>();auto product=r.relocation;
+                SceneObjectId next=1;for(auto& [_,runtime]:r.mapping)next=std::max(next,runtime+1);r.local.SetNextId(next);
+                for(auto& o:r.local.Objects())if(o.parent&&!r.localIndices.count(o.parent)){auto* parent=m->world.RuntimeDefinition(o.parent);if(!parent){product->error="unavailable qualified parent";break;}SceneObject frame;frame.id=parent->id;frame.transform=parent->transform;EntityPhysicalState state;if(m->world.GetEntityState(frame.id,state)){frame.transform.position=state.position;frame.transform.rotation=state.rotation;}product->externalParents.push_back(frame);}
+                product->local=std::move(r.local);
+                r.relocationJob=m->resources.Jobs()->Submit([product](JobContext& ctx){
+                    if(!product->error.empty()){ctx.SetError(product->error);return;}Scene input=product->local;std::set<EntityId> local;
+                    for(auto& o:input.Objects())local.insert(o.id);
+                    for(auto& frame:product->externalParents)if(!local.count(frame.id))input.Objects().push_back(frame);
+                    if(ctx.CancelRequested()){ctx.ReportCancelled();return;}
+                    if(!FlattenHierarchy(input,product->flat,product->error)){ctx.SetError(product->error);return;}
+                    for(auto& o:product->flat.Objects()){if(ctx.CancelRequested()){ctx.ReportCancelled();return;}auto check=o;check.gravity.reset();if(!RuntimeWorld::ValidateEntityDefinition(check,product->error)){ctx.SetError(product->error);return;}}
+                    auto& objects=product->flat.Objects();objects.erase(std::remove_if(objects.begin(),objects.end(),[&](const auto& o){return !local.count(o.id);}),objects.end());
+                },JobPriority::High,"region hierarchy "+id);r.relocationPhase=3;
+            },r,"Streaming hierarchy handoff");
+        }
+        if(s.state=="installing"&&r.relocationPhase==3&&m->resources.Jobs()->IsFinished(r.relocationJob)){
+            auto state=m->resources.Jobs()->StateOf(r.relocationJob);m->resources.Jobs()->Forget(r.relocationJob);r.relocationJob={};
+            if(state!=JobState::Completed){s.error=r.relocation->error;s.state="failed";m->clearPrepared(r);continue;}
+            r.local=std::move(r.relocation->local);r.flat=std::move(r.relocation->flat);r.relocation.reset();r.relocationPhase=4;r.next=0;
+        }
+        if(s.state=="installing"&&!paused&&r.relocationPhase==4){
             while(budget()&&r.next<r.flat.Objects().size()){
-                auto o=r.flat.Objects()[r.next];auto local=*r.local.Find(o.id);auto original=std::find_if(r.mapping.begin(),r.mapping.end(),[&](auto& e){return e.second==o.id;})->first;
-                if(auto snap=r.saved.find(original);snap!=r.saved.end()&&snap->second.destroyed){++r.next;continue;}
-                if(auto snap=r.saved.find(original);snap!=r.saved.end()){
-                    auto saved=snap->second.definition;std::map<EntityId,EntityId> replacements;
-                    for(auto& [source,record]:r.saved)if(record.definition.id&&r.mapping.count(source))replacements[record.definition.id]=r.mapping.at(source);
-                    remap(saved,replacements);saved.id=o.id;saved.transform.position=snap->second.state.position;saved.transform.rotation=snap->second.state.rotation;o=std::move(saved);
-                }
-                for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==original)reference(o,ref.field,Resolve(ref.target,ref.targetLocal));
-                std::string error;bool ok=false;unit([&]{JUDAS_PROFILE_SCOPE("Streaming component registration");ok=m->world.StageRegionObject(o,local,error,id+":"+std::to_string(original));},r);r.members.push_back(o.id);m->owners[o.id]=id;m->identities[o.id]="region:"+id+":"+std::to_string(original);
+                std::string error;bool ok=true;
+                unit([&]{JUDAS_PROFILE_SCOPE("Streaming component registration");
+                    auto o=r.flat.Objects()[r.next];auto local=r.local.Objects()[r.localIndices.at(o.id)];auto original=r.originals.at(o.id);
+                    if(auto snap=r.saved.find(original);snap!=r.saved.end()&&snap->second.destroyed)return;
+                    if(auto snap=r.saved.find(original);snap!=r.saved.end()){
+                        auto saved=snap->second.definition;remap(saved,r.savedReplacements);saved.id=o.id;saved.transform.position=snap->second.state.position;saved.transform.rotation=snap->second.state.rotation;o=std::move(saved);
+                    }
+                    for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==original)reference(o,ref.field,Resolve(ref.target,ref.targetLocal));
+                    ok=m->world.StageRegionObject(o,local,error,id+":"+std::to_string(original));r.members.push_back(o.id);m->owners[o.id]=id;m->identities[o.id]="region:"+id+":"+std::to_string(original);
+                },r,"Streaming component registration");
                 if(!ok){s.state="unloading";s.error=error;r.scriptsEnded=true;r.unload=true;break;}
                 ++r.next;s.installed=r.next;
             }
             if(s.state=="installing"&&r.next==r.flat.Objects().size()){
                 auto& nav=r.product->data.navigation;
-                while(budget()&&r.navNext<nav.size()){auto it=nav.begin();std::advance(it,r.navNext);auto runtime=r.mapping.at(it->first);auto* o=r.flat.Find(runtime);std::string error;bool ok=false;unit([&]{JUDAS_PROFILE_SCOPE("Streaming native navigation registration");ok=m->world.Navigation().LoadSurface(runtime,o->transform,it->second,error,false);},r);if(!ok){s.state="unloading";s.error=error;r.unload=true;r.scriptsEnded=true;break;}++r.navNext;}
+                while(budget()&&r.navNext<nav.size()){auto it=nav.begin();std::advance(it,r.navNext);auto runtime=r.mapping.at(it->first);auto* o=&r.flat.Objects().at(r.localIndices.at(runtime));std::string error;bool ok=false;unit([&]{JUDAS_PROFILE_SCOPE("Streaming native navigation registration");ok=m->world.Navigation().LoadSurface(runtime,o->transform,it->second,error,false);},r,"Streaming native navigation registration");if(!ok){s.state="unloading";s.error=error;r.unload=true;r.scriptsEnded=true;break;}++r.navNext;}
             }
             if(s.state=="installing"&&r.next==r.flat.Objects().size()&&r.navNext==r.product->data.navigation.size()&&budget()){
-                // Complete publication is one atomic boundary. Native surface registration
-                // is indivisible and measured; source certificates were checked on workers.
-                bool ok=true;std::string error;unit([&]{JUDAS_PROFILE_SCOPE("Streaming atomic publication");
-                    // Restore required node state while the region is private.
-                    for(auto& [source,snap]:r.saved)if(!snap.destroyed&&!snap.deformable.empty()&&r.mapping.count(source)){
-                        auto runtime=r.mapping.at(source);
-                        if(!m->world.RestoreDeformable(runtime,snap.deformable,error,true)){ok=false;break;}
+                bool ok=true;std::string error;
+                while(budget()&&r.restoreNext<r.restoreKeys.size()&&ok)unit([&]{JUDAS_PROFILE_SCOPE("Streaming retained entity restoration");
+                    auto source=r.restoreKeys[r.restoreNext++];const auto& snap=r.saved.at(source);if(snap.destroyed)return;auto runtime=r.mapping.at(source);
+                    if(!snap.deformable.empty()){
+                        if(!m->world.RestoreDeformable(runtime,snap.deformable,error,true)){ok=false;return;}
                         auto* deform=m->world.RuntimeDeformable(runtime,error,true);
-                        for(auto& attachment:deform->settings.attachments){for(auto& [oldLocal,oldSnapshot]:r.saved)if(attachment.target==oldSnapshot.definition.id&&r.mapping.count(oldLocal)){attachment.target=r.mapping.at(oldLocal);break;}}
+                        for(auto& attachment:deform->settings.attachments)if(auto it=r.savedReplacements.find(attachment.target);it!=r.savedReplacements.end())attachment.target=it->second;
                         for(auto& ref:m->manifest.references)if(ref.region==id&&ref.local==source&&ref.field.rfind("deformable:",0)==0)for(auto& attachment:deform->settings.attachments)if(attachment.group==ref.field.substr(11))attachment.target=Resolve(ref.target,ref.targetLocal);
                     }
-                    if(ok){m->world.Navigation().PublishSurfaces(r.members);m->world.PublishRegion(r.members);
-                        for(auto& [source,snap]:r.saved)if(!snap.destroyed&&r.mapping.count(source)){
-                            auto runtime=r.mapping.at(source);auto t=snap.definition.transform;t.position=snap.state.position;t.rotation=snap.state.rotation;
-                            m->world.SetRuntimeTransform(runtime,t);m->world.SetEntityState(runtime,snap.state);if(auto* motor=m->world.RuntimeCharacter(runtime))motor->velocity=snap.state.linearVelocity;
-                            std::vector<ScriptStateRecord> records=snap.scripts;for(auto& js:records)js.entity=runtime;if(!records.empty()&&!m->world.RestoreScriptState(records,error,m->restoredRecords)){ok=false;break;}
-                        }
-                        m->world.RebuildRegionGravity(m->gravityOrder);
-                    }
-                },r);
-                if(!ok){m->world.HideRegion(r.members);s.state="unloading";s.error=error;r.unload=true;r.scriptsEnded=true;}else {s.state="active";s.loadMs=ms(r.requested);m->releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};r.activate=false;}
+                    auto t=snap.definition.transform;t.position=snap.state.position;t.rotation=snap.state.rotation;
+                    auto records=snap.scripts;for(auto& js:records)js.entity=runtime;
+                    ok=m->world.RestoreRegionObject(runtime,t,snap.state,records,error,m->restoredRecords);
+                },r,"Streaming retained entity restoration");
+                if(!ok){s.state="unloading";s.error=error;r.unload=true;r.scriptsEnded=true;}
+                else if(r.restoreNext==r.restoreKeys.size()&&budget()){
+                    // Only the enable/visibility commit remains atomic. Expensive
+                    // serialization and reconstruction have completed while private.
+                    unit([&]{JUDAS_PROFILE_SCOPE("Streaming atomic publication");m->world.Navigation().PublishSurfaces(r.members);m->world.PublishRegion(r.members);m->world.RebuildRegionGravity(m->gravityOrder);
+                        s.state="active";s.loadMs=ms(r.requested);m->releaseHandoff(r);r.product.reset();r.local=Scene{};r.flat=Scene{};r.activate=false;
+                    },r,"Streaming atomic publication");
+                }
             }
         }
-        if(s.state=="active"&&!needed.count(id)&&!paused&&budget()){r.suspensionError.clear();m->pins(id);if(s.pins.empty()){unit([&]{JUDAS_PROFILE_SCOPE("Streaming snapshot and script teardown");std::string error;if(!m->snapshot(r,error)){r.suspensionError=error;s.pins.push_back(error);}else {s.state="unloading";m->world.EndRegionScripts(r.members);m->world.HideRegion(r.members);r.scriptsEnded=true;r.unload=true;}},r);}}
+        if(s.state=="active"&&!needed.count(id)&&!paused&&budget()){r.suspensionError.clear();m->pins(id);if(s.pins.empty()){unit([&]{JUDAS_PROFILE_SCOPE("Streaming snapshot and script teardown");std::string error;if(!m->snapshot(r,error)){r.suspensionError=error;s.pins.push_back(error);}else {s.state="unloading";m->world.EndRegionScripts(r.members);m->world.HideRegion(r.members);r.scriptsEnded=true;r.unload=true;}},r,"Streaming snapshot and script teardown");}}
         if(s.state=="unloading"&&!paused){
-            while(budget()&&!r.members.empty()){auto entity=r.members.back();unit([&]{JUDAS_PROFILE_SCOPE("Streaming unregister and resource release");m->world.RemoveRegionObject(entity);},r);r.members.pop_back();m->owners.erase(entity);m->gravityOrder.erase(entity);}
-            if(r.members.empty()&&budget()){unit([&]{m->world.Navigation().Update(m->world,0);m->world.RebuildRegionGravity(m->gravityOrder);},r);bool failed=!s.error.empty();m->clearPrepared(r);r.activate=false;r.unload=false;s.bytes=0;s.installed=0;s.state=failed?"failed":"unloaded";}
+            while(budget()&&!r.members.empty()){auto entity=r.members.back();unit([&]{JUDAS_PROFILE_SCOPE("Streaming unregister and resource release");m->world.RemoveRegionObject(entity);},r,"Streaming unregister and resource release");r.members.pop_back();m->owners.erase(entity);m->gravityOrder.erase(entity);}
+            if(r.members.empty()&&budget()){unit([&]{m->world.Navigation().Update(m->world,0);m->world.RebuildRegionGravity(m->gravityOrder);},r,"Streaming retirement commit");bool failed=!s.error.empty();m->clearPrepared(r);r.activate=false;r.unload=false;s.bytes=0;s.installed=0;s.state=failed?"failed":"unloaded";}
         }
     }
     // Soft visual references are rebound only between published regions.

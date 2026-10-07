@@ -54,3 +54,9 @@ Handles have monotonically assigned runtime identities. `valid` returns false af
 Open `projects/joint_demo/joint_demo.judasproj`. From left to right: fixed dynamic pair with support, free hinge pendulum, limited motor-driven physical door, ball pendulum, motor/spring slider. Rear: oblique hinge. **G** reverses motors; **P** spawns an independent fixed prefab assembly; **Esc** pauses. The door is an ordinary dynamic body + hinge + project JS. Historical M16 kinematic doors and evidence remain untouched.
 
 Limitations: hinge limits must stay within the wrapped angle range; initially opposed hinge axes and very large joint errors are not suitable authoring configurations. Extreme mass ratios, large articulated stacks and stiff motors may require smaller steps or future solver improvements. No breakable joints, gear trains, ropes, ragdolls or kinematic trajectory redesign. Visual/physical acceptance belongs to the human operator.
+
+## Explicit passive rotational resistance
+
+`JointConfiguration.rotationalResistance` (and the ordinary joint/ragdoll mapping inspector field) is a nonnegative viscous coefficient in N·m·s/rad. Default **0** preserves existing content. Ball joints resist all three free angular axes; hinges resist their free axis. It is solved implicitly alongside contacts and constraints, has no target pose, and does not force sleep. Fixed/slider joints do not use it. The post-M65 Skate adaptation authors 0.05 on the free head and right-foot joints; the unchanged rig and its continued-motion observations remain in the original review and corrective baseline evidence.
+
+[Corrective review and measurements](POST_M65_CONSUMER_REPAIRS.md).

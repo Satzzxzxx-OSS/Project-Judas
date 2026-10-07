@@ -422,6 +422,11 @@ bool ComputeSceneFingerprint(const Scene& scene, std::string& outFingerprint,
         w.Quaternion(s.frameA);w.Quaternion(s.frameB);w.Boolean(s.limits);w.Boolean(s.motor);w.Boolean(s.spring);
         w.Number(s.lower);w.Number(s.upper);w.Number(s.speed);w.Number(s.maxForce);w.Number(s.rest);w.Number(s.stiffness);w.Number(s.damping);
     }}
+    // Optional extension leaves every legacy zero-resistance fingerprint intact.
+    for(const auto& o:scene.Objects()){
+        if(o.joint&&o.joint->settings.rotationalResistance){w.Text("Judas.JointResistance.1");w.U64(o.id);w.Number(o.joint->settings.rotationalResistance);}
+        if(o.ragdoll)for(const auto& bone:o.ragdoll->bones)if(bone.constraint.rotationalResistance){w.Text("Judas.BoneResistance.1");w.U64(o.id);w.Text(bone.joint);w.Number(bone.constraint.rotationalResistance);}
+    }
     for(const auto& o:scene.Objects())if(o.body&&!o.body->physicalMaterial.empty()){w.Text("Judas.PhysicalMaterial.1");w.U64(o.id);w.Text(o.body->physicalMaterial);}
     for(const auto& o:scene.Objects())if(o.body&&o.body->physicalMaterialOverride){w.Text("Judas.PhysicalMaterialOverride.1");w.U64(o.id);w.U64(1);}
     bool collisionExtension=false;for(const auto& o:scene.Objects())if(o.body){const auto& b=*o.body;collisionExtension|=!b.collisionAsset.empty()||b.shape==SceneShape::ConvexHull||b.shape==SceneShape::TriangleMesh;for(auto& c:b.compoundBoxes)collisionExtension|=c.rotation!=glm::quat(1,0,0,0)||c.type!=ShapeType::Box||!c.assetId.empty()||c.key;}

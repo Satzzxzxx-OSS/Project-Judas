@@ -196,11 +196,6 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
     PerformanceProfiler::Get().FixedState(m_physicsAccumulator,profileCap,profileDiscarded,IsPaused()||uiOwned);
     const float presentationAlpha = m_physicsAccumulator / SimulationTiming::kFixedTimestep;
     world.PresentationScripts(&window.Input(),frameDeltaTime,presentationAlpha);
-    if (!render) return presentationAlpha;
-    const auto surfaceStart = Clock::now();
-    UpdateFluidSurface(renderer, world, presentationAlpha);
-    m_lastSurfaceMilliseconds = MillisecondsSince(surfaceStart);
-
     const int height = std::max(window.Height(), 1);
     const float aspectRatio = static_cast<float>(window.Width()) / static_cast<float>(height);
     const PlayerController& player = m_session.Player();
@@ -215,9 +210,14 @@ float InteractivePlay::Frame(Window& window, Renderer& renderer, float frameDelt
         view = player.GetViewMatrix(presentationAlpha, m_session.ViewMode());
     }
     if(world.view){const auto& v=*world.view;view=glm::lookAt(v.pose.position,v.pose.position+v.pose.rotation*glm::vec3(0,0,-1),v.pose.rotation*glm::vec3(0,1,0));}
-    const auto sceneStart = Clock::now();
     if(world.Scripts())world.Scripts()->SetView(view);
     world.UpdateAudio(view,presentationAlpha,frameDeltaTime);
+    // Audio publication is a runtime service, independent of drawing/capture.
+    if (!render) return presentationAlpha;
+    const auto surfaceStart = Clock::now();
+    UpdateFluidSurface(renderer, world, presentationAlpha);
+    m_lastSurfaceMilliseconds = MillisecondsSince(surfaceStart);
+    const auto sceneStart = Clock::now();
     RenderWorldFrame(renderer, window.Width(), window.Height(), world, &m_session, view,
                      player.GetProjectionMatrix(aspectRatio), player.GetPresentedPosition(presentationAlpha),
                      presentationAlpha);

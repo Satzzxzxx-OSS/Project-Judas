@@ -44,3 +44,24 @@ active view, interpolation, world and authored UI. Multiple captures and capture
 while paused work. Fast deterministic frames skip only drawing when no capture is
 requested. Simulation and all frame/UI/presentation callbacks continue normally.
 The harness proves input/temporal routing, not human responsiveness or visual acceptance.
+
+## Shared application services (post-M65 correction)
+
+The Application harness now uses the shipping outer boundary after each frame:
+streaming, save/load publication, then queued scene replacement. A request issued
+inside a callback never destroys that callback's world. Paused frames still advance
+these services. Each scripted frame has its own M56 frame boundary; startup is a
+separate record. Isolated callers that omit the outer callbacks remain isolated
+InteractivePlay tests, not full application-service tests.
+
+`WAIT_SERVICES scene|save|stream timeout-ms frame` waits at the specified scripted
+frame for pending scene replacement, save/load work, or streaming transactions.
+The timeout must be 1–60000 ms. Waiting uses zero-clock application frames with
+normal UI callbacks and the same resource/service boundary; it does not accumulate
+fixed steps. Each wait frame is separately profiled and reported. A timeout names
+the service and scripted frame. Use this after requesting asynchronous work rather
+than assuming an arbitrary synthetic step count gives workers enough wall time.
+
+`EXPECT_SCENE Scenes/example.judas frame` verifies the current registered scene after an earlier bounded scene-service wait.
+
+Frames that skip drawing still publish/update ordinary audio voices so save prefill can complete. Bounded service waits use zero-clock frames and do not invent fixed steps.

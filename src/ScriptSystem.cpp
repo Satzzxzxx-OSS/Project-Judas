@@ -2,6 +2,7 @@
 #include "SaveService.h"
 #include "PerformanceProfiler.h"
 #include <array>
+#include <atomic>
 #include "ScriptSystem.h"
 #include "CollisionAsset.h"
 #include "AssetDatabase.h"
@@ -25,6 +26,7 @@
 #include <thread>
 
 namespace {
+std::atomic<uint64_t> metadataParserConstructions{0},metadataReferenceInspections{0};
 std::string String(JSContext* c,JSValueConst v){size_t length=0;const char* p=JS_ToCStringLen(c,&length,v);if(!p)return {};std::string s(p,length);JS_FreeCString(c,p);return s;}
 std::string Exception(JSContext* c){auto e=JS_GetException(c);auto stack=JS_GetPropertyStr(c,e,"stack");auto s=String(c,e)+"\n"+String(c,stack);JS_FreeValue(c,stack);JS_FreeValue(c,e);return s;}
 JSValue Vec(JSContext* c,glm::vec3 v){auto o=JS_NewObject(c);JS_SetPropertyStr(c,o,"x",JS_NewFloat64(c,v.x));JS_SetPropertyStr(c,o,"y",JS_NewFloat64(c,v.y));JS_SetPropertyStr(c,o,"z",JS_NewFloat64(c,v.z));return o;}
@@ -290,7 +292,7 @@ struct ScriptSystem::Impl {
     std::thread::id thread=std::this_thread::get_id();
     void CheckThread() const {if(thread!=std::this_thread::get_id())throw std::logic_error("ScriptSystem is main/runtime-thread only");}
     RuntimeWorld* world;const AssetDatabase* assets;JSRuntime* rt=nullptr;JSContext* ctx=nullptr;
-    struct Instance {SceneObjectId entity;SceneScriptSlot slot;JSValue value=JS_UNDEFINED;bool started=false,fault=false,loaded=false;size_t order=0;std::uint32_t profileLabel=0;bool profileRegistered=false;};
+    struct Instance {SceneObjectId entity;SceneScriptSlot slot;std::vector<SceneObjectId> entityReferences;JSValue value=JS_UNDEFINED;bool started=false,fault=false,loaded=false;size_t order=0;std::uint32_t profileLabel=0;bool profileRegistered=false;};
     std::map<std::pair<SceneObjectId,std::uint64_t>,Instance> instances;
     std::map<std::string,JSModuleDef*> modules;
     std::vector<ScriptDiagnostic> diagnostics;
@@ -300,10 +302,11 @@ struct ScriptSystem::Impl {
     unsigned budget=10000,polls=0;bool stopping=false;SceneObjectId currentOwner=0;std::uint64_t currentSlot=0;
     std::map<std::pair<SceneObjectId,std::uint64_t>,std::string> restored;
     std::set<std::pair<SceneObjectId,std::uint64_t>> resumed;
-    Impl(RuntimeWorld* w,const AssetDatabase* a):world(w),assets(a){
+    Impl(RuntimeWorld* w,const AssetDatabase* a,bool jsonOnly=false):world(w),assets(a){
         rt=JS_NewRuntime();JS_SetMemoryLimit(rt,64*1024*1024);JS_SetMaxStackSize(rt,512*1024);
         ctx=JS_NewContext(rt);JS_SetContextOpaque(ctx,this);
         JS_SetInterruptHandler(rt,[](JSRuntime*,void* p)->int{auto* s=static_cast<Impl*>(p);return ++s->polls>s->budget;},this);
+        if(jsonOnly){++metadataParserConstructions;return;} // JSON metadata never installs/evaluates project or Judas modules.
         JS_SetModuleLoaderFunc(rt,Normalize,Load,this);
         auto global=JS_GetGlobalObject(ctx);JS_SetPropertyStr(ctx,global,"__judas",JS_NewCFunction(ctx,Native,"__judas",1));JS_FreeValue(ctx,global);
         auto lib=NamespaceLibrary();JS_FreeValue(ctx,lib);
@@ -521,7 +524,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
                 auto type=JS_GetPropertyStr(c,o,"type");if(!JS_IsUndefined(type)){auto name=String(c,type);if(name=="fixed")settings.type=JointType::Fixed;else if(name=="hinge")settings.type=JointType::Hinge;else if(name=="ball")settings.type=JointType::Ball;else if(name=="slider")settings.type=JointType::Slider;else{JS_FreeValue(c,type);return JS_ThrowTypeError(c,"unknown joint type");}}JS_FreeValue(c,type);
                 for(auto item:{std::pair<const char*,glm::vec3*>{"anchorA",&settings.anchorA},{"anchorB",&settings.anchorB}}){auto v=JS_GetPropertyStr(c,o,item.first);bool ok=JS_IsUndefined(v)||ReadVec(c,v,*item.second);JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"invalid joint anchor");}
                 for(auto item:{std::pair<const char*,glm::quat*>{"frameA",&settings.frameA},{"frameB",&settings.frameB}}){auto v=JS_GetPropertyStr(c,o,item.first);bool ok=JS_IsUndefined(v)||(Number(c,v,"x",item.second->x)&&Number(c,v,"y",item.second->y)&&Number(c,v,"z",item.second->z)&&Number(c,v,"w",item.second->w));JS_FreeValue(c,v);if(!ok)return JS_ThrowTypeError(c,"invalid joint frame");}
-                for(auto item:{std::pair<const char*,float*>{"lower",&settings.lower},{"upper",&settings.upper},{"speed",&settings.speed},{"maxForce",&settings.maxForce},{"rest",&settings.rest},{"stiffness",&settings.stiffness},{"damping",&settings.damping}}){auto v=JS_GetPropertyStr(c,o,item.first);bool has=!JS_IsUndefined(v);JS_FreeValue(c,v);if(has&&!Number(c,o,item.first,*item.second))return JS_ThrowTypeError(c,"invalid joint number");}
+                for(auto item:{std::pair<const char*,float*>{"lower",&settings.lower},{"upper",&settings.upper},{"speed",&settings.speed},{"maxForce",&settings.maxForce},{"rest",&settings.rest},{"stiffness",&settings.stiffness},{"damping",&settings.damping},{"rotationalResistance",&settings.rotationalResistance}}){auto v=JS_GetPropertyStr(c,o,item.first);bool has=!JS_IsUndefined(v);JS_FreeValue(c,v);if(has&&!Number(c,o,item.first,*item.second))return JS_ThrowTypeError(c,"invalid joint number");}
                 for(auto item:{std::pair<const char*,bool*>{"enabled",&settings.enabled},{"limits",&settings.limits},{"motor",&settings.motor},{"spring",&settings.spring}}){auto v=JS_GetPropertyStr(c,o,item.first);if(!JS_IsUndefined(v)){if(!JS_IsBool(v)){JS_FreeValue(c,v);return JS_ThrowTypeError(c,"invalid joint flag");}*item.second=JS_ToBool(c,v);}JS_FreeValue(c,v);}
             }
             if(op=="jointConfigure"){auto* current=world.RuntimeDefinition(owner);if(current&&current->joint&&(current->joint->bodyA!=definition.bodyA||current->joint->bodyB!=definition.bodyB))return JS_ThrowTypeError(c,"configure retains participants; destroy/create to replace them");}
@@ -536,7 +539,7 @@ JSValue ScriptSystem::Impl::Native(JSContext* c,JSValueConst,int argc,JSValueCon
             for(auto entry:{std::pair<const char*,bool*>{"enabled",&settings.enabled},{"limits",&settings.limits},{"motor",&settings.motor},{"spring",&settings.spring}}){
                 auto value=JS_GetPropertyStr(c,arg(2),entry.first);if(!JS_IsUndefined(value)){if(!JS_IsBool(value)){JS_FreeValue(c,value);return JS_ThrowTypeError(c,"joint flag must be boolean");}*entry.second=JS_ToBool(c,value);}JS_FreeValue(c,value);
             }
-            for(auto entry:{std::pair<const char*,float*>{"lower",&settings.lower},{"upper",&settings.upper},{"speed",&settings.speed},{"maxForce",&settings.maxForce},{"rest",&settings.rest},{"stiffness",&settings.stiffness},{"damping",&settings.damping}}){
+            for(auto entry:{std::pair<const char*,float*>{"lower",&settings.lower},{"upper",&settings.upper},{"speed",&settings.speed},{"maxForce",&settings.maxForce},{"rest",&settings.rest},{"stiffness",&settings.stiffness},{"damping",&settings.damping},{"rotationalResistance",&settings.rotationalResistance}}){
                 auto value=JS_GetPropertyStr(c,arg(2),entry.first);bool present=!JS_IsUndefined(value);JS_FreeValue(c,value);if(present&&!Number(c,arg(2),entry.first,*entry.second))return JS_ThrowTypeError(c,"invalid joint number");
             }
             if(!world.Physics().SetJoint(h,settings))return JS_ThrowTypeError(c,"invalid joint settings");
@@ -1000,12 +1003,23 @@ void ScriptSystem::SetBudget(unsigned n){m->budget=std::max(1u,n);}
 const std::vector<ScriptDiagnostic>& ScriptSystem::Diagnostics()const{return m->diagnostics;}
 void ScriptSystem::Stop(){
  JUDAS_PROFILE_SCOPE("JavaScript destroy");m->Stop();}
+std::optional<std::vector<SceneObjectId>> ScriptSystem::DeclaredReferences(SceneObjectId id,const SceneScriptSlot& slot)const{
+    auto it=m->instances.find({id,slot.id});if(it==m->instances.end()||it->second.slot.asset!=slot.asset||it->second.slot.properties!=slot.properties)return {};
+    return it->second.fault?std::vector<SceneObjectId>{}:it->second.entityReferences;
+}
 void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){
  JUDAS_PROFILE_SCOPE("Script synchronization");
  JUDAS_PROFILE_COUNTER("Script instances",double(m->instances.size()),ProfileCounterMode::Latest);m->CheckThread();
     std::set<std::pair<SceneObjectId,uint64_t>> alive;
     for(const auto& object:objects)for(const auto& slot:object.scripts)if(slot.enabled){auto key=std::make_pair(object.id,slot.id);alive.insert(key);
-        if(m->instances.count(key))continue;
+        if(auto existing=m->instances.find(key);existing!=m->instances.end()){
+            if(existing->second.slot.asset==slot.asset&&existing->second.slot.properties==slot.properties)continue;
+            // Replaced authored slot data is a new script instance, never stale metadata.
+            m->Callback(existing->second,"destroy");
+            if(m->world&&m->world->SceneControl())if(auto* stream=m->world->SceneControl()->StreamingIfLoaded())stream->ReleaseRequester(object.id,slot.id);
+            if(m->world&&m->world->UIIfLoaded())m->world->UI().RemoveSlotOwner(object.id,slot.id);
+            JS_FreeValue(m->ctx,existing->second.value);m->instances.erase(existing);
+        }
         Impl::Instance i;i.order=&slot-object.scripts.data();i.entity=object.id;i.slot=slot;m->currentOwner=object.id;m->currentSlot=slot.id;m->polls=0;
         auto ns=m->Namespace(slot.asset);if(JS_IsException(ns)){m->Error(i,"module");m->instances.emplace(key,std::move(i));continue;}
         auto schema=JS_GetPropertyStr(m->ctx,ns,"properties");std::string schemaText="{}",schemaError;
@@ -1014,6 +1028,7 @@ void ScriptSystem::Synchronize(const std::vector<SceneObject>& objects){
         std::vector<ScriptProperty> fields;
         if(!schemaError.empty()||!ReadProperties(schemaText,slot.properties,fields,schemaError)){
             JS_FreeValue(m->ctx,ns);JS_ThrowTypeError(m->ctx,"properties: %s",schemaError.c_str());m->Error(i,"properties");m->instances.emplace(key,std::move(i));continue;}
+        for(const auto& field:fields)if(field.type=="entity"&&field.text!="0")i.entityReferences.push_back(std::stoull(field.text));
         auto ctor=JS_GetPropertyStr(m->ctx,ns,"default");JS_FreeValue(m->ctx,ns);
         auto propertyText=WriteProperties(fields);
         auto props=JS_ParseJSON(m->ctx,propertyText.data(),propertyText.size(),"authored properties");
@@ -1045,23 +1060,25 @@ void ScriptSystem::Frame(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript update");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     std::vector<std::pair<SceneObjectId,uint64_t>> order;for(const auto& entry:m->instances)order.push_back(entry.first);
     // Slot order follows authored vector order, not numeric slot identity.
-    if(m->world){order.clear();for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts)if(m->instances.count({o.id,slot.id}))order.push_back({o.id,slot.id});}
+    if(m->world){order.clear();for(const auto& o:m->world->ScriptObjects(true))for(const auto& slot:o.scripts)if(m->instances.count({o.id,slot.id}))order.push_back({o.id,slot.id});}
     for(auto key:order){auto it=m->instances.find(key);if(it==m->instances.end()||(m->world&&!m->world->RuntimeDefinition(key.first)))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}m->Callback(i,"update");}}
 void ScriptSystem::Fixed(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript fixedUpdate");m->CheckThread();m->input=input;m->delta=dt;m->fixed=true;
-    auto objects=m->world?m->world->ScriptObjects():std::vector<SceneObject>{};
+    auto objects=m->world?m->world->ScriptObjects(true):std::vector<SceneObject>{};
     for(const auto& o:objects)for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||!m->world->RuntimeDefinition(o.id))continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}m->Callback(i,"fixedUpdate");}}
-std::vector<ScriptStateRecord> ScriptSystem::Capture(bool required)const{m->CheckThread();std::vector<ScriptStateRecord> result;
-    for(const auto& entry:m->instances){const auto& i=entry.second;if(m->world&&!m->world->RuntimeDefinition(i.entity))continue;if(i.fault){if(required)result.push_back({i.entity,i.slot.id,""});continue;}auto value=JS_GetPropertyStr(m->ctx,i.value,"state");std::string text,error;
+std::vector<ScriptStateRecord> ScriptSystem::Capture(bool required,const std::vector<SceneObjectId>* only)const{m->CheckThread();std::vector<ScriptStateRecord> result;std::set<SceneObjectId> selected;if(only)selected.insert(only->begin(),only->end());
+    for(const auto& entry:m->instances){const auto& i=entry.second;if(only&&!selected.count(i.entity))continue;if(m->world&&!m->world->RuntimeDefinition(i.entity))continue;if(i.fault){if(required)result.push_back({i.entity,i.slot.id,""});continue;}auto value=JS_GetPropertyStr(m->ctx,i.value,"state");std::string text,error;
         if(m->Json(value,text,error))result.push_back({i.entity,i.slot.id,text});else {result.push_back({i.entity,i.slot.id,""});std::fprintf(stderr,"script state %llu/%llu: %s\n",(unsigned long long)i.entity,(unsigned long long)i.slot.id,error.c_str());}JS_FreeValue(m->ctx,value);}
     return result;}
 bool ScriptSystem::Restore(const std::vector<ScriptStateRecord>& records,std::string& error,bool resume){m->CheckThread();for(const auto& r:records)if(!ValidateJson(r.json,error))return false;
     for(const auto& r:records){auto key=std::make_pair(r.entity,r.slot);m->restored[key]=r.json;if(resume)m->resumed.insert(key);if(auto it=m->instances.find(key);it!=m->instances.end())JS_SetPropertyStr(m->ctx,it->second.value,"state",JS_ParseJSON(m->ctx,r.json.data(),r.json.size(),"saved state"));}return true;}
-bool ScriptSystem::ValidateJson(const std::string& text,std::string& error,bool requireObject){error.clear();if(text.size()>65536){error="JSON exceeds 64KiB";return false;}Impl vm(nullptr,nullptr);vm.polls=0;auto value=JS_ParseJSON(vm.ctx,text.data(),text.size(),"JSON");if(JS_IsException(value)){error=Exception(vm.ctx);return false;}std::string canonical;bool ok=(!requireObject||JS_IsObject(value))&&vm.Json(value,canonical,error);if(!ok&&error.empty())error="JSON root must be object";JS_FreeValue(vm.ctx,value);return ok;}
+ScriptMetadataStats ScriptSystem::MetadataStats(){return {metadataParserConstructions.load(),metadataReferenceInspections.load()};}
+ScriptSystem::Impl& ScriptSystem::PropertyVM(){static thread_local Impl vm(nullptr,nullptr,true);return vm;}
+bool ScriptSystem::ValidateJson(const std::string& text,std::string& error,bool requireObject){error.clear();if(text.size()>65536){error="JSON exceeds 64KiB";return false;}auto& vm=PropertyVM();vm.polls=0;auto value=JS_ParseJSON(vm.ctx,text.data(),text.size(),"JSON");if(JS_IsException(value)){error=Exception(vm.ctx);return false;}std::string canonical;bool ok=(!requireObject||JS_IsObject(value))&&vm.Json(value,canonical,error);if(!ok&&error.empty())error="JSON root must be object";JS_FreeValue(vm.ctx,value);return ok;}
 bool ScriptSystem::Inspect(const AssetDatabase& assets,const std::string& asset,std::string& schema,std::string& error){Impl vm(nullptr,&assets);vm.polls=0;auto ns=vm.Namespace(asset);if(JS_IsException(ns)){error=Exception(vm.ctx);return false;}auto value=JS_GetPropertyStr(vm.ctx,ns,"properties");JS_FreeValue(vm.ctx,ns);if(JS_IsUndefined(value)){JS_FreeValue(vm.ctx,value);schema="{}";return true;}bool ok=vm.Json(value,schema,error);JS_FreeValue(vm.ctx,value);return ok;}
 bool ScriptSystem::ReadProperties(const std::string& schema,const std::string& values,std::vector<ScriptProperty>& out,std::string& error){
     if(!ValidateJson(schema,error)||!ValidateJson(values,error))return false;
-    Impl vm(nullptr,nullptr);auto* c=vm.ctx;auto definition=JS_ParseJSON(c,schema.data(),schema.size(),"schema"),data=JS_ParseJSON(c,values.data(),values.size(),"properties");
+    auto& vm=PropertyVM();auto* c=vm.ctx;auto definition=JS_ParseJSON(c,schema.data(),schema.size(),"schema"),data=JS_ParseJSON(c,values.data(),values.size(),"properties");
     JSPropertyEnum* keys=nullptr;uint32_t count=0;bool ok=JS_GetOwnPropertyNames(c,&keys,&count,definition,JS_GPN_STRING_MASK)==0;
     std::vector<ScriptProperty> fields;
     for(uint32_t i=0;ok&&i<count;++i){ScriptProperty field;auto name=JS_AtomToString(c,keys[i].atom);field.name=String(c,name);JS_FreeValue(c,name);
@@ -1083,7 +1100,7 @@ bool ScriptSystem::ReadProperties(const std::string& schema,const std::string& v
         if(std::none_of(fields.begin(),fields.end(),[&](const auto& f){return f.name==text;})){error="undeclared property "+text;ok=false;}}
     JS_FreePropertyEnum(c,keys,count);JS_FreeValue(c,definition);JS_FreeValue(c,data);if(ok)out=std::move(fields);return ok;
 }
-std::string ScriptSystem::WriteProperties(const std::vector<ScriptProperty>& values){Impl vm(nullptr,nullptr);auto o=JS_NewObject(vm.ctx);
+std::string ScriptSystem::WriteProperties(const std::vector<ScriptProperty>& values){auto& vm=PropertyVM();auto o=JS_NewObject(vm.ctx);
     for(const auto& field:values){if(field.type=="entity"){auto v=field.text=="0"?JS_NULL:JS_NewObject(vm.ctx);if(!JS_IsNull(v))JS_SetPropertyStr(vm.ctx,v,"entity",JS_NewString(vm.ctx,field.text.c_str()));JS_SetPropertyStr(vm.ctx,o,field.name.c_str(),v);continue;}auto v=field.type=="number"?JS_NewFloat64(vm.ctx,field.number):field.type=="boolean"?JS_NewBool(vm.ctx,field.boolean):JS_NewString(vm.ctx,field.text.c_str());JS_SetPropertyStr(vm.ctx,o,field.name.c_str(),v);}
     auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);auto text=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return text;}
 bool ScriptSystem::SourceFingerprint(const AssetDatabase& assets,const Scene& scene,std::string& digest,std::string& error,bool strict){
@@ -1108,13 +1125,13 @@ bool ScriptSystem::SourceFingerprint(const AssetDatabase& assets,const Scene& sc
 
 void ScriptSystem::UIFrame(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript UI update");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
-    for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end())continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}m->Callback(i,"uiUpdate");}
+    for(const auto& o:m->world->ScriptObjects(true))for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end())continue;auto& i=it->second;if(!i.started){i.started=true;m->Callback(i,i.loaded?"restore":"start");}m->Callback(i,"uiUpdate");}
 }
 void ScriptSystem::UIEvents(const InputSystem* input,float dt){
  JUDAS_PROFILE_SCOPE("JavaScript UI events");m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     if(!m->world->UIIfLoaded())return;
     auto events=m->world->UI().TakeEvents();
-    for(const auto& event:events)for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||it->second.fault||!m->world->RuntimeDefinition(o.id))continue;
+    for(const auto& event:events)for(const auto& o:m->world->ScriptObjects(true))for(const auto& slot:o.scripts){auto it=m->instances.find({o.id,slot.id});if(it==m->instances.end()||it->second.fault||!m->world->RuntimeDefinition(o.id))continue;
         auto& i=it->second;ProfileScope assetScope(m->AssetLabel(i));m->polls=0;m->currentOwner=i.entity;m->currentSlot=i.slot.id;auto fn=JS_GetPropertyStr(m->ctx,i.value,"onUI");if(JS_IsException(fn)){m->Error(i,"onUI");JS_FreeValue(m->ctx,fn);continue;}if(JS_IsFunction(m->ctx,fn)){
             auto e=JS_NewObject(m->ctx);JS_SetPropertyStr(m->ctx,e,"document",JS_NewString(m->ctx,event.document.c_str()));JS_SetPropertyStr(m->ctx,e,"element",JS_NewString(m->ctx,event.element.c_str()));JS_SetPropertyStr(m->ctx,e,"type",JS_NewString(m->ctx,event.type.c_str()));JS_SetPropertyStr(m->ctx,e,"value",JS_NewFloat64(m->ctx,event.value));
             auto result=JS_Call(m->ctx,fn,i.value,1,&e);if(JS_IsException(result))m->Error(i,"onUI");else if(JS_PromiseState(m->ctx,result)!=JS_PROMISE_NOT_A_PROMISE){JS_ThrowTypeError(m->ctx,"async UI callback unsupported");m->Error(i,"onUI");}JS_FreeValue(m->ctx,result);JS_FreeValue(m->ctx,e);
@@ -1166,7 +1183,7 @@ void ScriptSystem::Presentation(const InputSystem* input,float dt,float alpha){
  JUDAS_PROFILE_SCOPE("JavaScript presentation");
     m->CheckThread();m->input=input;m->delta=dt;m->fixed=false;
     m->presentationAlpha=std::clamp(alpha,0.f,1.f);m->inPresentation=true;
-    for(const auto& o:m->world->ScriptObjects())for(const auto& slot:o.scripts){
+    for(const auto& o:m->world->ScriptObjects(true))for(const auto& slot:o.scripts){
         auto it=m->instances.find({o.id,slot.id});
         if(it==m->instances.end()||!m->world->RuntimeDefinition(o.id))continue;
         auto& instance=it->second;
@@ -1186,6 +1203,6 @@ void PropertyReferences(JSContext* c,JSValueConst object,const std::function<voi
  for(uint32_t i=0;i<count;++i){auto name=JS_AtomToString(c,keys[i].atom);auto key=String(c,name);JS_FreeValue(c,name);auto value=JS_GetProperty(c,object,keys[i].atom);if(JS_IsObject(value)){auto id=JS_GetPropertyStr(c,value,"entity");if(JS_IsString(id))visit(key,id);JS_FreeValue(c,id);}JS_FreeValue(c,value);}JS_FreePropertyEnum(c,keys,count);
 }
 }
-std::vector<SceneObjectId> ScriptSystem::PropertyEntities(const std::string& values){Impl vm(nullptr,nullptr);auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");std::vector<SceneObjectId> result;PropertyReferences(vm.ctx,o,[&](const std::string&,JSValueConst id){try{size_t end=0;auto text=String(vm.ctx,id);auto value=std::stoull(text,&end);if(value&&end==text.size())result.push_back(value);}catch(...){}});JS_FreeValue(vm.ctx,o);return result;}
-std::string ScriptSystem::RemapPropertyEntities(const std::string& values,const std::map<SceneObjectId,SceneObjectId>& ids){Impl vm(nullptr,nullptr);auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");if(JS_IsException(o)){JS_FreeValue(vm.ctx,o);return values;}PropertyReferences(vm.ctx,o,[&](const std::string& key,JSValueConst id){try{auto value=std::stoull(String(vm.ctx,id));auto found=ids.find(value);if(found!=ids.end()){auto ref=JS_NewObject(vm.ctx);JS_SetPropertyStr(vm.ctx,ref,"entity",JS_NewString(vm.ctx,std::to_string(found->second).c_str()));JS_SetPropertyStr(vm.ctx,o,key.c_str(),ref);}}catch(...){}});auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);auto result=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return result;}
-bool ScriptSystem::SetPropertyEntity(std::string& values,const std::string& name,SceneObjectId id){Impl vm(nullptr,nullptr);auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");if(!JS_IsObject(o)){JS_FreeValue(vm.ctx,o);return false;}auto ref=id?JS_NewObject(vm.ctx):JS_NULL;if(id)JS_SetPropertyStr(vm.ctx,ref,"entity",JS_NewString(vm.ctx,std::to_string(id).c_str()));JS_SetPropertyStr(vm.ctx,o,name.c_str(),ref);auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);values=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return true;}
+std::vector<SceneObjectId> ScriptSystem::PropertyEntities(const std::string& values){++metadataReferenceInspections;auto& vm=PropertyVM();auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");std::vector<SceneObjectId> result;if(JS_IsException(o)){Exception(vm.ctx);JS_FreeValue(vm.ctx,o);return result;}PropertyReferences(vm.ctx,o,[&](const std::string&,JSValueConst id){try{size_t end=0;auto text=String(vm.ctx,id);auto value=std::stoull(text,&end);if(value&&end==text.size())result.push_back(value);}catch(...){}});JS_FreeValue(vm.ctx,o);return result;}
+std::string ScriptSystem::RemapPropertyEntities(const std::string& values,const std::map<SceneObjectId,SceneObjectId>& ids){auto& vm=PropertyVM();auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");if(JS_IsException(o)){Exception(vm.ctx);JS_FreeValue(vm.ctx,o);return values;}PropertyReferences(vm.ctx,o,[&](const std::string& key,JSValueConst id){try{auto value=std::stoull(String(vm.ctx,id));auto found=ids.find(value);if(found!=ids.end()){auto ref=JS_NewObject(vm.ctx);JS_SetPropertyStr(vm.ctx,ref,"entity",JS_NewString(vm.ctx,std::to_string(found->second).c_str()));JS_SetPropertyStr(vm.ctx,o,key.c_str(),ref);}}catch(...){}});auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);auto result=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return result;}
+bool ScriptSystem::SetPropertyEntity(std::string& values,const std::string& name,SceneObjectId id){auto& vm=PropertyVM();auto o=JS_ParseJSON(vm.ctx,values.data(),values.size(),"properties");if(!JS_IsObject(o)){if(JS_IsException(o))Exception(vm.ctx);JS_FreeValue(vm.ctx,o);return false;}auto ref=id?JS_NewObject(vm.ctx):JS_NULL;if(id)JS_SetPropertyStr(vm.ctx,ref,"entity",JS_NewString(vm.ctx,std::to_string(id).c_str()));JS_SetPropertyStr(vm.ctx,o,name.c_str(),ref);auto json=JS_JSONStringify(vm.ctx,o,JS_UNDEFINED,JS_UNDEFINED);values=String(vm.ctx,json);JS_FreeValue(vm.ctx,json);JS_FreeValue(vm.ctx,o);return true;}

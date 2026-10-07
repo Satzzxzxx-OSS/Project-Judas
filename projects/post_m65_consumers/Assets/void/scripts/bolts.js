@@ -3,7 +3,7 @@
 import {world,physics} from 'judas';
 import {SYSTEM} from './system_data.js';
 import {G} from './shared.js';
-import {add,sub,mul,dot,length,norm,lookRotation} from './math.js';
+import {add,mul,length,norm,lookRotation} from './math.js';
 
 const HIDDEN={x:0,y:-5000,z:0};
 
@@ -27,12 +27,7 @@ export class Bolts {
    if(b.life<=0||dist<1e-6){b.active=false;this.place(b);continue;}
    const ignored=b.owner?.valid?[b.owner]:[];
    const hit=physics.raycast(b.pos,step,dist,{ignored});
-   // Retained after actual M65 review: its query capsule is registered, but
-   // the cast target path still treats it as a zero-size box. Keep the
-   // original game-side approximation until that generic defect is fixed.
-   if(team==='enemy'&&G.mode==='foot'&&G.foot){const p=G.foot.entity.transform.position;
-    const t=Math.max(0,Math.min(1,dot(sub(p,b.pos),step)/(dist*dist))),c=add(b.pos,mul(step,t));
-    if(length(sub(p,c))<0.75&&(!hit||t*dist<hit.distance)){G.foot.damage(b.damage);this.impact(c,1);b.active=false;this.place(b);continue;}}
+   // Ordinary queries now intersect the actual pilot capsule.
    if(hit){this.resolve(b,hit);b.active=false;this.place(b);continue;}
    b.pos=add(b.pos,step);this.place(b);
   }

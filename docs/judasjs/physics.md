@@ -151,3 +151,14 @@ replace them. Use fixedUpdate. Normal scene/prefab/M59/M61 references own lifeti
 Sleeping bodies retain geometry and queries. `entity.sleeping` reports current
 physical state (false without a physical body); force/impulse/torque and meaningful
 changes wake connected islands. It is not a gameplay pause or visibility policy.
+
+### Passive joint rotational resistance
+
+`Joint.configure({rotationalResistance: coefficient})` and
+`physics.createJoint(owner, {…, rotationalResistance: coefficient})` accept a
+finite nonnegative coefficient in N·m·s/rad. Default **0** preserves the previous
+undamped behaviour. It opposes relative angular velocity implicitly on a ball
+joint's three free angular axes, or a hinge's free angular axis. Fixed/slider
+joints have no free angular axis. It does not drive a rest orientation, alter sleep
+thresholds, or replace hinge motors/springs. The same setting is authored in
+ordinary joints and ragdoll mappings; game scripts decide whether to use it.

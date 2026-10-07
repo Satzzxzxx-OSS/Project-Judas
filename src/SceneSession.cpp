@@ -1,3 +1,4 @@
+#include "InputSystem.h"
 #include "WorldStreaming.h"
 #include "SaveService.h"
 #include "PerformanceProfiler.h"
@@ -91,3 +92,13 @@ bool SceneSession::Apply(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& p
 
 SaveService* SceneSession::Saves(ResourceManager& resources){if(!m_saveService)m_saveService=std::make_unique<SaveService>(*this,resources,m_editorSaves);return m_saveService.get();}
 void SceneSession::AdvanceSaves(std::unique_ptr<RuntimeWorld>& world,InteractivePlay& play,ResourceManager& resources,std::string& error){if(m_saveService)m_saveService->Advance(world,play,error);(void)resources;}
+
+bool SceneSession::AdvanceOuter(std::unique_ptr<RuntimeWorld>& owner,InteractivePlay& play,ResourceManager& resources,InputSystem& input,std::string& error){
+    AdvanceStreaming(*owner,play.IsPaused());
+    auto* previous=owner.get();AdvanceSaves(owner,play,resources,error);
+    if(previous!=owner.get())input.DiscardPending();
+    // A save error must remain visible rather than being overwritten by Apply.
+    std::string transitionError;bool ok=Apply(owner,play,resources,transitionError);
+    if(!transitionError.empty()){if(!error.empty())error+="; ";error+=transitionError;}
+    return ok;
+}

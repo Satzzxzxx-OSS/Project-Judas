@@ -375,6 +375,7 @@ bool RuntimeWorld::AppendSceneObjects(const Scene& scene, bool authored,
         if((o.liquidBasin||o.liquidContainer)&&m_assets){std::vector<std::string> ids;if(o.liquidBasin)ids={o.liquidBasin->geometry,o.liquidBasin->asset};else ids={o.liquidContainer->geometry};for(auto id:ids){m_assets->AddRef(id);m_referencedAssets.push_back(id);m_assets->RequestLiquid(id);}}
         m_hasNavigation|=o.navigationSurface.has_value()||o.navigationAgent.has_value()||o.navigationObstacle.has_value()||o.navigationLink.has_value()||o.navigationModifier.has_value();
         m_scriptDefinitions[o.id]=o;
+        if(!o.scripts.empty())m_scriptOwners.insert(o.id);
         m_entityCategories[o.id]={o.tags,o.tags,o.renderLayer,{}};
         const glm::vec3 position = o.transform.position;
         const glm::quat rotation = glm::normalize(o.transform.rotation);
@@ -827,21 +828,21 @@ std::string RuntimeWorld::NameOfBody(BodyHandle handle) const {
 
 // --- Milestone 29 -------------------------------------------------------
 
-const EntityRecord* RuntimeWorld::FindEntity(EntityId id) const {
-    for (const EntityRecord& e : m_entities) {
-        if (e.id == id) return &e;
-    }
-    for (const auto& e : m_extraEntities) if (e.id == id) return &e;
-    for (auto& e : m_extraEntities) if (e.id == id) return &e;
-    return nullptr;
+void RuntimeWorld::RefreshEntityIndex() const {
+    const bool reset=m_entityIndexVersion==~0u||m_entityIndexMainSize>m_entities.size()||m_entityIndexExtraSize>m_extraEntities.size();
+    if(reset){++m_metadataWork.indexRebuilds;m_entityIndex.clear();m_entityIndexMainSize=m_entityIndexExtraSize=0;}
+    // Appends keep prior indices valid. Version changes for tags/motion do not
+    // invalidate identity storage; removals and mutable access explicitly do.
+    for(size_t i=m_entityIndexMainSize;i<m_entities.size();++i)m_entityIndex.emplace(m_entities[i].id,std::make_pair(false,i));
+    for(size_t i=m_entityIndexExtraSize;i<m_extraEntities.size();++i)m_entityIndex.emplace(m_extraEntities[i].id,std::make_pair(true,i));
+    m_entityIndexVersion=m_entityVersion;m_entityIndexMainSize=m_entities.size();m_entityIndexExtraSize=m_extraEntities.size();
 }
-
+const EntityRecord* RuntimeWorld::FindEntity(EntityId id) const {
+    ++m_metadataWork.lookups;RefreshEntityIndex();auto it=m_entityIndex.find(id);if(it==m_entityIndex.end())return nullptr;
+    return it->second.first?&m_extraEntities[it->second.second]:&m_entities[it->second.second];
+}
 EntityRecord* RuntimeWorld::FindEntity(EntityId id) {
-    for (EntityRecord& e : m_entities) {
-        if (e.id == id) return &e;
-    }
-    for (auto& e : m_extraEntities) if (e.id == id) return &e;
-    return nullptr;
+    return const_cast<EntityRecord*>(static_cast<const RuntimeWorld&>(*this).FindEntity(id));
 }
 
 EntityId RuntimeWorld::EntityIdOfBody(BodyHandle handle) const {
@@ -1280,7 +1281,7 @@ void RuntimeWorld::Destroy() {
     ClearCharacters();
     m_animationInstances.clear();m_animationOwners.clear();
     m_jointOwners.clear();m_jointParticipants.clear();m_runtimeJoints.clear();
-    m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_scriptDefinitions.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
+    m_liquid=std::make_unique<LiquidSystem>();m_hasLiquid=false;m_navigation.reset();m_ui.reset();m_localization.reset();pointerCapture=false;m_scriptDefinitions.clear();m_scriptOwners.clear();m_touchEntityHistory.clear();m_hasScripts=false;m_hasNavigation=false;
     EndAudio();
     m_particleEmitters.clear();
     m_audioEmitters.clear();m_audioZones.clear();m_audioIdentities.clear();m_audioListener.reset();m_audioSystem=nullptr;
@@ -1310,7 +1311,7 @@ void RuntimeWorld::Destroy() {
     m_entityCategories.clear();
     m_policy.reset();
     m_nextRuntimeId = kRuntimeEntityIdBase;
-    m_entityVersion = 0;
+    m_entityVersion = 0;m_entityIndex.clear();m_entityIndexVersion=~0u;
     m_transitionsThisStep = 0;
     m_simulationTime = 0.0;
     m_staticBodies.clear();

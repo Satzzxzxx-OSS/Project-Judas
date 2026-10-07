@@ -17,8 +17,11 @@ BodyHandle RuntimeWorld::RuntimeBody(EntityId id) const {
     if(const auto* e=FindEntity(id))if(e->slot!=std::numeric_limits<size_t>::max())return m_dynamicBodies[e->slot].Handle();
     auto it=m_entityCategories.find(id);return it==m_entityCategories.end()?BodyHandle{}:it->second.body;
 }
-std::vector<SceneObject> RuntimeWorld::ScriptObjects() const {
-    std::vector<SceneObject> result;for(const auto& entry:m_scriptDefinitions)if(RuntimeDefinition(entry.first))result.push_back(entry.second);return result;
+std::vector<SceneObject> RuntimeWorld::ScriptObjects(bool scriptedOnly) const {
+    std::vector<SceneObject> result;
+    if(scriptedOnly){result.reserve(m_scriptOwners.size());for(auto id:m_scriptOwners)if(RuntimeDefinition(id)){result.push_back(m_scriptDefinitions.at(id));++m_metadataWork.definitionsCopied;}}
+    else {result.reserve(m_scriptDefinitions.size());for(const auto& [id,definition]:m_scriptDefinitions)if(RuntimeDefinition(id)){result.push_back(definition);++m_metadataWork.definitionsCopied;}}
+    return result;
 }
 bool RuntimeWorld::SetRuntimeTransform(EntityId id,const SceneTransform& t){
     const auto* authored=RuntimeDefinition(id);if(!authored)return false;
@@ -52,7 +55,7 @@ bool RuntimeWorld::SetRuntimeTransform(EntityId id,const SceneTransform& t){
 void RuntimeWorld::UpdateScripts(const InputSystem* input,float dt){
     if(!m_scripts){if(!m_hasScripts)return;
         m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);}
-    m_scripts->Synchronize(ScriptObjects());m_scripts->Frame(input,dt);
+    m_scripts->Synchronize(ScriptObjects(true));m_scripts->Frame(input,dt);
 }
 void RuntimeWorld::FixedScripts(const InputSystem* input,float dt){
     // Register authored motor geometry before this step, including its first one.
@@ -60,7 +63,7 @@ void RuntimeWorld::FixedScripts(const InputSystem* input,float dt){
     SynchronizeJoints();
     if(!m_scripts){if(!m_hasScripts)return;
         m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);}
-    if(m_scripts){m_scripts->Synchronize(ScriptObjects());m_scripts->Fixed(input,dt);}
+    if(m_scripts){m_scripts->Synchronize(ScriptObjects(true));m_scripts->Fixed(input,dt);}
 }
 
 bool RuntimeWorld::RestoreScriptState(const std::vector<ScriptStateRecord>& records,std::string& error,bool resume){
@@ -71,7 +74,7 @@ bool RuntimeWorld::RestoreScriptState(const std::vector<ScriptStateRecord>& reco
 
 void RuntimeWorld::UpdateUIScripts(InputSystem* input,float dt){
     if(!m_scripts){if(!m_hasScripts)return;m_scripts=std::make_unique<ScriptSystem>(this,m_assets?m_assets->Assets():nullptr);}
-    bool wasPaused=m_ui&&m_ui->Paused();m_scripts->Synchronize(ScriptObjects());m_scripts->UIFrame(input,dt);
+    bool wasPaused=m_ui&&m_ui->Paused();m_scripts->Synchronize(ScriptObjects(true));m_scripts->UIFrame(input,dt);
     if(input&&!wasPaused&&m_ui&&m_ui->Paused())input->ConsumeBindings({"pause"});
 }
 void RuntimeWorld::DispatchUIEvents(const InputSystem* input,float dt){if(m_scripts)m_scripts->UIEvents(input,dt);}
@@ -89,7 +92,7 @@ void RuntimeWorld::DispatchPhysicsEvents(const InputSystem* input,float dt){
         deliveries.push_back({a->second,b->second,event});
         if(event.phase!=PhysicsWorld::TouchPhase::Exit){next[event.a.id]=a->second;next[event.b.id]=b->second;}
     }
-    if(m_scripts){m_scripts->Synchronize(ScriptObjects());
+    if(m_scripts){m_scripts->Synchronize(ScriptObjects(true));
         for(const auto& d:deliveries){m_scripts->PhysicsEvent(d.a,d.b,d.event,false);m_scripts->PhysicsEvent(d.b,d.a,d.event,true);}}
     m_touchEntityHistory=std::move(next);(void)input;(void)dt;
 }

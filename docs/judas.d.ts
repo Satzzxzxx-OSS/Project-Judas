@@ -298,7 +298,7 @@ declare module "judas" {
     removeLimb(id:string):boolean;
   }
   export interface JointState { active: boolean; enabled: boolean; coordinate: number; motorImpulse: number; type: 0 | 1 | 2 | 3 }
-  export interface JointConfiguration {type?:"fixed"|"hinge"|"ball"|"slider";anchorA?:Vec3;anchorB?:Vec3;frameA?:Quat;frameB?:Quat;enabled?:boolean;limits?:boolean;motor?:boolean;spring?:boolean;lower?:number;upper?:number;speed?:number;maxForce?:number;rest?:number;stiffness?:number;damping?:number}
+  export interface JointConfiguration {type?:"fixed"|"hinge"|"ball"|"slider";anchorA?:Vec3;anchorB?:Vec3;frameA?:Quat;frameB?:Quat;enabled?:boolean;limits?:boolean;motor?:boolean;spring?:boolean;lower?:number;upper?:number;speed?:number;maxForce?:number;rest?:number;stiffness?:number;damping?:number;rotationalResistance?:number}
   export class Joint {
     constructor(id: string | number | bigint);
     id: string;

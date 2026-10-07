@@ -1,14 +1,17 @@
+#include "PerformanceProfiler.h"
 #include "TestHarness.h"
 #include "InteractivePlay.h"
 #include "RuntimeWorld.h"
 #include "DynamicBody.h"
 #include "ScriptSystem.h"
+#include "SceneSession.h"
 #include "Renderer.h"
 #include "Window.h"
 #include "ScreenshotWriter.h"
 #include "SimulationTiming.h"
 #include <SDL2/SDL.h>
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -41,6 +44,8 @@ Script Load(const std::string& path,const InputMap& map){
    Require(entry&&!entry->bindings.empty(),"unknown/unbound expectation input "+c.name);
    Require(entry->axis==(op=="EXPECT_AXIS"),"expectation input kind mismatch "+c.name);
   }
+  else if(op=="EXPECT_SCENE")in>>c.name>>c.begin;
+  else if(op=="WAIT_SERVICES")in>>c.name>>c.value>>c.begin;
   else if(op=="EXPECT_PAUSED")in>>c.value>>c.begin;
   else throw std::runtime_error("unknown directive "+op);
   Require(!in.fail(),"invalid arguments at line "+std::to_string(index));std::string extra;Require(!(in>>extra),"extra argument at line "+std::to_string(index));
@@ -49,12 +54,12 @@ Script Load(const std::string& path,const InputMap& map){
   s.commands.push_back(c);
  }
  Require(s.frames>0&&s.frames<=1000000&&s.logEvery>=0&&std::isfinite(s.seconds)&&s.seconds>=0&&s.seconds<=.25f,"invalid frame count/clock");
- for(const auto& c:s.commands)if(c.kind=="SCREENSHOT"||c.kind=="LOOK"||c.kind=="POINTER"||c.kind.rfind("EXPECT_",0)==0)Require(c.begin>=0&&c.begin<s.frames&&std::isfinite(c.value)&&std::isfinite(c.other),"invalid command frame/value");
+ for(const auto& c:s.commands)if(c.kind=="SCREENSHOT"||c.kind=="LOOK"||c.kind=="POINTER"||c.kind.rfind("EXPECT_",0)==0||c.kind=="WAIT_SERVICES")Require(c.begin>=0&&c.begin<s.frames&&std::isfinite(c.value)&&std::isfinite(c.other),"invalid command frame/value");
  for(const auto& c:s.commands)if(c.kind=="ACTION"||c.kind=="AXIS"||c.kind=="HOLD"||c.kind=="TAP"||c.kind=="CONTROL")Require(c.begin>=0&&c.end>c.begin&&c.end<=s.frames&&std::isfinite(c.value),"invalid input interval");
  return s;
 }
 }
-int RunTestHarness(Window& window,Renderer& renderer,InteractivePlay& play,const std::string& path){
+int RunTestHarness(Window& window,Renderer& renderer,InteractivePlay& play,const std::string& path,const std::function<void()>& beforeFrame,const std::function<void()>& afterFrame,const std::function<bool(const std::string&)>& servicesReady){
  try{
   const auto script=Load(path,window.Input().Map());window.SetTestInputMode(true);SDL_GL_SetSwapInterval(0);
   for(const auto& c:script.commands)if(c.kind=="SAMPLE_GRAVITY"){glm::vec3 p;std::istringstream(c.path)>>p.x>>p.y>>p.z;auto g=play.Session().World().Gravity().Sample(p);std::printf("sample,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n",p.x,p.y,p.z,g.x,g.y,g.z);}
@@ -63,6 +68,8 @@ int RunTestHarness(Window& window,Renderer& renderer,InteractivePlay& play,const
   for(size_t i=0;i<play.Session().World().DynamicBodies().size();++i){std::printf(",obj%zuPosX,obj%zuPosY,obj%zuPosZ,obj%zuVelX,obj%zuVelY,obj%zuVelZ",i,i,i,i,i,i);}
   std::printf("\n");
   for(int frame=0;frame<script.frames;++frame){
+   ProfileFrame frameProfile("scripted application frame");
+   if(beforeFrame)beforeFrame();
    // No PollEvents: real desktop devices cannot contaminate deterministic input.
    window.BeginTestFrame();
    for(const auto& c:script.commands){
@@ -83,9 +90,24 @@ int RunTestHarness(Window& window,Renderer& renderer,InteractivePlay& play,const
     if(c.kind=="SCREENSHOT"){std::filesystem::path output(c.path);if(output.has_parent_path())std::filesystem::create_directories(output.parent_path());std::vector<unsigned char> pixels;renderer.CaptureFrame(window.Width(),window.Height(),pixels);Require(WriteRgbPng(c.path,window.Width(),window.Height(),pixels),"capture failed "+c.path);std::printf("[TestHarness] Wrote screenshot: %s\n",c.path.c_str());}
     if(c.kind=="EXPECT_AXIS")Require(std::abs(window.Input().Axis(c.name)-c.value)<1e-5f,"axis expectation failed "+c.name);
     if(c.kind=="EXPECT_HELD")Require(window.Input().Action(c.name).held==(c.value!=0),"held expectation failed "+c.name);
+    if(c.kind=="EXPECT_SCENE")Require(play.Session().World().SceneControl()&&play.Session().World().SceneControl()->Current()==c.name,"scene expectation failed "+c.name);
     if(c.kind=="EXPECT_PAUSED")Require(play.IsPaused()==(c.value!=0),"pause expectation failed");
    }
    if(script.realtime)window.SwapBuffers();
+   if(afterFrame)afterFrame();
+   // Zero-clock application frames advance the SAME outer services. They are
+   // individually profiled; fixed simulation does not run while waiting.
+   for(const auto& c:script.commands)if(c.kind=="WAIT_SERVICES"&&c.begin==frame){
+    Require(bool(servicesReady)&&c.value>0&&c.value<=60000,"WAIT_SERVICES requires application services and a 1..60000ms bound");
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(int(c.value));unsigned waits=0;
+    frameProfile.End();
+    while(!servicesReady(c.name)){
+     Require(std::chrono::steady_clock::now()<deadline,"service wait timed out: "+c.name+" at scripted frame "+std::to_string(frame));
+     ProfileFrame waitProfile("scripted service wait");if(beforeFrame)beforeFrame();window.BeginTestFrame();
+     play.Frame(window,renderer,0,true,false);if(afterFrame)afterFrame();++waits;SDL_Delay(1);
+    }
+    std::printf("[TestHarness] service %s ready after %u wait frames at frame %d\n",c.name.c_str(),waits,frame);
+   }
    if(script.logEvery&&frame%script.logEvery==0){auto& world=play.Session().World();glm::vec3 p=play.Session().Player().GetPosition(),v=play.Session().Player().GetVelocity();bool supported=play.Session().Player().IsGrounded();glm::vec3 up=play.Session().Player().GetOrientation()*glm::vec3(0,1,0);
     if(!script.entity.empty()){EntityId id=std::stoull(script.entity);auto* d=world.RuntimeDefinition(id);Require(d,"selected entity is unavailable");p=d->transform.position;up=d->transform.rotation*glm::vec3(0,1,0);if(auto* m=world.RuntimeCharacter(id)){v=m->result.velocity;supported=m->result.supported;}else v=world.Physics().GetLinearVelocity(world.RuntimeBody(id));}
     const auto g=world.Gravity().Sample(p);
@@ -93,6 +115,7 @@ int RunTestHarness(Window& window,Renderer& renderer,InteractivePlay& play,const
     for(auto& b:world.DynamicBodies()){auto pos=b.GetPosition(),vel=world.Physics().GetLinearVelocity(b.Handle());std::printf(",%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",pos.x,pos.y,pos.z,vel.x,vel.y,vel.z);}std::printf("\n");
    }
   }
+  if(std::getenv("JUDAS_METADATA_TRACE")){auto work=play.Session().World().MetadataStats();auto json=ScriptSystem::MetadataStats();std::printf("[TestHarness] metadata lookups=%llu rebuilds=%llu copies=%llu JSON-contexts=%llu reference-inspections=%llu\n",(unsigned long long)work.lookups,(unsigned long long)work.indexRebuilds,(unsigned long long)work.definitionsCopied,(unsigned long long)json.parserConstructions,(unsigned long long)json.referenceInspections);}
   window.SetTestInputMode(false);return 0;
  }catch(const std::exception& e){std::fprintf(stderr,"[TestHarness] %s\n",e.what());window.SetTestInputMode(false);return 1;}
 }
