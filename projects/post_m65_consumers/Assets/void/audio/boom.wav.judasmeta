@@ -1,0 +1,4 @@
+JudasAssetMeta 1
+id "eead0695e5f598fd5b63c36117af7765"
+type audio
+source "Assets/audio/boom.wav"

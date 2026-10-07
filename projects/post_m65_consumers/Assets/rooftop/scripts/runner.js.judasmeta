@@ -1,0 +1,4 @@
+JudasAssetMeta 1
+id "4449a2ee6ba6455ac0affbbfb0b1ac6b"
+type script
+source "Assets/scripts/runner.js"

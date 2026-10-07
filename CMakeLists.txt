@@ -1282,3 +1282,17 @@ add_executable(judas_developer_authoring_tests tests/DeveloperAuthoringTests.cpp
 target_include_directories(judas_developer_authoring_tests PRIVATE tools)
 target_link_libraries(judas_developer_authoring_tests PRIVATE judas_engine)
 target_compile_options(judas_developer_authoring_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+# Ordinary application-loop observation for the post-M65 consumer review.
+add_executable(judas_consumer_review tools/ConsumerReview.cpp src/Application.cpp src/RuntimeOptions.cpp src/RuntimeDiagnostics.cpp src/TestHarness.cpp)
+target_link_libraries(judas_consumer_review PRIVATE judas_engine)
+target_compile_options(judas_consumer_review PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(judas_consumer_authoring_tests tests/ConsumerAuthoringTests.cpp src/editor/EditorHistory.cpp)
+target_link_libraries(judas_consumer_authoring_tests PRIVATE judas_engine)
+target_compile_options(judas_consumer_authoring_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(judas_consumer_capsule_repro tools/ConsumerCapsuleRepro.cpp)
+target_link_libraries(judas_consumer_capsule_repro PRIVATE judas_engine)
+target_compile_options(judas_consumer_capsule_repro PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(judas_consumer_reference_repro tools/ConsumerReferenceRepro.cpp)
+target_link_libraries(judas_consumer_reference_repro PRIVATE judas_engine)
+target_compile_options(judas_consumer_reference_repro PRIVATE -Wall -Wextra -Wpedantic)
